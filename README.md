@@ -107,8 +107,7 @@ use `python3`.
 - `docs/policy.md`, `docs/conditions.md`, `docs/glue.md` — the rule, the 14 conditions, the files.
 - `docs/experiments-matrix.md` — every claim and the experiment that checks it.
 
-`docs/design.md` and `docs/design-delivery.md` are superseded and kept for provenance. `RELEASE.md`
-says how a tag becomes a release.
+`RELEASE.md` says how a tag becomes a release.
 
 ## License
 

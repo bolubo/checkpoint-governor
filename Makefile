@@ -1,9 +1,15 @@
 GO ?= go
 
+# The release the binaries report. Plain `make build` says "dev"; `make dist VERSION=v0.6.0` and
+# `make release VERSION=v0.6.0` set it in the binary itself.
+VERSION ?= dev
+LDFLAGS = -X main.version=$(VERSION)
+IMAGE ?= ghcr.io/bolubo/checkpoint-governor
+
 # How long the real-clock smoke runs (make smoke MINUTES=2 for a quick check).
 MINUTES ?= 10
 
-.PHONY: all check fmt vet build test verify clean
+.PHONY: all check fmt vet build test verify clean dist release
 
 all: check
 
@@ -16,7 +22,7 @@ vet:
 	$(GO) vet ./...
 
 build:
-	$(GO) build ./...
+	$(GO) build -ldflags "$(LDFLAGS)" ./...
 
 # The observer is its own module: it carries client-go, and the core must never grow that dependency.
 # It is built and tested on demand rather than on every `make check`, so a laptop without the module
@@ -37,7 +43,26 @@ scenarios:
 
 # The shortest path for someone who already has Go: the two binaries on their PATH.
 install:
-	$(GO) install ./cmd/ckptctl ./cmd/ckpttrainer
+	$(GO) install -ldflags "$(LDFLAGS)" ./cmd/ckptctl ./cmd/ckpttrainer
+
+# The binaries a user downloads, with a checksum they can check. No Docker, so it runs on a laptop
+# and on a runner: two architectures, four files, one SHA256SUMS.
+dist:
+	/bin/mkdir -p dist
+	for arch in amd64 arm64; do \
+	  GOOS=linux GOARCH=$$arch CGO_ENABLED=0 $(GO) build -trimpath -ldflags "$(LDFLAGS) -s -w" -o dist/ckptctl_linux_$$arch ./cmd/ckptctl; \
+	  GOOS=linux GOARCH=$$arch CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-s -w" -o dist/ckpttrainer_linux_$$arch ./cmd/ckpttrainer; \
+	  /bin/tar -czf dist/checkpoint-governor_$(VERSION)_linux_$$arch.tar.gz -C dist ckptctl_linux_$$arch ckpttrainer_linux_$$arch; \
+	done
+	cd dist && /usr/bin/sha256sum checkpoint-governor_*.tar.gz > SHA256SUMS
+	@echo "dist: $$(ls dist/*.tar.gz | wc -l) archives, $$(wc -l < dist/SHA256SUMS) checksums"
+
+# The same binaries plus a multi-arch image. Needs Docker with buildx and a login; the tag workflow
+# runs exactly this (see .github/workflows/release.yml).
+release: dist
+	docker buildx build --platform linux/amd64,linux/arm64 \
+	  --build-arg VERSION=$(VERSION) -t $(IMAGE):$(VERSION) --push .
+	@echo "release: $(IMAGE):$(VERSION) and dist/SHA256SUMS"
 
 # The experiment rig: paired arms, one fault, one claim. It fails when
 # the baseline also survives, because a fault that does not break the baseline proves nothing.
@@ -73,4 +98,4 @@ verify: check
 
 # /bin/rm by absolute path so a shadowing `rm` on PATH cannot change what clean deletes.
 clean:
-	/bin/rm -rf bin
+	/bin/rm -rf bin dist

@@ -1,0 +1,68 @@
+# Two ranks, one volume, one generation.
+#
+# A gang is one unit: both ranks write into the same directory, and a checkpoint is complete only when
+# every shard is on disk (`--ranks=2`). The governor treats the pair as one job, so a write is sealed
+# once, not twice.
+#
+#   kubectl apply -f examples/gang.yaml
+#   kubectl logs -f train-gang-0 -c governor
+#
+# Expected: one `save` per decision, two shards per checkpoint, and `may-exit` only after both land.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: checkpoints-gang
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 100Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: train-gang-0
+  labels:
+    app: train-gang
+spec:
+  restartPolicy: Never
+  containers:
+    - name: job
+      image: ckpt-governor:local
+      imagePullPolicy: IfNotPresent
+      command: ["/ckpttrainer", "--dir=/ckpt", "--steps=12000", "--step-ms=20", "--write-ms=800", "--ranks=2", "--shard-bytes=536870912"]
+      volumeMounts:
+        - name: checkpoints
+          mountPath: /ckpt
+    - name: governor
+      image: ckpt-governor:local
+      imagePullPolicy: IfNotPresent
+      command: ["/ckptctl", "run", "--dir=/ckpt", "--no-us=10m", "--window=30m", "--every=5s"]
+      volumeMounts:
+        - name: checkpoints
+          mountPath: /ckpt
+  volumes:
+    - name: checkpoints
+      persistentVolumeClaim:
+        claimName: checkpoints-gang
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: train-gang-1
+  labels:
+    app: train-gang
+spec:
+  restartPolicy: Never
+  containers:
+    - name: job
+      image: ckpt-governor:local
+      imagePullPolicy: IfNotPresent
+      command: ["/ckpttrainer", "--dir=/ckpt", "--steps=12000", "--step-ms=20", "--write-ms=800", "--ranks=2", "--shard-bytes=536870912"]
+      volumeMounts:
+        - name: checkpoints
+          mountPath: /ckpt
+  volumes:
+    - name: checkpoints
+      persistentVolumeClaim:
+        claimName: checkpoints-gang
