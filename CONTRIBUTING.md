@@ -82,11 +82,21 @@ gh pr merge <n> --auto --squash
 ```
 
 If GitHub reports `mergeable_state: behind`, the branch is **rebased** onto `main`, never merged
-forward, and auto-merge takes it from there:
+forward: a merge commit inside a squashed history is noise, so `update-branch` (which merges the base
+into the branch) is not used here. The branch is rebuilt instead — `main`'s tree, the branch's files
+written into it, one commit with the branch's message, and the branch ref moved to it:
 
 ```
-gh api -X PUT repos/bolubo/checkpoint-governor/pulls/<n>/update-branch -f expected_head_sha=<head>
+BASE=$(gh api repos/bolubo/checkpoint-governor/commits/main --jq .sha)
+TREE=$(gh api repos/bolubo/checkpoint-governor/commits/main --jq .commit.tree.sha)
+# PUT each file as a blob, POST a tree with base_tree=$TREE, POST a commit with
+# parents=[$BASE] and the branch's message, then move the ref:
+gh api -X PATCH repos/bolubo/checkpoint-governor/git/refs/heads/<branch> \
+  -f sha=<commit> -F force=true
 ```
+
+With a working tree and a reachable remote, the same result is `git fetch && git rebase origin/main
+&& git push --force-with-lease`. Both keep one commit; neither leaves a merge commit behind.
 
 Watching CI is not a job. The check is the gate, and the merge happens without anyone in the room.
 
