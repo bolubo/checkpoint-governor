@@ -190,5 +190,16 @@ Each step lands with its test; nothing lands on a promise that is not measured.
 3. **`init` writes nothing when the answer is "skip".** The configuration file stays absent, the run
    states `no-us none (unset)`, and "zero config" keeps meaning what it says.
 
-Still open: whether the receipt should print the window's bound when `with-us` is unset (it currently
-says nothing, and "everything" is the honest bound).
+4. **The receipt always states the bound**, including when `with-us` is unset:
+
+   ```
+   run 3s · no writes
+     nothing said the work was at risk
+     a silent death costs everything: no window was set
+   ```
+
+   The line is not conditional. It is the one sentence that answers "what does losing this machine
+   cost me", and it matters most in the case where nobody thought about the question.
+
+These four, with the reasoning and the rejected alternatives, are
+`docs/decisions/0018-first-mile.md`.
