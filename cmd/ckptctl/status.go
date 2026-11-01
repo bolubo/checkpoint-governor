@@ -64,6 +64,8 @@ func runStatus(args []string, out io.Writer) int {
 		if len(d.Missing) > 0 {
 			fmt.Fprintf(out, "missing         %s\n", strings.Join(d.Missing, ", "))
 		}
+	} else if problem := advise.SchemaProblem(dir); problem != "" {
+		fmt.Fprintf(out, "plan            %s\n", problem)
 	}
 
 	// Fields this build does not know (reasons, sensitivity, whatever the decision gains next) are
