@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/bolubo/checkpoint-governor/internal/policy"
 )
 
 // markdownLink finds [text](target). It is deliberately narrow: it must not fire on code blocks that
@@ -45,4 +47,38 @@ func TestDocsHaveNoDeadLinks(t *testing.T) {
 		}
 	}
 	t.Logf("docs: %d pages, %d local links, 0 dead", len(docs), links)
+}
+
+// conditionHeading finds a card title: "## `risk.preempt`".
+var conditionHeading = regexp.MustCompile("(?m)^## `([a-z0-9.-]+)`")
+
+// The catalogue and the cards describe the same set, in both directions.
+//
+// A condition that exists without a card is one nobody can look up the meaning of; a card that
+// survives a deleted condition is a page telling people about something the product no longer
+// decides. A reviewer glancing at a diff catches one of those, and not always the same one, so both
+// directions are checked here.
+func TestEveryConditionHasACard(t *testing.T) {
+	raw, err := os.ReadFile("../../docs/conditions.md")
+	if err != nil {
+		t.Fatalf("cannot read docs/conditions.md: %v", err)
+	}
+
+	cards := map[string]bool{}
+	for _, m := range conditionHeading.FindAllStringSubmatch(string(raw), -1) {
+		cards[m[1]] = true
+	}
+	if len(cards) == 0 {
+		t.Fatal("no cards found: the heading format changed and this test stopped looking")
+	}
+
+	for _, c := range policy.Conditions() {
+		if !cards[c.Name] {
+			t.Errorf("condition %s has no card in docs/conditions.md", c.Name)
+		}
+		delete(cards, c.Name)
+	}
+	for name := range cards {
+		t.Errorf("docs/conditions.md documents %s, which is not in the catalogue", name)
+	}
 }
