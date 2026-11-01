@@ -1,0 +1,81 @@
+name: Good first issue
+description: A small, bounded task suitable for a first contribution
+title: "[good first issue] "
+labels: ["good first issue", "help wanted"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for maintainer-created starter tasks. A good first
+        issue has one clear outcome, a small file surface, explicit validation,
+        and no hidden production dependency.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should be true when this issue is done?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and starting points
+      description: Relevant files, functions, and — where possible — the exact
+        lines, commands, or docs to start from.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Concrete behavior, test, or documentation outcomes.
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation
+      description: Exact commands or tests a contributor should run.
+    validations:
+      required: true
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+      description: What should not be changed in this issue?
+  - type: textarea
+    id: found_by
+    attributes:
+      label: Found by
+      description: Credit the review, contributor, or tool that surfaced this
+        task, and link the pull request or discussion where it came up.
+  - type: dropdown
+    id: implementation_intent
+    attributes:
+      label: Are you planning to implement this?
+      description: A contributor can claim the task in a comment.
+      options:
+        - "Yes — I plan to submit a PR"
+        - "Maybe — I can help with guidance"
+        - "No — I am proposing the task only"
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - testing
+        - documentation
+        - UI/UX
+        - control plane
+        - data plane
+        - Kubernetes
+        - refactor
+  - type: checkboxes
+    id: readiness
+    attributes:
+      label: Task readiness
+      options:
+        - label: The task has a clear first file to open and a single expected outcome.
+          required: true
+        - label: The task does not require production GPU or multi-cluster access.
+          required: true
