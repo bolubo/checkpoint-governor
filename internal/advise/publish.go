@@ -3,6 +3,7 @@ package advise
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -109,7 +110,37 @@ func readState(path string) (stateFile, bool) {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return stateFile{}, false
 	}
+	// A file from a governor that speaks a different contract is not a plan. Schema 1's expiresAt was
+	// a period rather than a liveness stamp (see SchemaVersion), so reading it here would answer a
+	// different question than the file asked — and Renew would re-stamp it into a file that is
+	// neither version.
+	if s.Schema != SchemaVersion {
+		return stateFile{}, false
+	}
 	return s, true
+}
+
+// SchemaProblem explains why the plan file cannot be used: it was written by a governor that speaks a
+// different contract. Empty when the file is absent or readable.
+//
+// This is separate from readState because a refusal has to be visible. "This file is from another
+// version" and "there is no file" lead to the same safe behaviour — the job falls back to its own
+// timer — but only one of them is something a person can act on.
+func SchemaProblem(dir string) string {
+	raw, err := os.ReadFile(filepath.Join(dir, BaseDir, stateName))
+	if err != nil {
+		return ""
+	}
+	var head struct {
+		Schema int `json:"schema"`
+	}
+	if err := json.Unmarshal(raw, &head); err != nil {
+		return "the plan file is not valid JSON"
+	}
+	if head.Schema == SchemaVersion {
+		return ""
+	}
+	return fmt.Sprintf("the plan file says schema %d; this governor writes %d", head.Schema, SchemaVersion)
 }
 
 // sameButExpiry compares two plans ignoring the stamp, which is the field a renewal changes.
