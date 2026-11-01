@@ -10,6 +10,11 @@ import (
 	"os"
 )
 
+// version is the release the binary was built from. `make build` and `make release` set it with
+// -ldflags "-X main.version=..."; a plain `go build` leaves it at "dev", which is what a test run
+// should report rather than a version nobody tagged.
+var version = "dev"
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: ckptctl <command>")
@@ -23,8 +28,7 @@ func main() {
 			os.Exit(code)
 		}
 	case "version":
-		// The version is deliberately plain while the project is local and has no release.
-		fmt.Println("ckptctl (local prototype)")
+		fmt.Println("ckptctl " + version)
 	case "simulate":
 		if code := runSimulate(os.Args[2:], os.Stdout); code != 0 {
 			os.Exit(code)

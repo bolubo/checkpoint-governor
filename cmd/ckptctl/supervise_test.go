@@ -147,7 +147,7 @@ func TestRefreshFollowsTheRoot(t *testing.T) {
 	var out strings.Builder
 	b := filepath.Join(root, "b")
 	if err := os.MkdirAll(filepath.Join(b, ".ckpt-governor"), 0o755); err != nil {
-	t.Fatal(err)
+		t.Fatal(err)
 	}
 	refresh(&out, sup, source)
 	if !strings.Contains(out.String(), "members: added=1 removed=0 units=2") {

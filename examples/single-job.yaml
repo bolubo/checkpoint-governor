@@ -1,0 +1,64 @@
+# One job, one checkpoint volume, the governor beside it.
+#
+# The governor reads the directory the job writes and publishes `.ckpt-governor/state.json`; the job
+# reads that file at its save point. No CRD, no service account, no RBAC — the volume is the whole
+# interface.
+#
+#   kubectl apply -f examples/single-job.yaml
+#   kubectl logs -f train-1 -c governor
+#
+# Expected, within one window: `save risk.shutdown` when the job finishes, then `may-exit`.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: checkpoints
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: train-1
+  labels:
+    app: train-1
+spec:
+  restartPolicy: Never
+  containers:
+    - name: job
+      image: ckpt-governor:local
+      imagePullPolicy: IfNotPresent
+      command:
+        - /ckpttrainer
+        - --dir=/ckpt
+        - --steps=12000
+        - --step-ms=20
+        - --write-ms=1200
+      volumeMounts:
+        - name: checkpoints
+          mountPath: /ckpt
+    - name: governor
+      image: ckpt-governor:local
+      imagePullPolicy: IfNotPresent
+      command:
+        - /ckptctl
+        - run
+        - --dir=/ckpt
+        - --no-us=10m
+        - --window=30m
+        - --every=5s
+      volumeMounts:
+        - name: checkpoints
+          mountPath: /ckpt
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          memory: 64Mi
+  volumes:
+    - name: checkpoints
+      persistentVolumeClaim:
+        claimName: checkpoints

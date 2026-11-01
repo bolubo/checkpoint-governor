@@ -7,9 +7,10 @@
 # shell, no CA bundle and no /tmp, and the only thing it touches is the directory you mount.
 # There are no third-party dependencies (standard library only), so there is no module download.
 FROM golang:1.26 AS build
+ARG VERSION=dev
 WORKDIR /src
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/ckptctl ./cmd/ckptctl \
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/ckptctl ./cmd/ckptctl \
 	&& CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/ckpttrainer ./cmd/ckpttrainer
 
 FROM scratch
