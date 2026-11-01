@@ -1,0 +1,10 @@
+# Default owner for the project until additional maintainers are added.
+* @bolubo
+
+# High-risk surfaces get explicit ownership. A change here decides what the product does, or what it
+# claims, and both are harder to take back than a change to a command or a page.
+/internal/policy/ @bolubo
+/internal/exec/ @bolubo
+/internal/loop/ @bolubo
+/docs/decisions/ @bolubo
+/.github/ @bolubo
