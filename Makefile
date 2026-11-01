@@ -9,7 +9,7 @@ IMAGE ?= ghcr.io/bolubo/checkpoint-governor
 # How long the real-clock smoke runs (make smoke MINUTES=2 for a quick check).
 MINUTES ?= 10
 
-.PHONY: all check fmt vet build test verify clean dist release
+.PHONY: all check fmt vet build test verify e2e clean dist release
 
 all: check
 
@@ -88,9 +88,14 @@ smoke:
 test:
 	$(GO) test ./...
 
+# The shipped binary, driven the way a user drives it: a real directory, a real world file, real
+# processes, and the plan the job would read. It builds the binary once and takes half a second.
+e2e:
+	$(GO) test -tags=e2e ./test/e2e
+
 # verify is the gate: `check` plus the pins that keep the contract and the delivery sheet on one
 # field set, and the golden decisions that catch an unintended behaviour change.
-verify: check
+verify: check e2e
 	$(GO) test ./internal/loop ./cmd/ckptctl
 	$(GO) test ./internal/simulate -run TestGoldenDecisions
 	$(GO) test ./internal/policy -run TestEveryContractFieldHasAnOwner

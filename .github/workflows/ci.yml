@@ -21,6 +21,10 @@ jobs:
       - name: make check
         run: make check
 
+      # the shipped binary, driven the way a user drives it — no cluster, half a second
+      - name: make e2e
+        run: make e2e
+
       # decisions in milliseconds, writes in seconds: the D and X layers
       - name: make exp
         run: make exp
