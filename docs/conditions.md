@@ -39,6 +39,9 @@ test pins it.
 - **absent means**: no observer at all, an observer that does not track units, or `preemption.exists=false` in `deployment.json` — the deployment does not have the condition, and `doctor` says which of the three
 - **unknown means**: the observer tracks units and has lost ours, or the summary is past its staleness limit; urgent, because an announcement we cannot read is not calm
 - **consumer**: catalogue row (urgent, missing=urgent), earlier than the inference so an announcement always wins
+- **fanout**: `one-per-victim` (0021). A reclaim takes one or a few units out of many, so a unit that
+  fires writes only if the observer's verdict names it; the rest publish
+  `skip · this unit is not the reclaim target`
 - **test**: `TestPreemptionFiresOnAnAnnouncement`, `TestPreemptionIsAbsentWithoutAWayToHear`
 
 ## `risk.shutdown`
@@ -111,6 +114,9 @@ test pins it.
 - **absent means**: no observer, an observer that does not track units, `eviction.exists=false`, or `--infer-eviction=off`
 - **unknown means**: the observer tracks units and lost ours, the summary is past its staleness limit, or no ratio can be read (including a node whose pods declare no requests); urgent, because a blind inference is not a calm node
 - **consumer**: catalogue row (urgent, missing=urgent), after every announcement
+- **fanout**: `one-per-victim` (0021), for the same reason as the announcement: this predicts the same
+  event, and that event takes one unit out of many. A fleet where every unit infers "maybe me" writes
+  M times for one death
 - **test**: `TestEvictionFiresWhenTheNodeIsFillingUp`, `TestEvictionIsUnknownWhenRequestsWereNeverDeclared`
 
 ## `store.blocked`

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bolubo/checkpoint-governor/internal/permit"
 	"github.com/bolubo/checkpoint-governor/internal/policy"
 )
 
@@ -68,6 +69,12 @@ type Env struct {
 	// Final says this request is the last chance the work gets: the job is ending, and there is no
 	// next round in which to ask again.
 	Final bool
+	// Permit is the fleet's verdict for this unit (0021). The zero value is granted: a single-unit
+	// deployment has no fleet, and an unreadable verdict arrives here as permission.
+	Permit permit.Verdict
+	// PermitUntil bounds a Queued verdict. Zero means unbounded, which is read as granted rather than
+	// as a queue that never ends.
+	PermitUntil time.Time
 }
 
 // TeardownMargin is how much of the announced window the job's own shutdown is assumed to need. A
@@ -106,6 +113,7 @@ func (e Env) Pressured() int {
 // The doors are checked in this order, because the earlier one is the more specific truth:
 //
 //	not-a-save   the decision does not ask for a write
+//	not-the-target  the fleet selected another unit for this cause (0021); a second write saves nothing
 //	in-flight    a write is already running; starting another cannot help
 //	already-saved  the step the request names is already on disk
 //	no-time      the job's own deadline is shorter than one write; the write would be killed halfway
@@ -116,6 +124,19 @@ func (e Env) Pressured() int {
 func Gate(d policy.Decision, recent []Attempt, env Env, now time.Time) Result {
 	if d.Action != policy.ActionSave {
 		return Result{Verdict: Refuse, Reason: "not-a-save"}
+	}
+	// The fleet door: when one cause endangers several units, only the ones the cause selects may
+	// spend a write (0021). A unit that sees only itself cannot tell "I am the victim" from "my
+	// neighbour is", so the verdict comes from the component that sees the set — and every failure of
+	// that channel arrives here as granted, because coordination must never be able to suppress a save.
+	switch env.Permit {
+	case permit.Held:
+		return Result{Verdict: Refuse, Reason: "not-the-target",
+			Detail: "another unit is the one this cause selects; a second write would pay for one death"}
+	case permit.Queued:
+		if !env.PermitUntil.IsZero() && now.Before(env.PermitUntil) {
+			return Result{Verdict: Hold, Reason: "queued", Wait: env.PermitUntil.Sub(now)}
+		}
 	}
 	for _, a := range recent {
 		if !a.Done() {

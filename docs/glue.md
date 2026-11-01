@@ -23,7 +23,7 @@ is never written unless the user signed a fallback. Writing these files is how a
 | `thresholds.json` | the effective configuration | the controller, once at start | `ckptctl explain`, `ckptctl config` | the run predates the record; explanations fall back to the file, then the catalogue's numbers |
 | `deployment.json` | operator declaration: `world.dir`, `capabilities` | a person, once per deployment | the controller's capability gate, `ckptctl doctor`, `ckptctl config` | nothing is declared: every upstream is assumed present, which is the safe default |
 | `world/<cluster>/summary.json` | the cluster: nodes, capabilities | the observer, every few seconds | `risk.eviction-likely`, `risk.preempt`, `ckptctl world`, `status`, `explain` | no observer on this deployment: both world conditions are absent |
-| `world/<cluster>/units/<sha1>.json` | this unit's own record: node, priority, QoS, deletion timestamp | the observer | the projection behind both world conditions | the observer does not track units: the conditions are absent, not unknown |
+| `world/<cluster>/units/<sha1>.json` | this unit's own record: node, priority, QoS, deletion timestamp, and the `permit` verdict | the observer | the projection behind both world conditions, and the fleet gate (0021) | the observer does not track units: the conditions are absent, not unknown |
 | `state.json` | the plan (see `design-v1.md`) | the controller | the job | there is no plan; the job must fall back to its own timer |
 
 ## The rules that make these safe to write
@@ -47,6 +47,11 @@ is never written unless the user signed a fallback. Writing these files is how a
 - **The numbers the controller reads are not conditions.** `expected-bytes`, `last-save-seconds` and
   `seconds-left` never reach the algorithm: they are what the executor needs to answer "can a write
   finish", and the algorithm stays boolean and clock-free.
+- **A unit may carry a verdict about who should write.** `permit` is the observer's answer to a
+  question no single unit can answer: when one cause endangers several units, which of them should
+  spend the write. Values are `granted`, `held` and `queued`, and **absent reads as `granted`** —
+  a missing field, an unreadable value, or an expired `until` all mean permission. Coordination that
+  can suppress a save is worse than none (0021).
 - **`ending` is the strongest signal a job can give.** It says "the work that exists now is the
   work that matters"; it is what makes a final checkpoint happen without a timer.
 - **The job keeps running until we answer.** `ending` and `stopping` are requests, not exits: the job
