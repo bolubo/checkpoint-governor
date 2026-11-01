@@ -34,14 +34,13 @@ README.md                     what this is, how to run it, where to read next
 docs/product-v1.md            the user-facing surface: what is asked, shown, claimed
 docs/design-backstop.md       why the product is this shape (two numbers, one boolean, a window)
 docs/design-v1.md             how it is built, and what each part must print
-docs/design-delivery.md       the delivery side: gates, stop protocol, retention, recovery
 docs/experiments-matrix.md    every claim and the experiment that checks it
 docs/policy.md                how one decision is computed
 docs/conditions.md            the condition catalogue, one card each
 docs/glue.md                  the files the job and the controller exchange
 docs/write-cost.md            where the one number every deadline needs comes from
 docs/b-class.md               the configured user: pricing and the bound certificate
-docs/why.md, why-no-write.md  why this exists, and why most rounds write nothing
+docs/why-no-write.md          why most rounds write nothing
 docs/algorithm/               what must be proven now, and how it is measured
 docs/decisions/               one-page records for choices that would otherwise be lost
 ```
