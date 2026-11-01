@@ -65,6 +65,19 @@ type UnitRecord struct {
 	QoS               string     `json:"qos"`
 	DeletionTimestamp *time.Time `json:"deletionTimestamp"`
 	Evicted           bool       `json:"evicted"`
+	// Permit is this unit's permission to spend a write when one cause endangers several units
+	// (docs/decisions/0021). It is written here, and only here, because the answer needs the set: a
+	// governor that sees one unit cannot tell "I am the victim" from "my neighbour is".
+	Permit *Permit `json:"permit,omitempty"`
+}
+
+// Permit is the verdict. Absent means permission: a governor reads a missing field as granted, so a
+// cluster whose observer predates this field behaves exactly as it did before.
+type Permit struct {
+	Verdict string     `json:"verdict"`
+	Cause   string     `json:"cause,omitempty"`
+	Rank    int        `json:"rank,omitempty"`
+	Until   *time.Time `json:"until,omitempty"`
 }
 
 // Snapshot is one read of the cluster.
@@ -169,6 +182,7 @@ func Fold(nodes []corev1.Node, pods []corev1.Pod, opts Options, now time.Time) S
 		units = append(units, u)
 	}
 	sort.Slice(units, func(i, j int) bool { return units[i].UnitID < units[j].UnitID })
+	assignPermits(units, int(pendingPriority))
 
 	summary := Summary{
 		Schema: 1, Cluster: opts.Cluster, At: now.UTC(), StaleAfterSeconds: stale,

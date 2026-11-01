@@ -21,6 +21,7 @@ import (
 	"github.com/bolubo/checkpoint-governor/internal/exec"
 	"github.com/bolubo/checkpoint-governor/internal/lease"
 	"github.com/bolubo/checkpoint-governor/internal/observe"
+	"github.com/bolubo/checkpoint-governor/internal/permit"
 	"github.com/bolubo/checkpoint-governor/internal/policy"
 	"github.com/bolubo/checkpoint-governor/internal/produce"
 )
@@ -32,6 +33,11 @@ type Config struct {
 	Bounds policy.Bounds
 	Policy policy.Policy
 	Now    func() time.Time
+
+	// Permit answers "may this unit spend a write" when one cause endangers several units (0021).
+	// Nil means yes: a deployment with no observer has no fleet to coordinate with, and every failure
+	// of the channel must read as permission.
+	Permit func(now time.Time) (permit.Verdict, time.Time)
 
 	// VerifyEvery is how often one checkpoint may be read back. Zero means ten minutes; a negative
 	// value turns verification off. Reading a checkpoint costs more than writing it, so the default
@@ -989,6 +995,11 @@ func (l *Loop) Reconcile() (Step, error) {
 			WriteSeconds:    writeSeconds,
 			Teardown:        l.cfg.Teardown,
 			Final:           final || kindOf(trigger, why) == "final",
+		}
+		// The fleet's verdict, when somebody is in a position to give one. A held unit publishes a
+		// refusal rather than a plan that asks for a write nobody needs (0021).
+		if l.cfg.Permit != nil {
+			env.Permit, env.PermitUntil = l.cfg.Permit(now)
 		}
 		if estimated {
 			// A size we were told, not one we measured: the space rule applies, and the status says so.

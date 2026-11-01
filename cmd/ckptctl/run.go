@@ -14,6 +14,7 @@ import (
 
 	"github.com/bolubo/checkpoint-governor/internal/advise"
 	"github.com/bolubo/checkpoint-governor/internal/loop"
+	"github.com/bolubo/checkpoint-governor/internal/permit"
 	"github.com/bolubo/checkpoint-governor/internal/policy"
 	"github.com/bolubo/checkpoint-governor/internal/produce/adapters"
 )
@@ -178,6 +179,7 @@ func runRun(args []string, out io.Writer) int {
 	l, err := loop.Open(loop.Config{
 		Dir:    *dir,
 		UnitID: name,
+		Permit: permitFor(probeCfg),
 		Holder: fmt.Sprintf("%s-%d", host, os.Getpid()),
 		Bounds: policy.Bounds{
 			MinCopies: *copies,
@@ -354,4 +356,23 @@ func windowAnswer(w time.Duration) string {
 	}
 	// "2h0m0s" is a duration literal, not a sentence. The start-up line is read by a person.
 	return shortDuration(w)
+}
+
+// permitFor reads the fleet's verdict for this unit (0021), fail-open.
+//
+// Every failure is permission: no observer, no unit record, no permit field, a verdict word this
+// build does not know, a queue whose end has passed. A coordination channel that can suppress a save
+// fails exactly when the fleet is under pressure, so it is not allowed to fail in that direction.
+func permitFor(cfg adapters.Config) func(time.Time) (permit.Verdict, time.Time) {
+	return func(now time.Time) (permit.Verdict, time.Time) {
+		u, err := adapters.ReadUnit(cfg.WorldDir, cfg.Cluster, cfg.UnitID)
+		if err != nil || u.Permit == nil {
+			return permit.Granted, time.Time{}
+		}
+		var until time.Time
+		if u.Permit.Until != nil {
+			until = *u.Permit.Until
+		}
+		return permit.Parse(u.Permit.Verdict, until, now), until
+	}
 }

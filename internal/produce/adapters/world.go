@@ -76,6 +76,19 @@ type UnitRecord struct {
 	QoS               string     `json:"qos"`
 	DeletionTimestamp *time.Time `json:"deletionTimestamp"`
 	Evicted           bool       `json:"evicted"`
+	// Permit is the fleet's verdict for this unit (docs/decisions/0021). Absent means permission: an
+	// observer that predates the field, a cluster with one unit, and every unreadable value all leave
+	// the governor behaving exactly as it did before.
+	Permit *UnitPermit `json:"permit,omitempty"`
+}
+
+// UnitPermit is the observer's answer to a question one unit cannot answer: when a cause endangers
+// several units, may this one spend a write?
+type UnitPermit struct {
+	Verdict string     `json:"verdict"`
+	Cause   string     `json:"cause,omitempty"`
+	Rank    int        `json:"rank,omitempty"`
+	Until   *time.Time `json:"until,omitempty"`
 }
 
 // Age is how old the reading is. It is shown next to every number the world contributes.
