@@ -2,8 +2,7 @@
 
 Status: engineering design. Date: 2026-11-01. Companion to `docs/design-backstop.md` (why and
 what); this page is *how*, and it is the page an implementer works from. Where an older page
-conflicts (`docs/design-delivery.md` §5–§7, `docs/policy.md` §4), this
-page wins for v1.
+conflicts (`docs/policy.md` §4), this page wins for v1.
 
 The definitions this design is cut against, in three lines:
 
