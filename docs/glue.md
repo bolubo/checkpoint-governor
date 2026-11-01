@@ -24,7 +24,7 @@ is never written unless the user signed a fallback. Writing these files is how a
 | `deployment.json` | operator declaration: `world.dir`, `capabilities` | a person, once per deployment | the controller's capability gate, `ckptctl doctor`, `ckptctl config` | nothing is declared: every upstream is assumed present, which is the safe default |
 | `world/<cluster>/summary.json` | the cluster: nodes, capabilities | the observer, every few seconds | `risk.eviction-likely`, `risk.preempt`, `ckptctl world`, `status`, `explain` | no observer on this deployment: both world conditions are absent |
 | `world/<cluster>/units/<sha1>.json` | this unit's own record: node, priority, QoS, deletion timestamp | the observer | the projection behind both world conditions | the observer does not track units: the conditions are absent, not unknown |
-| `state.json` | the plan (see `design.md`) | the controller | the job | there is no plan; the job must fall back to its own timer |
+| `state.json` | the plan (see `design-v1.md`) | the controller | the job | there is no plan; the job must fall back to its own timer |
 
 ## The rules that make these safe to write
 
