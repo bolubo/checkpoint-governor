@@ -1,5 +1,7 @@
 # checkpoint-governor
 
+[![ci](https://github.com/bolubo/checkpoint-governor/actions/workflows/ci.yml/badge.svg)](https://github.com/bolubo/checkpoint-governor/actions/workflows/ci.yml)
+
 One process watches a training job's checkpoint directory and decides when a checkpoint is written.
 It writes when a condition says the work is at risk, or when a window you set is about to close; it
 prints one line per decision and a receipt when the run ends.
