@@ -1,0 +1,40 @@
+name: Integration request
+description: Propose a scheduler, storage, runtime, or platform integration
+labels: ["kind/feature", "area/control-plane"]
+body:
+  - type: input
+    id: upstream
+    attributes:
+      label: Upstream project
+      description: Name, repository, and version or commit of the integration target.
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Real user workflow
+      description: Who needs this, what are they doing today, and where does it break?
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: Integration contract
+      description: What data, events or actions must move between the governor and the platform it sits beside?
+    validations:
+      required: true
+  - type: dropdown
+    id: direction
+    attributes:
+      label: Direction
+      options:
+        - the governor consumes state the platform publishes
+        - the governor publishes state to the platform
+        - bidirectional
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed secrets, credentials, and checkpoint contents.
+          required: true
