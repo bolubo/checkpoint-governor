@@ -11,6 +11,18 @@ publishes a plan into each job's own `.ckpt-governor/`.
 | a node with many jobs | `kubectl apply -f deploy/governor.yaml` | one process over a shared volume |
 | development | `make install` | the two binaries on `PATH` |
 
+## Two clusters
+
+`--members-from` takes one or more roots, and `cluster=root` names the world each root reads:
+
+```bash
+ckptctl supervise --members-from=kind-a=/ckpt-a,kind-b=/ckpt-b --forever
+```
+
+Each unit reads `<root>/world/<cluster>/`, and the rollup says how many clusters it holds
+(`supervise: units=2 clusters=2 ...`). One process per cluster is still the common deployment; naming
+two roots is for a machine that reaches both (`docs/decisions/0020-what-this-is-not.md`).
+
 ## What the manifest assumes
 
 - **A volume at `/ckpt`** (a `hostPath` in the shipped file). Each immediate child that holds a
