@@ -75,6 +75,21 @@ branch, as a pull request, and is squashed when the check is green.
 image — and the run is what costs. Related files go in one branch and one pull request. A pull request
 that exists only to see whether one file compiles is a CI run spent on nothing.
 
+**Auto-merge is armed when the pull request is opened**, so nobody sits watching a check:
+
+```
+gh pr merge <n> --auto --squash
+```
+
+If GitHub reports `mergeable_state: behind`, the branch is **rebased** onto `main`, never merged
+forward, and auto-merge takes it from there:
+
+```
+gh api -X PUT repos/bolubo/checkpoint-governor/pulls/<n>/update-branch -f expected_head_sha=<head>
+```
+
+Watching CI is not a job. The check is the gate, and the merge happens without anyone in the room.
+
 ## Commits
 
 - English, one milestone per commit.
