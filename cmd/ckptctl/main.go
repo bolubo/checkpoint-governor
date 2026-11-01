@@ -18,7 +18,7 @@ var version = "dev"
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: ckptctl <command>")
-		fmt.Fprintln(os.Stderr, "commands: init, version, simulate, table, status, price, audit, run, trace, doctor, events, explain, glue, config, supervise, world")
+		fmt.Fprintln(os.Stderr, "commands: init, version, simulate, table, status, price, audit, run, trace, doctor, events, explain, glue, config, supervise, world, stats")
 		os.Exit(2)
 	}
 
@@ -51,6 +51,10 @@ func main() {
 		}
 	case "supervise":
 		if code := runSupervise(os.Args[2:], os.Stdout); code != 0 {
+			os.Exit(code)
+		}
+	case "stats":
+		if code := runStats(os.Args[2:], os.Stdout); code != 0 {
 			os.Exit(code)
 		}
 	case "world":
