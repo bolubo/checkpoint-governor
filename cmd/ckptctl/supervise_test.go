@@ -1,13 +1,16 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/bolubo/checkpoint-governor/internal/advise"
 	"github.com/bolubo/checkpoint-governor/internal/policy"
+	"github.com/bolubo/checkpoint-governor/internal/produce/adapters"
 	"github.com/bolubo/checkpoint-governor/internal/supervisor"
 	"github.com/bolubo/checkpoint-governor/internal/unit"
 )
@@ -112,7 +115,7 @@ func TestMembersFromDiscoversOnlyGovernedDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ms, err := discoverMembers(root)
+	ms, err := discoverAll([]membersRoot{{dir: root}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,14 +138,14 @@ func TestRefreshFollowsTheRoot(t *testing.T) {
 		Holder: "test",
 	})
 	defer sup.Close()
-	ms, err := discoverMembers(root)
+	ms, err := discoverAll([]membersRoot{{dir: root}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := sup.Sync(ms); err != nil {
 		t.Fatal(err)
 	}
-	source := func() ([]unit.Member, error) { return discoverMembers(root) }
+	source := func() ([]unit.Member, error) { return discoverAll([]membersRoot{{dir: root}}) }
 
 	var out strings.Builder
 	b := filepath.Join(root, "b")
@@ -150,7 +153,7 @@ func TestRefreshFollowsTheRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	refresh(&out, sup, source)
-	if !strings.Contains(out.String(), "members: added=1 removed=0 units=2") {
+	if !strings.Contains(out.String(), "members: added=1 removed=0 units=2 clusters=0") {
 		t.Fatalf("a new job was not reported:\n%s", out.String())
 	}
 
@@ -159,8 +162,72 @@ func TestRefreshFollowsTheRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	refresh(&out, sup, source)
-	if !strings.Contains(out.String(), "members: added=0 removed=1 units=1") {
+	if !strings.Contains(out.String(), "members: added=0 removed=1 units=1 clusters=0") {
 		t.Fatalf("a removed job was not reported:\n%s", out.String())
 	}
 	t.Logf("%s", strings.TrimSpace(out.String()))
+}
+
+// Two clusters in one process: each unit reads its own world. This is the test that a single shared
+// probe set cannot pass — with one set, both units would see kind-a's announcement.
+func TestTwoClustersReadTheirOwnWorld(t *testing.T) {
+	cases := []struct {
+		cluster   string
+		announced bool
+	}{{"kind-a", true}, {"kind-b", false}}
+
+	var members, dirs []string
+	for _, c := range cases {
+		root := t.TempDir()
+		job := filepath.Join(root, "job-"+c.cluster)
+		dirs = append(dirs, job)
+		if err := os.MkdirAll(filepath.Join(job, ".ckpt-governor"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now()
+		world := filepath.Join(root, "world")
+		if err := adapters.WriteSummary(world, adapters.WorldSummary{
+			Cluster: c.cluster, At: now, StaleAfterSeconds: 30,
+			// A node with a real request/allocatable ratio: an empty summary makes the inference
+			// blind, and blindness is urgent, which is what would make both clusters write.
+			Nodes: []adapters.NodeState{{
+				Name:        "worker-1",
+				Allocatable: adapters.Resources{CPUMilli: 8000, MemBytes: 32 << 30, GPUCount: 1},
+				Requested:   adapters.Resources{CPUMilli: 800, MemBytes: 4 << 30},
+			}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		rec := adapters.UnitRecord{UnitID: "job-" + c.cluster, At: now, Node: "worker-1"}
+		if c.announced {
+			stamp := now
+			rec.DeletionTimestamp = &stamp
+		}
+		if err := adapters.WriteUnit(world, c.cluster, rec); err != nil {
+			t.Fatal(err)
+		}
+		members = append(members, c.cluster+"="+root)
+	}
+
+	var out strings.Builder
+	if code := runSupervise([]string{
+		"--members-from", strings.Join(members, ","),
+		"--rounds", "1", "--every", "1ms",
+	}, &out); code != 0 {
+		t.Fatalf("exit = %d:\n%s", code, out.String())
+	}
+	text := out.String()
+	if !strings.Contains(text, "clusters=2") {
+		t.Fatalf("the rollup does not count both clusters:\n%s", text)
+	}
+	if !strings.Contains(text, "save=1 skip=1") {
+		var why strings.Builder
+		for _, d := range dirs {
+			if dec, ok := advise.LastDecision(d); ok {
+				fmt.Fprintf(&why, "%s: %s %v\n", d, dec.Reason, dec.Reasons)
+			}
+		}
+		t.Fatalf("the announced cluster did not write, or the calm one did:\n%s\n%s", text, why.String())
+	}
+	t.Logf("%s", strings.TrimSpace(text))
 }

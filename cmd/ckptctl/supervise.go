@@ -15,6 +15,7 @@ import (
 
 	"github.com/bolubo/checkpoint-governor/internal/advise"
 	"github.com/bolubo/checkpoint-governor/internal/policy"
+	"github.com/bolubo/checkpoint-governor/internal/produce"
 	"github.com/bolubo/checkpoint-governor/internal/produce/adapters"
 	"github.com/bolubo/checkpoint-governor/internal/supervisor"
 	"github.com/bolubo/checkpoint-governor/internal/unit"
@@ -28,7 +29,8 @@ import (
 func runSupervise(args []string, out io.Writer) int {
 	fs := flag.NewFlagSet("supervise", flag.ContinueOnError)
 	members := fs.String("members", "", "comma-separated checkpoint directories")
-	membersFrom := fs.String("members-from", "", "a root whose immediate children are checkpoint directories")
+	membersFrom := fs.String("members-from", "", "roots whose immediate children are checkpoint directories; "+
+		"comma-separated, and `cluster=root` names the world each root reads")
 	rounds := fs.Int("rounds", 6, "how many ticks to run")
 	forever := fs.Bool("forever", false, "run until SIGTERM or SIGINT instead of --rounds")
 	every := fs.Duration("every", 200*time.Millisecond, "between ticks")
@@ -43,8 +45,8 @@ func runSupervise(args []string, out io.Writer) int {
 	var ms []unit.Member
 	var source func() ([]unit.Member, error)
 	if *membersFrom != "" {
-		root := *membersFrom
-		source = func() ([]unit.Member, error) { return discoverMembers(root) }
+		roots := parseRoots(*membersFrom)
+		source = func() ([]unit.Member, error) { return discoverAll(roots) }
 		found, err := source()
 		if err != nil {
 			fmt.Fprintf(out, "error: %v\n", err)
@@ -57,25 +59,46 @@ func runSupervise(args []string, out io.Writer) int {
 		}
 	}
 	if len(ms) == 0 {
-		fmt.Fprint(out, "usage: ckptctl supervise --members=<dir1,dir2,...> | --members-from=<root>\n")
+		fmt.Fprint(out, "usage: ckptctl supervise --members=<dir1,dir2,...> | --members-from=<cluster=root,...>\n")
 		return 2
 	}
-
-	cfg, _, err := adapters.LoadConfig(ms[0].Dir)
-	if err != nil {
-		fmt.Fprintf(out, "error: %v\n", err)
-		return 2
-	}
-	cfg.FreeSpaceFactor, cfg.StoreEvery = *freeFactor, *storeEvery
 
 	host, _ := os.Hostname()
+
+	// One probe set per (worldDir, cluster). The cache is what makes a two-cluster supervisor
+	// one process rather than one process per cluster: the second unit of a cluster reuses the set
+	// the first one built.
+	built := map[string][]produce.Probe{}
+	probesFor := func(u unit.Unit) []produce.Probe {
+		key := u.WorldDir + "|" + u.Cluster
+		if p, ok := built[key]; ok {
+			return p
+		}
+		cfg, _, err := adapters.LoadConfig(u.Dir)
+		if err != nil {
+			fmt.Fprintf(out, "error: %s: %v\n", u.Dir, err)
+			cfg = adapters.Config{}
+		}
+		cfg.FreeSpaceFactor, cfg.StoreEvery = *freeFactor, *storeEvery
+		if u.WorldDir != "" {
+			cfg.WorldDir = u.WorldDir
+		}
+		if u.Cluster != "" {
+			cfg.Cluster = u.Cluster
+		}
+		cfg = cfg.WithWorld(u.Dir)
+		p := adapters.All(cfg)
+		built[key] = p
+		return p
+	}
+
 	sup := supervisor.Open(supervisor.Config{
 		Policy: policy.Risk{},
 		Bounds: policy.Bounds{
 			MinCopies: 1,
 			NoUs:      policy.NoUsNone,
 		},
-		Probes: adapters.All(cfg),
+		ProbesFor: probesFor,
 		// One holder for the whole supervisor: the lease is per directory, and every unit has its own.
 		Holder: fmt.Sprintf("%s-%d", host, os.Getpid()),
 	})
@@ -153,29 +176,77 @@ func refresh(out io.Writer, sup *supervisor.Supervisor, source func() ([]unit.Me
 		fmt.Fprintf(out, "error: members: %v\n", err)
 		return
 	}
-	after := map[string]bool{}
+	after := sup.Units()
+	seen := map[string]bool{}
 	added, removed := 0, 0
-	for _, d := range sup.Dirs() {
-		after[d] = true
-		if !before[d] {
+	clusters := map[string]bool{}
+	for _, u := range after {
+		seen[u.Dir] = true
+		if !before[u.Dir] {
 			added++
+		}
+		if u.Cluster != "" {
+			clusters[u.Cluster] = true
 		}
 	}
 	for d := range before {
-		if !after[d] {
+		if !seen[d] {
 			removed++
 		}
 	}
 	if added+removed > 0 {
-		fmt.Fprintf(out, "members: added=%d removed=%d units=%d\n", added, removed, len(after))
+		fmt.Fprintf(out, "members: added=%d removed=%d units=%d clusters=%d\n",
+			added, removed, len(after), len(clusters))
 	}
+}
+
+// root is one `--members-from` entry: a directory whose immediate children are checkpoint
+// directories, and the cluster whose world files those units read.
+type membersRoot struct {
+	cluster string
+	dir     string
+}
+
+// parseRoots accepts "kind-a=/ckpt-a,kind-b=/ckpt-b", and "/ckpt" for the single-cluster form: no
+// cluster name, and each job keeps its world beside itself, which is what WithWorld resolves.
+func parseRoots(s string) []membersRoot {
+	var out []membersRoot
+	for _, part := range strings.Split(s, ",") {
+		p := strings.TrimSpace(part)
+		if p == "" {
+			continue
+		}
+		r := membersRoot{dir: p}
+		if i := strings.Index(p, "="); i > 0 {
+			r.cluster = strings.TrimSpace(p[:i])
+			r.dir = strings.TrimSpace(p[i+1:])
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// discoverAll reads every root in one call, so a unit that appears under either root joins the same
+// supervisor and is counted once in the rollup.
+func discoverAll(roots []membersRoot) ([]unit.Member, error) {
+	var out []unit.Member
+	for _, r := range roots {
+		ms, err := discoverMembers(r)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ms...)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Dir < out[j].Dir })
+	return out, nil
 }
 
 // discoverMembers is --members-from: the immediate children of a root that are checkpoint
 // directories. A child counts when it holds `.ckpt-governor`, the marker the controller writes; a
-// plain subdirectory of a shared volume is not a unit.
-func discoverMembers(root string) ([]unit.Member, error) {
-	entries, err := os.ReadDir(root)
+// plain subdirectory of a shared volume is not a unit. A named cluster also sets the world root to
+// `<root>/world`, so two clusters can be read by one process.
+func discoverMembers(r membersRoot) ([]unit.Member, error) {
+	entries, err := os.ReadDir(r.dir)
 	if err != nil {
 		return nil, err
 	}
@@ -184,23 +255,32 @@ func discoverMembers(root string) ([]unit.Member, error) {
 		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
-		dir := filepath.Join(root, e.Name())
+		dir := filepath.Join(r.dir, e.Name())
 		if _, err := os.Stat(filepath.Join(dir, advise.BaseDir)); err != nil {
 			continue
 		}
-		out = append(out, unit.Member{ID: dir, Name: e.Name(), Dir: dir})
+		m := unit.Member{ID: dir, Name: e.Name(), Dir: dir, Cluster: r.cluster}
+		if r.cluster != "" {
+			m.WorldDir = filepath.Join(r.dir, "world")
+		}
+		out = append(out, m)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Dir < out[j].Dir })
 	return out, nil
 }
 
 // rollup is one row per unit, then one line that adds them up. It reads what each loop published
-// rather than re-deciding anything.
+// rather than re-deciding anything. The cluster count is there because a two-cluster supervisor is
+// one process, and "units=2 clusters=2" is what proves the discovery crossed the cluster boundary.
 func rollup(out io.Writer, sup *supervisor.Supervisor) {
+	units := sup.Units()
 	save, skip, sealed, decided := 0, 0, 0, 0
-	dirs := append([]string(nil), sup.Dirs()...)
-	sort.Strings(dirs)
-	for _, d := range dirs {
+	clusters := map[string]bool{}
+	for _, u := range units {
+		if u.Cluster != "" {
+			clusters[u.Cluster] = true
+		}
+		d := u.Dir
 		action := "-"
 		if dec, ok := advise.LastDecision(d); ok {
 			decided++
@@ -216,8 +296,8 @@ func rollup(out io.Writer, sup *supervisor.Supervisor) {
 		}
 		fmt.Fprintf(out, "%-40s %-8s %s\n", d, action, sup.Queue().String())
 	}
-	fmt.Fprintf(out, "\nsupervise: units=%d sealed=%d decided=%d save=%d skip=%d\n",
-		len(dirs), sealed, decided, save, skip)
+	fmt.Fprintf(out, "\nsupervise: units=%d clusters=%d sealed=%d decided=%d save=%d skip=%d\n",
+		len(units), len(clusters), sealed, decided, save, skip)
 }
 
 // splitMembers accepts "a,b,c" and ignores empty entries, which is what a shell leaves behind after

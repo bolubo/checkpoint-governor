@@ -9,6 +9,7 @@
 package supervisor
 
 import (
+	"sort"
 	"time"
 
 	"github.com/bolubo/checkpoint-governor/internal/loop"
@@ -23,9 +24,16 @@ type Config struct {
 	Policy      policy.Policy
 	Bounds      policy.Bounds
 	Now         func() time.Time
-	Probes      []produce.Probe
 	BlindAfter  int
 	VerifyEvery time.Duration
+
+	// ProbesFor builds the condition probes for one unit.
+	//
+	// It replaced a single []Probe when the supervisor learned to hold units from more than one
+	// cluster: the world probes are bound to a (worldDir, cluster) pair, and one set shared across
+	// units would read the wrong cluster for all but one of them. A unit whose Cluster is empty gets
+	// the single-cluster probes, which is the special case, not a separate code path.
+	ProbesFor func(unit.Unit) []produce.Probe
 
 	// Window is every unit's `with-us`: the longest a checkpoint may stay stale while we are alive.
 	// Zero means off (exceptions only). It is one number for the whole supervisor because it is the
@@ -93,13 +101,13 @@ func (s *Supervisor) Sync(members []unit.Member) error {
 				Bounds:      s.cfg.Bounds,
 				Policy:      s.cfg.Policy,
 				Now:         s.cfg.Now,
-				Probes:      s.cfg.Probes,
+				Probes:      probesFor(s.cfg.ProbesFor, u),
 				BlindAfter:  s.cfg.BlindAfter,
 				Window:      s.cfg.Window,
 				VerifyEvery: s.cfg.VerifyEvery,
 				Holder:      s.cfg.Holder,
 				Fault:       s.cfg.Fault,
-				Volume:      u.Volume,
+				Volume:      volumeKey(u),
 				Volumes:     s.volumes,
 			})
 			if err != nil {
@@ -126,6 +134,25 @@ func (s *Supervisor) Sync(members []unit.Member) error {
 
 // Enqueue marks one unit dirty, which is what an event from outside does.
 func (s *Supervisor) Enqueue(dir string) { s.queue.Add(dir) }
+
+// probesFor calls the builder when there is one. A nil builder is a supervisor whose units need no
+// probes, which is what the loop's own tests use.
+func probesFor(build func(unit.Unit) []produce.Probe, u unit.Unit) []produce.Probe {
+	if build == nil {
+		return nil
+	}
+	return build(u)
+}
+
+// volumeKey is the slot a unit's write competes for. It carries the cluster name because two
+// clusters both mounting `/ckpt` are two volumes, not one: without the prefix the second cluster's
+// write would be refused by a unit it cannot even see.
+func volumeKey(u unit.Unit) string {
+	if u.Cluster == "" {
+		return u.Volume
+	}
+	return u.Cluster + "|" + u.Volume
+}
 
 // Tick reconciles what is queued, plus what the floor finds.
 //
@@ -178,6 +205,17 @@ func (s *Supervisor) Dirs() []string {
 
 // Loop exposes one unit's loop for tests and for a caller that wants to render it.
 func (s *Supervisor) Loop(dir string) *loop.Loop { return s.loops[dir] }
+
+// Units returns the units with their cluster and world coordinates, sorted by directory. A rollup
+// needs the cluster to say how many it holds; the loop itself never does.
+func (s *Supervisor) Units() []unit.Unit {
+	out := make([]unit.Unit, 0, len(s.units))
+	for _, u := range s.units {
+		out = append(out, u)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Dir < out[j].Dir })
+	return out
+}
 
 // Queue exposes the queue's numbers.
 func (s *Supervisor) Queue() queue.Stats { return s.queue.Stats() }

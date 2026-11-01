@@ -20,6 +20,13 @@ type Member struct {
 	// Volume names the storage the directory lives on. Empty means Dir, which keeps units on
 	// different directories from blocking each other when nobody told us the volume.
 	Volume string
+	// Cluster names the cluster this member's world file describes. Empty means the deployment has
+	// one cluster, which is what a single-process installation is: the single cluster is the special
+	// case, not a different code path.
+	Cluster string
+	// WorldDir is the root of the world files this member reads (`<worldDir>/<cluster>/...`).
+	// Empty means `<Dir>/world`, the layout `WithWorld` resolves for a laptop install.
+	WorldDir string
 	// BootID is the process's own start id, when the job reports one. It is the only reliable
 	// signal that the writing set changed without the pod set changing (a restart inside a pod).
 	BootID string
@@ -30,6 +37,8 @@ type Unit struct {
 	ID         string
 	Dir        string
 	Volume     string
+	Cluster    string
+	WorldDir   string
 	Generation int64
 	BootID     string
 	Members    []string
@@ -93,6 +102,8 @@ func (r *Registry) Sync(members []Member) []Unit {
 		boot := bootOf(group)
 		name := nameOf(group, dir)
 		volume := volumeOf(group, dir)
+		cluster := clusterOf(group)
+		world := worldOf(group)
 
 		st, ok := r.state[dir]
 		if !ok {
@@ -117,7 +128,8 @@ func (r *Registry) Sync(members []Member) []Unit {
 		}
 		sort.Strings(ids)
 		out = append(out, Unit{
-			ID: name, Dir: dir, Volume: volume, Generation: st.gen, BootID: boot, Members: ids,
+			ID: name, Dir: dir, Volume: volume, Cluster: cluster, WorldDir: world,
+			Generation: st.gen, BootID: boot, Members: ids,
 		})
 	}
 	return out
@@ -154,6 +166,27 @@ func volumeOf(group []Member, dir string) string {
 		}
 	}
 	return dir
+}
+
+// clusterOf picks the cluster the unit's members agree on. Empty means the single cluster a
+// single-process install has; two members naming different clusters is a deployment mistake, and
+// the first one in id order wins so the result is deterministic rather than random.
+func clusterOf(group []Member) string {
+	for _, m := range group {
+		if m.Cluster != "" {
+			return m.Cluster
+		}
+	}
+	return ""
+}
+
+func worldOf(group []Member) string {
+	for _, m := range group {
+		if m.WorldDir != "" {
+			return m.WorldDir
+		}
+	}
+	return ""
 }
 
 func sameSet(a, b map[string]bool) bool {
