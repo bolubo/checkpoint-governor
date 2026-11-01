@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/bolubo/checkpoint-governor/blob/main/docs/product-v1.md
+    about: What the product decides, what it shows, and what it claims.
+  - name: Questions and ideas
+    url: https://github.com/bolubo/checkpoint-governor/discussions
+    about: Ask how to run it, or propose something before opening an issue.
+  - name: Security report
+    url: https://github.com/bolubo/checkpoint-governor/security/advisories/new
+    about: Report vulnerabilities privately. Never post secrets or checkpoint data publicly.
+  - name: Good first issues
+    url: https://github.com/bolubo/checkpoint-governor/labels/good%20first%20issue
+    about: Start with a bounded task for a first contribution.
