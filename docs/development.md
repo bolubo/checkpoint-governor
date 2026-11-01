@@ -63,4 +63,11 @@ document set cannot grow without a reason.
 
 ## Repository state
 
-Local only. One branch: `main`. No remote until that decision is recorded.
+Remote: `bolubo/checkpoint-governor`, one branch: `main`, protected by the `verify` check. Nothing is
+pushed straight to `main`: a change goes through a branch and a pull request.
+
+**One pull request per batch, not per file.** Every push to a branch runs the whole CI (tests,
+experiments, demo, image), and the run is what costs. A batch of related files therefore goes into
+one branch, one commit set, one pull request, and it is squashed when `verify` is green. A pull
+request that exists only to see whether one file compiles is a CI run spent on nothing.
+

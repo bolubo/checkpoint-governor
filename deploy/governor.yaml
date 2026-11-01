@@ -1,0 +1,46 @@
+# One process, one volume, one discovery root.
+#
+# The product's unit is a checkpoint directory, and one process holds many of them
+# (docs/decisions/0019-deployment-without-crd.md). A DaemonSet is deliberately not the first shape:
+# this process reads a volume, not a node.
+#
+# The image is a local tag on purpose. `make release` produces a registry tag (`ghcr.io/...`); pin it
+# here, or keep the local tag and load it into the cluster (`kind load docker-image ckpt-governor:local`).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: checkpoint-governor
+  labels:
+    app: checkpoint-governor
+spec:
+  restartPolicy: Always
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+  containers:
+    - name: governor
+      image: ckpt-governor:local
+      imagePullPolicy: IfNotPresent
+      args: ["supervise", "--members-from=/ckpt", "--forever", "--every=5s"]
+      volumeMounts:
+        - name: checkpoints
+          mountPath: /ckpt
+      readinessProbe:
+        exec:
+          command: ["ckptctl", "version"]
+        initialDelaySeconds: 5
+        periodSeconds: 60
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          memory: 64Mi
+      securityContext:
+        readOnlyRootFilesystem: true
+        allowPrivilegeEscalation: false
+  volumes:
+    - name: checkpoints
+      hostPath:
+        path: /ckpt
+        type: Directory

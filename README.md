@@ -34,8 +34,21 @@ run 3s · no writes
   a silent death costs everything: no window was set
 ```
 
-With a Go toolchain, `make install` puts `ckptctl` and `ckpttrainer` on `PATH` instead of using the
-image.
+With a Go toolchain, `make install` puts `ckptctl` and `ckpttrainer` on `PATH`; that is the
+development path, not the install path.
+
+## On a cluster
+
+`deploy/governor.yaml` runs one process over a checkpoint volume and finds every job under it:
+
+```bash
+docker build -t ckpt-governor:local .
+kubectl apply -f deploy/governor.yaml
+kubectl logs -l app=checkpoint-governor     # watching 2 units · 0 blind
+```
+
+A child directory is a unit when it holds `.ckpt-governor/`; anything else under the volume is
+ignored. The volume, the image tag and the limits are in `deploy/README.md`.
 
 ## Choosing a window
 
