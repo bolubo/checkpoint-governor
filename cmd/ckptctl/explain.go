@@ -32,6 +32,12 @@ func runExplain(args []string, out io.Writer) int {
 
 	d, ok := advise.LastDecision(*dir)
 	if !ok {
+		// Refusing a foreign schema silently would be the same failure as reading it wrongly: the two
+		// states lead to the same fallback, but only one of them is something a person can fix.
+		if problem := advise.SchemaProblem(*dir); problem != "" {
+			fmt.Fprintln(out, problem)
+			return 1
+		}
 		fmt.Fprintf(out, "no plan in %s: the controller has not published one yet\n", *dir)
 		return 1
 	}
