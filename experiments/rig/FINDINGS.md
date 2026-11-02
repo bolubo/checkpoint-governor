@@ -189,3 +189,21 @@ exits non-zero in both cases; `main` prints the error and calls `os.Exit(1)`, ex
 
 **Kept, not deleted:** two findings in one session came from instruments rather than from the system, and
 both were more specific and more alarming than the truth. That ratio is the argument for keeping this file.
+
+## F10 — the cluster runs, and the loop is not in it
+
+**Seen:** `kueue-lab` started, the controller came up 1/1, and `experiments/kueue/run.sh c1` ran a case to
+completion. All five holders admitted, and the arrival **also admitted** — the case that exists to prove
+preemption did not preempt.
+
+**Means two things, and only one of them is about Kueue.**
+
+1. That case no longer exercises what its name says. Either the priority shape changed under it or the lab's
+   quota now fits one more unit; a case that quietly stops testing its own claim is worse than a failing one,
+   because it stays green.
+2. **The loop is not in the cluster at all.** There is no `make deploy` here, no governor workload, no
+   `ckpttrainer` running under Kueue. The matrix proves the *classifier*; `run.sh` proves *preemption*; the
+   join — a request that reaches a writer, a write that verifies, under a real eviction — has never run.
+
+**Not claimed:** that the cluster proves the loop. It does not, and the Day 4 write-up must say so in those
+words rather than implying it from two green halves.
