@@ -44,20 +44,28 @@ Two honesty notes, because the claim should be falsifiable:
 
 One required check, `verify`, and it does not always do the same work:
 
-| what changed | what runs | wall time |
+| what changed | what runs | wall time (measured on the runner) |
 |---|---|---|
-| only Markdown / `docs/` | `make docs` (dead links, comment citations) | ~15s |
-| Go, shell, tests | `make fast` (format, vet, build, all unit tests) + `make docs` | ~60s |
-| behaviour (Go, `experiments/`, `cmd/`) | also `e2e`, `exp`, `demo`, `install-smoke`, `spot`, `resume`, `py`, `drill` | ~3min |
+| only Markdown / `docs/` | `make docs`: compile one package, two pins | ~35s |
+| Go, shell, tests | `make fast`: format check, vet, build, every unit test | 110–115s |
+| behaviour (Go, `experiments/`, `cmd/`) | also `e2e`, `exp`, `demo`, `install-smoke`, `spot`, `resume`, `py`, `drill` | 184s |
 | `Dockerfile`, `deploy/` | also `docker build` | +40s |
 | a tag | `release.yml`, not this workflow | — |
 | a manual dispatch | everything, including the image | — |
 
+**The numbers are why the first cut was wrong.** The first version ran `make fast` for every change and
+added `make docs` on top; a documentation-only PR measured **184s**, because the unit suite is the
+expensive part and it had nothing to say about a page. The table above is the second cut: a docs change
+runs one step. The `code`/`docs` split is now also read from the API (`pulls/{n}/files`,
+`commits/{sha}`), not from merge-base arithmetic on a shallow clone: the first version's two runs on the
+same branch disagreed about which steps to run, which is exactly the kind of silent scope bug the one-job
+design must not have. A commit the API will not describe is treated as code.
+
 Two rules make that possible without a matrix and without third-party path filters:
 
-1. **The workflow classifies the diff itself.** A shell step fetches the base and writes `code`, `docs`
-   and `image` outputs; every expensive step carries `if: steps.scope.outputs.code == 'true'`. No
-   `dorny/paths-filter`, no action whose supply chain we would have to trust.
+1. **The workflow classifies the diff itself.** A shell step asks the API for the changed files and writes
+   `code`, `docs` and `image` outputs; every expensive step carries `if: steps.scope.outputs.code ==
+   'true'`. No `dorny/paths-filter`, no action whose supply chain we would have to trust.
 2. **The requirement stays one check.** Steps inside one job mean one required context, so a scope
    mistake cannot leave a PR "green because nothing ran": anything that skips is printed (`changing
    docs only; the integration steps are skipped`) and the job still ends in `make docs`.

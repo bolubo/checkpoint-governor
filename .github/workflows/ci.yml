@@ -46,23 +46,26 @@ jobs:
 
       - name: what changed
         id: scope
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          SHA: ${{ github.sha }}
+          PR: ${{ github.event.pull_request.number }}
         run: |
           set -eu
           code=false; docs=false; image=false
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            code=true; docs=true; image=true
-            echo "manual dispatch: running the whole gate"
-          elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch --depth=1 origin "${{ github.base_ref }}"
-            files=$(git diff --name-only "FETCH_HEAD...HEAD")
-          else
-            before="${{ github.event.before }}"
-            if [ -n "$before" ] && git cat-file -e "$before^{commit}" 2>/dev/null; then
-              files=$(git diff --name-only "$before...${{ github.sha }}")
-            else
-              # A new branch or a force push: treat the whole tree as changed rather than guess.
-              files=$(git ls-files)
-            fi
+          case "$EVENT" in
+            workflow_dispatch) code=true; docs=true; image=true ;;
+            pull_request) files=$(gh api "repos/$REPO/pulls/$PR/files?per_page=100" --paginate --jq '.[].filename') ;;
+            push) files=$(gh api "repos/$REPO/commits/$SHA" --jq '.files[]?.filename') ;;
+            *) files="" ;;
+          esac
+          # A commit the API will not describe (a merge commit, a force push) is treated as a code change:
+          # running too much is a slower answer, running too little is a wrong one.
+          if [ -z "$files" ]; then
+            echo "the API returned no file list; treating the tree as changed"
+            files=$(git ls-files)
           fi
           for f in $files; do
             case "$f" in
@@ -79,14 +82,16 @@ jobs:
           echo "image=$image" >> "$GITHUB_OUTPUT"
           printf 'changed: %s\n' "$(printf '%s' "$files" | tr '\n' ' ' | cut -c1-200)"
 
-      # Format, vet, build, every unit test. ~60s, and it is the loop a person runs while working.
-      - name: make fast
-        run: make fast
-
-      # The docs pins are Go tests; a docs-only change still pays their compile, and nothing else.
+      # A documentation-only change compiles one package and runs two tests; it does not pay for the
+      # build and the whole suite. ~35s, measured.
       - name: make docs
         if: steps.scope.outputs.code == 'false'
         run: make docs
+
+      # Format, vet, build, every unit test. ~110s on a two-core runner.
+      - name: make fast
+        if: steps.scope.outputs.code == 'true'
+        run: make fast
 
       # The shipped binary, driven the way a user drives it: no cluster, half a second.
       - name: make e2e

@@ -102,17 +102,17 @@ is a file read: no library, no API, no new permission, and no custom resource
 ## Build and check
 
 ```bash
-make fast     # the 60-second loop CI runs for a code change: format, vet, build, tests, docs
-make docs     # the docs pins on their own (~15s): dead links, comment citations
+make fast     # the loop CI runs for a code change: format check, vet, build, tests, docs
+make docs     # the docs pins on their own: dead links, comment citations
 make ci       # the full gate: fast, e2e, exp, demo, install, spot, resume, py, drill
 make verify   # the release-grade gate: ci plus parity and the four pinned tests
 make exp      # the experiments: decisions in milliseconds, writes in seconds
 make dist     # linux archives and SHA256SUMS; make release for the image
 ```
 
-The gate classifies the diff and skips what it cannot justify: a Markdown change runs the docs pins
-only (~15s), a Go change runs `make fast` (~60s), a behaviour change runs everything (~3min), and a tag
-is `release.yml`'s job, not this one. What was red before, and why, is `docs/ci.md`.
+The gate classifies the diff and skips what it cannot justify: a Markdown change runs the docs pins only,
+a Go change runs `make fast`, a behaviour change runs everything, and a tag is `release.yml`'s job, not
+this one. What was red before, why, and the measured numbers are `docs/ci.md`.
 
 Requirements: Docker, or Go 1.26. The product and the demo need nothing else; the experiments also
 use `python3`.
