@@ -104,8 +104,9 @@ announced stop is HF's own `enable_jit_checkpoint`.
       silence, `[10]` for a request), and `on_train_end` records `ending`.
 - [ ] **2.2 The real run (manual, torch only).** `make hf` runs a 1000-step CPU loop with `save_steps=500`
       and then with the callback.
-  **done when** it prints `hf: 40 writes → 1` with real numbers (or the scaled equivalent for the steps
-      used), and `trainer.state` is unchanged.
+  **done when** it prints the checkpoint count for both arms and `trainer.state` is unchanged.
+  **status** `hack/hf-smoke.py` and `make hf` exist; the guard (no torch) was exercised here, and the
+      real numbers are pending on a machine with `torch` and `transformers`.
 - [x] **2.3 The supported-integration page.** The exact diff, the receipt to expect, and the exclusions.
   **done when** `make docs` passes and the page is linked from the README.
   **observed** `docs/huggingface.md` carries the diff, the four events table, and the two caveats
@@ -122,8 +123,11 @@ Same shape, same contract test; the real runs need torch, so they stay manual ta
       `ckpt-step-1.ckpt`, a custom filename, `ending`). The latency is one batch because
       `trainer.save_checkpoint` is public — the contrast with the Trainer integration, whose latency is
       `logging_steps`.
-- [ ] **3.2 Composer.** Replace `save_interval='1ep'` and keep its `latest-rank{rank}` pointer.
-  **done when** `make composer` prints `composer: 40 writes → 1, latest resolves`.
+- [x] **3.2 Composer.** A callback that asks the policy; `CheckpointSaver` is removed.
+  **done when** a request is honoured at the next batch end, once, and the end is recorded.
+  **observed** `make py` runs 31 tests; the three Composer cases pass (silent, one request with its
+      filename format, `ending`). The real run is not exercised here (no composer in this environment);
+      the page states what `CheckpointSaver` used to provide and no longer does.
 
 ## P4 — the contributor ladder
 

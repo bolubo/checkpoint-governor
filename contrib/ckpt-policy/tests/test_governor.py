@@ -426,5 +426,68 @@ class TestServed(unittest.TestCase):
             self.assertEqual(gens, [], "served() records the request; it does not write a checkpoint")
 
 
+class TestComposerCallback(unittest.TestCase):
+    """Composer is optional: the callback imports it lazily, and the test installs a fake module."""
+
+    def setUp(self):
+        import types
+
+        self.calls = []
+        composer = types.ModuleType("composer")
+        utils = types.ModuleType("composer.utils")
+        checkpoint = types.ModuleType("composer.utils.checkpoint")
+
+        def save_checkpoint(state, filename="ep{epoch}-ba{batch}-rank{rank}"):
+            self.calls.append((state, filename))
+
+        checkpoint.save_checkpoint = save_checkpoint
+        utils.checkpoint = checkpoint
+        composer.utils = utils
+        self._saved = {name: sys.modules.get(name) for name in
+                       ("composer", "composer.utils", "composer.utils.checkpoint")}
+        sys.modules["composer"] = composer
+        sys.modules["composer.utils"] = utils
+        sys.modules["composer.utils.checkpoint"] = checkpoint
+
+    def tearDown(self):
+        for name, module in self._saved.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
+
+    def test_nothing_is_written_while_the_plan_is_silent(self):
+        from ckpt_policy.composer import GovernorCallback
+
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            cb = GovernorCallback(g)
+            for _ in range(100):
+                cb.batch_end(object(), None)
+            self.assertEqual(self.calls, [])
+
+    def test_a_request_is_honoured_at_the_next_batch_end_and_once(self):
+        from ckpt_policy.composer import GovernorCallback
+
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            plan(root, generation=7)
+            cb = GovernorCallback(g)
+            for _ in range(100):
+                cb.batch_end(object(), None)
+            self.assertEqual(len(self.calls), 1)
+            self.assertEqual(self.calls[0][1], "ep{epoch}-ba{batch}-rank{rank}")
+            self.assertFalse(g.should_save())
+
+    def test_the_end_of_training_is_recorded(self):
+        from ckpt_policy.composer import GovernorCallback
+
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            cb = GovernorCallback(g)
+            cb.fit_end(object(), None)
+            self.assertEqual(glue(root, "ending"), "1")
+
+
 if __name__ == "__main__":
     unittest.main()
