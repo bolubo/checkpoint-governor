@@ -9,7 +9,7 @@ IMAGE ?= ghcr.io/bolubo/checkpoint-governor
 # How long the real-clock smoke runs (make smoke MINUTES=2 for a quick check).
 MINUTES ?= 10
 
-.PHONY: all check fmt fmt-check vet build test docs fast flake verify parity ci e2e exp clean dist release install install-smoke release-notes spot prepush resume py drill
+.PHONY: all check fmt fmt-check vet build test docs fast flake verify parity ci e2e exp clean dist release install install-smoke release-notes spot prepush resume py drill contrast
 
 all: check
 
@@ -36,6 +36,11 @@ observer-against:
 # The demo: three acts, fifteen seconds, ending with the receipt. See docs/product-v1.md §5.
 demo:
 	sh experiments/demo/demo.sh
+
+# The one table the library is sold on: four policies on one job, each row naming what it covers.
+# It runs the real loop on an injected clock, so it is seconds and deterministic (decision 0028, P0).
+contrast:
+	$(GO) run experiments/contrast/main.go
 
 # The three situations a user meets, asserted in one line each: the executable version of the README.
 scenarios:

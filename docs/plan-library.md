@@ -19,20 +19,39 @@ not re-implement it. Decision 0028, "two delivery shapes, one core".
 The value is silence, so the first artifact is the counterfactual: one command, one table, no GPU, no
 cluster, under two minutes from a clone.
 
-- [ ] **0.1 The three arms, on a virtual clock.** `experiments/contrast/` imports `internal/loop` (already
-      exported) and drives it with an injected `Now`, so the run is deterministic and fast. Arm A
-      simulates the framework default (`save every N steps`); arm B saves nothing; arm C is the real
-      policy with nothing configured; arm C2 is the real policy with a bound. The writer costs
-      `write-ms` of virtual time per save.
-  **done when** `make contrast` prints four rows — `writes`, `io seconds`, `coverage` (announced stop,
-      silent death), `lost steps at the worst point` — and a test asserts the table has four rows and
-      every row names its coverage.
-- [ ] **0.2 The table is the README's first screen.** `pip install` and three lines come first; the
-      contrast command and its table come second; Docker and Kubernetes move below.
+- [x] **0.1 The three arms, on a virtual clock.** The policy lives in `internal/contrast`; the command
+      in `experiments/contrast/main.go` drives the real `internal/loop` with an injected `Now`, so the
+      run is deterministic and fast. Arm A simulates the framework default (`save every N steps`); arm
+      B saves nothing; arm C is the real policy with nothing configured; arm C2 is the real policy with
+      a bound. The writer costs `write-ms` of virtual time per save.
+  **done when** `make contrast` prints four rows — `writes`, `io seconds`, coverage (announced stop,
+      silent death) — and a test asserts four rows, the exact write counts, and that every row names
+      its coverage.
+  **observed** on a four-hour job (14,400 steps of 1s, a write costing 40s):
+  ```
+  500 steps (framework default)   28 writes   1120s   ≤500 steps   ≤500 steps
+  nothing installed                0 writes      0s   everything   everything
+  governor, unconfigured           1 write      40s   0            everything
+  2h bound                         2 writes     80s   0            ≤2h
+  ```
+- [ ] **0.2 The table is the README's first screen.** The install line comes first, the contrast
+      command and its table second; Docker and Kubernetes move below.
   **done when** `make docs` passes and the README's first three sections are install, contrast,
       deploy.
 - [ ] **0.3 A one-liner for people without Go or Python.** The same command inside a container.
   **done when** `docker run …` prints the same four rows.
+- [ ] **0.4 What the framework defaults cost, per scale.** `internal/waste` + `experiments/waste`:
+      the waste fraction is `T_write / (interval × t_step)`, and the interval is **the framework's
+      actual default, not a round number**: Hugging Face `save_steps=500` with `save_total_limit=None`
+      (keeps every copy, `training_args.py`); Lightning one epoch (`every_n_train_steps=None` and
+      `every_n_epochs=None` means "at the end of every epoch") with `save_top_k=1`; Composer
+      `save_interval='1ep'` with `num_checkpoints_to_keep=-1` (`checkpoint_saver.py`). Megatron has no
+      default (`--save` requires an explicit `--save-interval`) and is printed as "no default".
+      Report time and storage separately, and refuse to print a table without its assumptions line
+      (bytes per parameter, throughput, step time, `steps-per-epoch`).
+  **done when** `make waste` prints one row per scale, each naming the framework default it used and
+      the source of that number, plus a test that the waste fraction equals `T_write/(interval·t)`
+      and that a write longer than the interval is refused as infeasible.
 
 ## P1 — the Python front door (engine bundled, not rewritten)
 
