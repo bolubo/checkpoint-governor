@@ -507,10 +507,10 @@ func TestRetiredCopiesWaitInTheTrashAndAreSweptLater(t *testing.T) {
 	}
 
 	// A sweep with no budget does nothing, which is what keeps a round short.
-	if n, err := sweepTrash(dir, 0); err != nil || n != 0 {
+	if n, _, err := sweepTrash(dir, 0); err != nil || n != 0 {
 		t.Fatalf("sweep with no budget = %d, %v; want 0", n, err)
 	}
-	if n, err := sweepTrash(dir, time.Second); err != nil || n != 1 {
+	if n, _, err := sweepTrash(dir, 1<<30); err != nil || n != 1 {
 		t.Fatalf("sweep = %d, %v; want 1", n, err)
 	}
 	if entries, _ := os.ReadDir(filepath.Join(dir, trashDir)); len(entries) != 0 {

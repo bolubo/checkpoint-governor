@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/bolubo/checkpoint-governor/internal/policy"
@@ -15,6 +16,13 @@ import (
 // that the rename is on one volume and therefore atomic; the scanner ignores it because its name is
 // not `step-<N>`.
 const trashDir = ".trash"
+
+// sweepBytesPerRound is how much of the trash one round may give back.
+//
+// 256 MiB keeps a round short on any volume while still clearing a retired checkpoint in a few rounds: the
+// alternative, a wall-clock budget, deleted less than it promised on a slow disk and more on a fast one, and
+// could not be interrupted in the middle of a directory at all.
+const sweepBytesPerRound = 256 << 20
 
 // Deleted is one removed copy, for the log and the status view.
 type Deleted struct {
@@ -115,31 +123,71 @@ func retirableBelow(oldest int64, keep int, copies []policy.Copy) []policy.Copy 
 	return out
 }
 
-// sweepTrash removes retired copies, spending at most budget of wall time.
+// sweepTrash removes retired copies until budgetBytes of file content is gone.
 //
-// Bounded on purpose: a 1 TB directory takes minutes to unlink, and a round that takes minutes is a
-// round that misses the trigger. Whatever is left is picked up next round.
-func sweepTrash(dir string, budget time.Duration) (int, error) {
+// Bounded in **bytes**, not wall time: time is the wrong measure for deletion. A slow volume deletes less
+// than the budget and a fast one more, and `os.RemoveAll` on a large directory cannot be interrupted at all —
+// so a time budget both overruns and under-delivers. Deleting file by file also makes the budget precise and
+// the round short, which is what a controller needs.
+//
+// A partially deleted directory is left in the trash and finished next round: the bytes in it are already
+// accounted for, so a half-swept directory cannot be mistaken for a whole one.
+//
+// budgetBytes <= 0 removes nothing. That is the dry-run value, and it is the safe default.
+func sweepTrash(dir string, budgetBytes int64) (removed int, freed int64, err error) {
 	trash := filepath.Join(dir, trashDir)
 	entries, err := os.ReadDir(trash)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return 0, nil
+			return 0, 0, nil
 		}
-		return 0, err
+		return 0, 0, err
 	}
-	deadline := time.Now().Add(budget)
-	removed := 0
+
 	for _, e := range entries {
-		if !time.Now().Before(deadline) {
+		if freed >= budgetBytes {
 			break
 		}
-		if err := os.RemoveAll(filepath.Join(trash, e.Name())); err != nil {
-			return removed, err
+		path := filepath.Join(trash, e.Name())
+		n, gone, err := removeWithin(path, budgetBytes-freed)
+		freed += n
+		if err != nil {
+			return removed, freed, err
 		}
-		removed++
+		if gone {
+			removed++
+		}
 	}
-	return removed, nil
+	return removed, freed, nil
+}
+
+// removeWithin deletes files under path until it has freed `limit` bytes, then returns. `gone` says whether
+// the directory itself is now empty and was removed.
+func removeWithin(path string, limit int64) (freed int64, gone bool, err error) {
+	err = filepath.Walk(path, func(p string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if info.IsDir() || freed >= limit {
+			return nil
+		}
+		size := info.Size()
+		if rmErr := os.Remove(p); rmErr != nil {
+			return rmErr
+		}
+		freed += size
+		return nil
+	})
+	if err != nil {
+		return freed, false, err
+	}
+
+	// The directory itself goes only when nothing is left inside it: an empty tree that failed halfway must
+	// keep its name, or the next round cannot find it to finish.
+	if rmErr := os.Remove(path); rmErr == nil {
+		return freed, true, nil
+	}
+	return freed, false, nil
 }
 
 // copyDirName is the directory on disk for a step, whichever writer made it.
@@ -156,4 +204,45 @@ func copyDirName(dir string, step int64) string {
 		}
 	}
 	return ""
+}
+
+// freeBytes is the space available to an unprivileged writer on the volume holding dir.
+func freeBytes(dir string) (int64, error) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(dir, &st); err != nil {
+		return 0, err
+	}
+	return int64(st.Bavail) * int64(st.Bsize), nil
+}
+
+// largestCopy is the size of the biggest copy on disk, which is the size the next write will need.
+func largestCopy(copies []policy.Copy) int64 {
+	var max int64
+	for _, c := range copies {
+		if c.Bytes > max {
+			max = c.Bytes
+		}
+	}
+	return max
+}
+
+// keepUnderPressure lowers how many copies retention keeps when the volume is nearly full.
+//
+// Writing into a full disk turns one bad checkpoint into a busy volume, and a rewrite that cannot land is
+// worse than a smaller retention: the newest copy is the one anybody comes back for, so under pressure the
+// answer is keep one and keep writing, not keep three and fail.
+func keepUnderPressure(dir string, wanted int, copies []policy.Copy) int {
+	size := largestCopy(copies)
+	if size == 0 || wanted <= 1 {
+		return wanted
+	}
+	free, err := freeBytes(dir)
+	if err != nil {
+		return wanted
+	}
+	// Two copies of headroom: the one being written and one to land on.
+	if free < 2*size {
+		return 1
+	}
+	return wanted
 }

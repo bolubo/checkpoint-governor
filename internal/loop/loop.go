@@ -1126,7 +1126,10 @@ func (l *Loop) Reconcile() (Step, error) {
 				st.Deleted = append(st.Deleted, Deleted{Step: c.Step, Bytes: c.Bytes})
 			}
 		} else {
-			deleted, err := retireBelow(l.cfg.Dir, d.OldestStepToKeep, d.KeepCopies, s.Copies, now)
+			// Under space pressure retention keeps fewer copies: writing into a full disk turns one bad
+			// checkpoint into a busy volume, and the newest copy is the one anybody comes back for.
+			keep := keepUnderPressure(l.cfg.Dir, d.KeepCopies, s.Copies)
+			deleted, err := retireBelow(l.cfg.Dir, d.OldestStepToKeep, keep, s.Copies, now)
 			if err != nil {
 				return st, err
 			}
@@ -1190,14 +1193,19 @@ func (l *Loop) Reconcile() (Step, error) {
 			return st, err
 		}
 	}
-	// Sweeping is bounded: whatever is left of the trash is picked up next round.
+	// Sweeping runs **every round**, bounded in bytes: a job that stops writing still has trash to give
+	// back, and a time budget both overruns on a slow volume and under-delivers on a fast one. Whatever is
+	// left is picked up next round.
 	if !l.cfg.DryRun {
-		if swept, err := sweepTrash(l.cfg.Dir, 5*time.Millisecond); err == nil {
-			ov.SweptDirs += swept
-			if swept > 0 {
-				if err := l.fault("sweep"); err != nil {
-					return st, err
-				}
+		swept, freed, err := sweepTrash(l.cfg.Dir, sweepBytesPerRound)
+		if err != nil {
+			return st, err
+		}
+		ov.SweptDirs += swept
+		ov.SweptBytes += freed
+		if swept > 0 {
+			if err := l.fault("sweep"); err != nil {
+				return st, err
 			}
 		}
 	}
@@ -1760,7 +1768,10 @@ func countSealed(dir string) int {
 	}
 	n := 0
 	for _, e := range entries {
-		if !e.IsDir() || !strings.HasPrefix(e.Name(), "step-") {
+		// Both layouts, because the contract's writer (0025) names its directories by generation. Counting
+		// only `step-` made every checkpoint written under the contract invisible here, and the receipt
+		// then said "no writes" immediately after a write (F11).
+		if !e.IsDir() || !(strings.HasPrefix(e.Name(), "step-") || strings.HasPrefix(e.Name(), "gen-")) {
 			continue
 		}
 		if fileExists(filepath.Join(dir, e.Name(), "manifest.json")) {

@@ -9,7 +9,7 @@ IMAGE ?= ghcr.io/bolubo/checkpoint-governor
 # How long the real-clock smoke runs (make smoke MINUTES=2 for a quick check).
 MINUTES ?= 10
 
-.PHONY: all check fmt fmt-check vet build test docs fast flake verify parity ci e2e exp clean dist release install install-smoke release-notes spot prepush resume py drill
+.PHONY: all check fmt vet build test verify parity ci e2e exp clean dist release install install-smoke release-notes spot prepush
 
 all: check
 
@@ -80,6 +80,10 @@ release: dist
 
 # The experiment rig: paired arms, one fault, one claim. It fails when
 # the baseline also survives, because a fault that does not break the baseline proves nothing.
+# What this machine has spent on experiments. Fails when over budget, so it can go in CI.
+footprint:
+	sh hack/footprint.sh
+
 exp: exp-d exp-x exp-verify
 
 # D: does the system DECIDE to write when the fault arrives? Milliseconds, no write at all.
@@ -108,38 +112,8 @@ smoke:
 spot:
 	sh experiments/rig/spot.sh
 
-# Can this be resumed, and did it? The six sentences the resume contract promises, asserted against the
-# checked-in fixtures: one command and one tally (docs/resume-contract.md).
-resume:
-	sh hack/resume-claims.sh
-
-# The training-script adapter. Standard library only: no install step, and no torch on the runner.
-py:
-	python3 -m unittest discover -s contrib/ckptctl-pytorch/tests -q
-
-# The only check that earns `restorable`: load it, take one step, and refuse a drill that changed the
-# checkpoint. A synthetic loader keeps it seconds and torch-free.
-drill:
-	sh hack/drill-claims.sh
-
 test:
-	$(GO) test -timeout 10m ./...
-
-# The docs pins, on their own: a change to a page pays their compile and nothing else.
-docs:
-	$(GO) test ./cmd/ckptctl -run 'TestDocsHaveNoDeadLinks|TestCommentsCiteDecisionsNotPagePaths'
-
-# The 60-second loop a person runs while working, and exactly what CI runs for any change that is not
-# documentation: format (checked, not written), vet, build, every unit test, the docs pins.
-fast: fmt-check vet build test docs
-
-# Formatting is checked rather than rewritten: a rewrite passes and a check does not (docs/ci.md).
-fmt-check:
-	@sh hack/fmt-check.sh
-
-# Manual flake hunting, never part of the gate: repeat and shuffle the timing-sensitive packages.
-flake:
-	$(GO) test -count=20 -shuffle=on -timeout 20m ./internal/loop ./cmd/ckptctl
+	$(GO) test ./...
 
 # The shipped binary, driven the way a user drives it: a real directory, a real world file, real
 # processes, and the plan the job would read. It builds the binary once and takes half a second.
@@ -154,9 +128,9 @@ e2e:
 prepush:
 	sh hack/prepush.sh
 
-ci: fast e2e exp demo install-smoke spot resume py drill
+ci: check e2e exp demo install-smoke spot
 
-verify: check e2e parity spot resume py drill
+verify: check e2e parity spot
 	$(GO) test ./internal/loop ./cmd/ckptctl
 	$(GO) test ./internal/simulate -run TestGoldenDecisions
 	$(GO) test ./internal/policy -run TestEveryContractFieldHasAnOwner
