@@ -8,7 +8,7 @@ Status: a local wheel, 2026-11-02. Not on PyPI yet — the package name is a pre
 ```bash
 make wheel
 # engine: linux/amd64
-# wheel: ckptctl_pytorch-0.2.0-py3-none-linux_x86_64.whl, engine inside
+# wheel: ckpt_policy-0.2.0-py3-none-linux_x86_64.whl, engine inside
 ```
 
 The wheel carries the Go engine as package data (decision 0028). It is built for **this machine**:
@@ -17,7 +17,7 @@ the tag names the platform, so a wheel built on linux/amd64 will not install on 
 ## 2. Install
 
 ```bash
-python3 -m pip install dist/wheels/ckptctl_pytorch-*.whl
+python3 -m pip install dist/wheels/ckpt_policy-*.whl
 ```
 
 No other install step: no `go install`, no PATH entry, no second download.
@@ -25,7 +25,7 @@ No other install step: no `go install`, no PATH entry, no second download.
 ## 3. Use it
 
 ```python
-from ckptctl_pytorch import Governor, World
+from ckpt_policy import Governor, World
 
 g = Governor("/ckpt/job-1", world=World(ranks=8), start_engine=True)
 for step, batch in loader:
@@ -38,6 +38,21 @@ for step, batch in loader:
 `start_engine=True` launches `ckptctl run` for that directory. If the engine exits, the plan stops
 being refreshed and `should_save()` becomes false: the job still writes at the end and on an announced
 stop, and nothing in the loop has to handle it.
+
+## 4. See it work, without Go
+
+```bash
+python -m ckpt_policy.demo
+```
+
+```
+policy                                      writes       io   overhead
+framework default (save every 500 steps)         2    0.04s      0.00s
+ckpt-policy, unconfigured                        1    0.02s      0.04s
+```
+
+The second column is the point; the third is what the client itself costs (one small file per step), and
+it is printed rather than hidden.
 
 ## What you should see
 

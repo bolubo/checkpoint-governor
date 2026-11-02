@@ -67,7 +67,7 @@ class Saves:
 class Governor:
     def __init__(self, root: str, *, format: str = "dcp", world: World | None = None,
                  saves: Saves | None = None, rank0: bool = True, members: int | None = None,
-                 expected_bytes: int | None = None, writer: str = "ckptctl-pytorch",
+                 expected_bytes: int | None = None, writer: str = "ckpt-policy",
                  step_baseline_ms: int = 0, start_engine: bool = False,
                  engine: str | None = None, engine_every: str = "1s",
                  engine_window: str | None = None, engine_args: list[str] | None = None):

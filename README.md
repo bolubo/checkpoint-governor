@@ -95,7 +95,7 @@ ckptctl drill     --dir=/ckpt/job-1 --loader="./load.py"   # resume: ok — step
 Exit codes are the contract: `0` yes, `1` checked and no, `2` cannot tell or refused. A drill is the only
 proof of `restorable`: it fingerprints the tree, runs the loader for exactly one step, and refuses if the
 checkpoint changed. The declaration is `resume.json` (schema 1) beside the manifest, and
-`contrib/ckptctl-pytorch` writes it in three lines with no runtime dependency. The whole contract is
+`contrib/ckpt-policy` writes it in three lines with no runtime dependency. The whole contract is
 `docs/resume-contract.md`.
 
 ## The two inputs

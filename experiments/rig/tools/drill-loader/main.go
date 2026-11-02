@@ -4,7 +4,7 @@
 //
 // It reads the manifest a generation was sealed with and reports the next step, so the drill's machinery
 // (fingerprints, environment, timeout, step judgement) is exercised on every push without torch. A real
-// loader — `contrib/ckptctl-pytorch/examples/drill_loader.py` — takes the same contract.
+// loader — `contrib/ckpt-policy/examples/drill_loader.py` — takes the same contract.
 package main
 
 import (

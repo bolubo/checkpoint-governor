@@ -82,7 +82,7 @@ v0.2, because a callback's value is inseparable from what it can restore.
 
 ## 5. Deferred to v0.2, on purpose
 
-- **The training-script callback** (`contrib/ckptctl-pytorch`): one line in a loop, writing
+- **The training-script callback** (`contrib/ckptctl-pytorch`, now `contrib/ckpt-policy`): one line in a loop, writing
   `step-rate`/`ending`/`stopping` and reading the plan.
 - **The restore side.** This product decides *when*; it does not own *what a checkpoint must contain*
   to resume. Whether to verify resumability (optimizer state, world size, RNG position) rather than only

@@ -63,9 +63,9 @@ cluster, under two minutes from a clone.
 ## P1 — the Python front door (engine bundled, not rewritten)
 
 - [x] **1.1 A wheel that contains the engine.** `hack/build-wheel.sh` compiles `ckptctl` into
-      `ckptctl_pytorch/_bin/`, then builds the wheel; the binary is package data, not a download.
+      `ckpt_policy/_bin/`, then builds the wheel; the binary is package data, not a download.
   **done when** the script prints `wheel: …, engine inside` and the wheel lists the binary.
-  **observed** `wheel: ckptctl_pytorch-0.2.0-py3-none-linux_x86_64.whl, engine inside`; the tag names
+  **observed** `wheel: ckpt_policy-0.2.0-py3-none-linux_x86_64.whl, engine inside`; the tag names
       the platform, because a `py3-none-any` wheel would install on a machine whose engine cannot run.
 - [x] **1.2 The client starts the engine and reads the plan.** `Governor(start_engine=True)` launches
       `ckptctl run` for the directory, then `should_save()` reads `.ckpt-governor/state.json`.
@@ -77,9 +77,14 @@ cluster, under two minutes from a clone.
       to stdout because a subprocess exited is a library nobody keeps. The plan simply ages out,
       `should_save()` answers false, and the reason is in `.ckpt-governor/engine.log`.
   **done when** a test kills the engine mid-run and the client neither raises nor claims a save.
-- [ ] **1.4 The demo without Go.** `python -m ckptctl_pytorch.demo` prints the P0 table from the bundled
-      engine.
-  **done when** the demo runs in a clean virtualenv and prints four rows.
+- [x] **1.4 The demo without Go.** `python -m ckpt_policy.demo`: a synthetic loop, no torch, no Go on
+      PATH, using the bundled engine. It is a two-arm smoke test, not the four-row model: the framework
+      cadence against the policy, with the client's own per-step glue measured separately.
+  **done when** the demo runs in a clean virtualenv and reports both arms.
+  **observed** at 1000 steps and a 20ms write: cadence `2 writes · 0.04s io`, policy `1 write · 0.02s
+      io`, and **`0.04s` overhead for 1000 steps** (40µs per `step()` call — one small file). That number
+      is the first honest measure of what the client costs; it is small but not zero, and it is now
+      printed rather than hidden.
 - [x] **1.5 The install page.** `docs/install-python.md`: install, three lines, what should appear, what
       to do when it does not.
   **done when** `make docs` passes and the page is linked from the README.

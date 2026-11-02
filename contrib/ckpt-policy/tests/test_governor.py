@@ -12,9 +12,9 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from ckptctl_pytorch import Governor, Saves, World  # noqa: E402
-from ckptctl_pytorch.glue import BASE_DIR  # noqa: E402
-from ckptctl_pytorch.governor import engine_path  # noqa: E402
+from ckpt_policy import Governor, Saves, World  # noqa: E402
+from ckpt_policy.glue import BASE_DIR  # noqa: E402
+from ckpt_policy.governor import engine_path  # noqa: E402
 
 
 def plan(root, **fields):
@@ -81,7 +81,7 @@ class TestSealed(unittest.TestCase):
             m = g.sealed(7, 512, list(payloads))
             self.assertEqual(m["generation"], 7)
             self.assertEqual(m["step"], 512)
-            self.assertEqual(m["writer"], "ckptctl-pytorch")
+            self.assertEqual(m["writer"], "ckpt-policy")
             self.assertEqual([s["name"] for s in m["shards"]], ["rank-00.bin", "rank-01.bin"])
             self.assertEqual([s["size"] for s in m["shards"]], [64, 64])
             # The hash is of the file that is on disk, not of what the caller said it wrote.
@@ -254,6 +254,20 @@ class TestEngine(unittest.TestCase):
             with self.assertRaises(RuntimeError) as caught:
                 g.start_engine()
             self.assertIn("CKPTCTL_ENGINE", str(caught.exception))
+
+
+class TestDemo(unittest.TestCase):
+    """The demo is the library's own proof: a cadence against the policy, on one synthetic job."""
+
+    def test_the_two_arms_report_their_counts(self):
+        if engine_path() is None:
+            self.skipTest("no ckptctl engine: build it with hack/build-wheel.sh, or set CKPTCTL_ENGINE")
+        from ckpt_policy.demo import run
+
+        rows = run(steps=1000, save_every=500, write_ms=20)
+        self.assertEqual([r.writes for r in rows], [2, 1],
+                         "the cadence writes twice; the policy writes only at the end")
+        self.assertEqual(rows[1].note, "", "the engine should have published a plan")
 
 
 if __name__ == "__main__":

@@ -65,7 +65,7 @@ demand another. This half answers the other question: what a restore would get, 
 
 ## P2 — the one-line integration (4h)
 
-- [x] **2.1** `contrib/ckptctl-pytorch` with zero runtime dependencies (`pyproject.toml`).
+- [x] **2.1** `contrib/ckptctl-pytorch` (now `contrib/ckpt-policy`) with zero runtime dependencies (`pyproject.toml`).
   **done when** `python3 -m unittest discover -s contrib/ckptctl-pytorch/tests -q` passes — 13 tests, no
   torch, no pytest.
 - [x] **2.2** `Governor.step/requested/sealed/resumed/ending` plus SIGTERM glue, rank0-only, every write
