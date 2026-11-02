@@ -9,7 +9,7 @@ IMAGE ?= ghcr.io/bolubo/checkpoint-governor
 # How long the real-clock smoke runs (make smoke MINUTES=2 for a quick check).
 MINUTES ?= 10
 
-.PHONY: all check fmt fmt-check vet build test docs fast flake verify parity ci e2e exp clean dist release install install-smoke release-notes spot prepush resume py drill contrast
+.PHONY: all check fmt fmt-check vet build test docs fast flake verify parity ci e2e exp clean dist release install install-smoke release-notes spot prepush resume py drill contrast waste
 
 all: check
 
@@ -41,6 +41,11 @@ demo:
 # It runs the real loop on an injected clock, so it is seconds and deterministic (decision 0028, P0).
 contrast:
 	$(GO) run experiments/contrast/main.go
+
+# What the framework defaults cost, per scale, using their real intervals and retention. A model, not
+# a measurement: the assumptions line is printed first (decision 0028, P0.4).
+waste:
+	$(GO) run experiments/waste/main.go
 
 # The three situations a user meets, asserted in one line each: the executable version of the README.
 scenarios:

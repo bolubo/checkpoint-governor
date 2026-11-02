@@ -40,7 +40,7 @@ cluster, under two minutes from a clone.
       deploy.
 - [ ] **0.3 A one-liner for people without Go or Python.** The same command inside a container.
   **done when** `docker run …` prints the same four rows.
-- [ ] **0.4 What the framework defaults cost, per scale.** `internal/waste` + `experiments/waste`:
+- [x] **0.4 What the framework defaults cost, per scale.** `internal/waste` + `experiments/waste`:
       the waste fraction is `T_write / (interval × t_step)`, and the interval is **the framework's
       actual default, not a round number**: Hugging Face `save_steps=500` with `save_total_limit=None`
       (keeps every copy, `training_args.py`); Lightning one epoch (`every_n_train_steps=None` and
@@ -52,6 +52,10 @@ cluster, under two minutes from a clone.
   **done when** `make waste` prints one row per scale, each naming the framework default it used and
       the source of that number, plus a test that the waste fraction equals `T_write/(interval·t)`
       and that a write longer than the interval is refused as infeasible.
+  **observed** on the four scales (4h job, 16 B/param, 2 GB/s): Hugging Face 0.3% · 1.6% · 5.6% · **28%**,
+      with 91 GB · 448 GB · 1.6 TB · **7.8 TB** kept; Lightning 0.2% · 0.8% · 2.8% · 14% and one copy;
+      Composer 0.2% · 0.8% · 2.8% · 14% and every copy; Megatron "no default". The page is
+      `docs/waste.md`, and its "what this does not claim" section is part of the artifact.
 
 ## P1 — the Python front door (engine bundled, not rewritten)
 
