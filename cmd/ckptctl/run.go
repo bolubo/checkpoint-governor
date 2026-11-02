@@ -378,16 +378,20 @@ func permitFor(cfg adapters.Config) func(time.Time) (permit.Verdict, time.Time) 
 	}
 }
 
-// causeFor names the event endangering this unit, for the one-decision-per-event rule (0022).
+// causeFor names the event that puts this unit at risk, for the one-decision-per-event rule (0022).
+//
+// It reads one cluster-level fact — "higher-priority work is waiting for room" — and not the scheduler's
+// decision, which this product does not integrate with and cannot see. While the same work waits the id
+// is the same, so the unit knows the event has already been paid for.
 //
 // Empty means the observer did not name one, and the gate then writes as it always did: an event that
 // cannot be identified must never be the reason a save does not happen.
 func causeFor(cfg adapters.Config) func(time.Time) string {
 	return func(time.Time) string {
-		u, err := adapters.ReadUnit(cfg.WorldDir, cfg.Cluster, cfg.UnitID)
-		if err != nil || u.Permit == nil {
+		s, err := adapters.ReadSummary(cfg.WorldDir, cfg.Cluster)
+		if err != nil {
 			return ""
 		}
-		return u.Permit.Event
+		return s.PendingEvent
 	}
 }

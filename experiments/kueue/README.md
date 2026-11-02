@@ -46,6 +46,23 @@ Two findings that changed the design (0022):
 A note on how not to measure this: counting pod phases reports 0 in c1, because Kueue preempts by
 suspending the workload again while the pod is still terminating. The admission state is the fact.
 
+### The waiting job has no pod
+
+The third thing this lab taught, and the one that decides what the observer must read:
+
+```
+$ kubectl get pods -l job-name=arrival
+No resources found.
+$ kubectl get jobs
+arrival   SUSPEND=true
+```
+
+A job held back for quota is **suspended**, so its pods do not exist. An observer that counts pending
+*pods* therefore reads `pendingHigherPriority = 0` in exactly the situation the product exists for: a
+higher-priority arrival is waiting and somebody is about to be taken. The fact lives one layer up, on
+the Job — and there it has a stable identity (`pendingEvent`, the suspended jobs hashed), which is what
+lets one arrival cost one write instead of one per round.
+
 ## Running it
 
 ```sh

@@ -17,6 +17,7 @@ import (
 	"sort"
 	"time"
 
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -52,7 +53,11 @@ type Summary struct {
 	At                time.Time             `json:"at"`
 	StaleAfterSeconds int                   `json:"staleAfterSeconds"`
 	Capabilities      map[string]Capability `json:"capabilities,omitempty"`
-	Nodes             []NodeState           `json:"nodes"`
+	// PendingEvent names the fact "higher-priority work is waiting for room", as one id for the whole
+	// cluster. It is a fact about the arrival, not about any unit and not about what the scheduler will
+	// do with it (0022): while the same work waits, the id is the same and one write answers it.
+	PendingEvent string      `json:"pendingEvent,omitempty"`
+	Nodes        []NodeState `json:"nodes"`
 }
 
 type UnitRecord struct {
@@ -76,11 +81,7 @@ type UnitRecord struct {
 type Permit struct {
 	Verdict string `json:"verdict"`
 	// Cause is the kind of pressure: reclaim.
-	Cause string `json:"cause,omitempty"`
-	// Event identifies this occurrence of the cause: the waiting work, ordered and hashed. The same
-	// waiting workload keeps the same id across rounds, which is what makes one preemption cost one
-	// write instead of one per round (0022).
-	Event string     `json:"event,omitempty"`
+	Cause string     `json:"cause,omitempty"`
 	Rank  int        `json:"rank,omitempty"`
 	Until *time.Time `json:"until,omitempty"`
 }
@@ -116,11 +117,25 @@ func Read(client kubernetes.Interface, opts Options, now time.Time) (Snapshot, e
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("list pods: %w", err)
 	}
-	return Fold(nodes.Items, pods.Items, opts, now), nil
+	// A queue that holds work back does it by suspending the Job, and a suspended Job has no pod: the
+	// waiting higher-priority arrival this product exists to notice is invisible in the pod list.
+	jobs, err := client.BatchV1().Jobs("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		// A cluster with no job API is not a failure: the observer falls back to what it can see.
+		return Fold(nodes.Items, pods.Items, opts, now), nil
+	}
+	return FoldWithJobs(nodes.Items, pods.Items, jobs.Items, opts, now), nil
 }
 
-// Fold is the whole observer minus the API call, so it can be tested with plain objects.
+// Fold is the whole observer minus the API call, so it can be tested with plain objects. Without jobs
+// it can only see what is already running, which is enough for a plain Kubernetes cluster and blind to
+// a queue that holds work back — a suspended Job has no pod at all.
 func Fold(nodes []corev1.Node, pods []corev1.Pod, opts Options, now time.Time) Snapshot {
+	return FoldWithJobs(nodes, pods, nil, opts, now)
+}
+
+// FoldWithJobs folds one read of the cluster, including the jobs the queue has not admitted yet.
+func FoldWithJobs(nodes []corev1.Node, pods []corev1.Pod, jobs []batchv1.Job, opts Options, now time.Time) Snapshot {
 	stale := int(opts.StaleAfter.Seconds())
 	if stale <= 0 {
 		stale = 30
@@ -187,11 +202,20 @@ func Fold(nodes []corev1.Node, pods []corev1.Pod, opts Options, now time.Time) S
 		units = append(units, u)
 	}
 	sort.Slice(units, func(i, j int) bool { return units[i].UnitID < units[j].UnitID })
-	assignPermits(units, int(pendingPriority), pendingEvent(pods))
+
+	// What the queue is holding back. Read from the jobs when the caller could list them, and from the
+	// pods otherwise — a plain cluster has no suspended work, so the fallback is the honest answer
+	// there and not a guess.
+	waiting := int(pendingPriority)
+	if jobs != nil {
+		waiting = suspendedCount(jobs)
+	}
+	assignPermits(units, waiting)
 
 	summary := Summary{
 		Schema: 1, Cluster: opts.Cluster, At: now.UTC(), StaleAfterSeconds: stale,
-		Nodes: make([]NodeState, 0, len(nodes)),
+		PendingEvent: pendingEvent(jobs),
+		Nodes:        make([]NodeState, 0, len(nodes)),
 	}
 	for i := range nodes {
 		n := &nodes[i]

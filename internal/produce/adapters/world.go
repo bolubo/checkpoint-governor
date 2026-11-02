@@ -55,7 +55,12 @@ type WorldSummary struct {
 	At                time.Time                 `json:"at"`
 	StaleAfterSeconds int                       `json:"staleAfterSeconds"`
 	Capabilities      map[string]CapabilityWire `json:"capabilities,omitempty"`
-	Nodes             []NodeState               `json:"nodes"`
+	// PendingEvent names the fact "higher-priority work is waiting for room", as one id for the whole
+	// cluster (0022). It is a fact about the arrival — not about any unit, and not about what the
+	// scheduler will do with it. While the same work waits the id stays the same, so one write answers
+	// it; a different arrival is a different event with its own decision.
+	PendingEvent string      `json:"pendingEvent,omitempty"`
+	Nodes        []NodeState `json:"nodes"`
 }
 
 // CapabilityWire is the on-disk shape of a capability inside a summary, so a summary and
@@ -87,11 +92,7 @@ type UnitRecord struct {
 type UnitPermit struct {
 	Verdict string `json:"verdict"`
 	// Cause is the kind of pressure: reclaim, drain, serialized.
-	Cause string `json:"cause,omitempty"`
-	// Event identifies this occurrence of the cause — the waiting work, ordered and hashed. The same
-	// waiting workload keeps the same id across rounds, which is what makes one preemption cost one
-	// write instead of one per round (0022).
-	Event string     `json:"event,omitempty"`
+	Cause string     `json:"cause,omitempty"`
 	Rank  int        `json:"rank,omitempty"`
 	Until *time.Time `json:"until,omitempty"`
 }
