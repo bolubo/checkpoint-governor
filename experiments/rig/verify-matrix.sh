@@ -18,6 +18,7 @@ cd "$root"
 go build -o "$work/ckpttrainer" ./cmd/ckpttrainer
 go build -o "$work/ckptctl" ./cmd/ckptctl
 
+failed=0
 printf 'fault,line\n' > "$out"
 
 # run <name> <trainer flags...>: write a generation, then ask the classifier what it is.
@@ -35,6 +36,25 @@ run() {
 	# rows that pass, and a CSV whose columns shift by row is trusted for a month and then breeds a bad chart.
 	printf '%s,%s\n' "$name" "$(echo "${line:-no-generation}" | tr ',' ';')" >> "$out"
 	printf '%-14s %s\n' "$name" "${line:-no-generation}"
+	expect "$name" "${line:-no-generation}"
+}
+
+# expect <fault> <line>: the rows whose verdict is a fact about the writer, not about the race.
+#
+# `dual-writer` is deliberately absent. Its verdict depends on which writer sealed last, and a gate that
+# fails half the time gets switched off — the row is recorded, and the finding carries the reasoning.
+expect() {
+	case $1 in
+	clean) want=verified ;;
+	torn-tail) want=hash ;;
+	slow-fsync) want=verified ;;
+	esac
+	[ -n "${want:-}" ] || return 0
+	if ! echo "$2" | grep -q "$want"; then
+		printf 'MISMATCH %s: want %s, got: %s\n' "$1" "$want" "$2"
+		failed=$((failed + 1))
+	fi
+	want=
 }
 
 common="--steps=2 --step-ms=60 --write-ms=40 --shard-bytes=65536 --ranks=2 --contract --save-every=200ms"
@@ -125,8 +145,23 @@ unmount() {
 	printf 'unmount,%s\n' "$(echo "$payload" | tr ',' ';')" >> "$out"
 	printf '%-14s %s  (during: %s, detach: %s, writer exit %s)\n' \
 		"unmount" "${after:-no-generation}" "${during:-none}" "$detach" "$rc"
+
+	# A volume that vanished must leave nothing that verifies, and the writer must say so.
+	if echo "${after:-}" | grep -q verified; then
+		printf 'MISMATCH unmount: a copy verified after the volume was detached\n'
+		failed=$((failed + 1))
+	fi
+	if [ "$detach" != none ] && [ "$rc" -eq 0 ]; then
+		printf 'MISMATCH unmount: the writer exited 0 after losing its volume\n'
+		failed=$((failed + 1))
+	fi
 }
 
 unmount
 
 printf '\nresults in %s\n' "$out"
+if [ "${failed:-0}" -gt 0 ]; then
+	printf '%d row(s) did not match what the classifier promises\n' "$failed"
+	exit 1
+fi
+printf 'every deterministic row matched\n' 

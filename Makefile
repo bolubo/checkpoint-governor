@@ -80,7 +80,7 @@ release: dist
 
 # The experiment rig: paired arms, one fault, one claim. It fails when
 # the baseline also survives, because a fault that does not break the baseline proves nothing.
-exp: exp-d exp-x
+exp: exp-d exp-x exp-verify
 
 # D: does the system DECIDE to write when the fault arrives? Milliseconds, no write at all.
 exp-d:
@@ -92,6 +92,10 @@ exp-x:
 	sh experiments/rig/run.sh l1 user-stop
 	sh experiments/rig/run.sh l1 disk-full
 	sh experiments/rig/run.sh l1 disk-full
+
+# V: does the classifier name the state each fault leaves? Seconds, real processes, real files.
+exp-verify:
+	sh experiments/rig/verify-matrix.sh
 
 # The real-clock smoke: MINUTES=10 by default, a 60s window, the real binaries on the wall
 # clock. It is not part of `verify`: `verify` must stay fast, and a bound that only a machine with
