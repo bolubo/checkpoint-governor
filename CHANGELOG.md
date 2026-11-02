@@ -3,28 +3,35 @@
 One entry per released tag. The prototype's history before this file is `git log`; this file starts at
 the first release that makes a compatibility promise.
 
-## v0.2.0 — 2026-11-02
+## v0.21.0 — 2026-11-02
 
-The release that says whether the work can continue. It ships in two halves, and neither writes a
-checkpoint. Scope and acceptance lines: `docs/product-v0.2.md`.
+The first release where the whole chain was run under a real eviction, and the first where the receipt's numbers
+were checked against a real volume.
 
-**2A, verify and demand** (on the trunk as #153/#154/#160): the three copy states — requested, sealed,
-verified — the four check tiers, the request file, and the refusal to call a copy durable.
+**The receipt now counts what a generation-layout writer (`gen-N`) produces.** Before this release the product
+counted only `step-` directories, so a writer of the other layout was invisible to its own accounting: the receipt
+could say `no writes` while the checkpoint directory filled up. A customer reading that sentence may well go and
+delete the directory themselves — which is why this is the first thing in these notes. Two tests now pin it.
 
-**2B, the resume contract** (this release):
+**Under a real preemption** (`experiments/cluster/join/run.sh`, reproducible and self-cleaning):
 
-- [x] `resume.json` (schema 1) beside the manifest: what was saved, under which world, in which format,
-  what the loader skips. Bounded and strict; `missing` is our conclusion, not the writer's claim.
-- [x] `ckptctl resumable` — `resumable`, `resumable with resharding`, or a refusal that names what is
-  absent; exit 0/1/2.
-- [x] `ckptctl resumed` — the job's report compared with the seal that existed at boot, so "came back and
-  started at step 0" is one sentence.
-- [x] `ckptctl drill` — one loader run, one step compared, the tree fingerprinted before and after; a
-  drill that changes the checkpoint is refused.
-- [x] `contrib/ckptctl-pytorch` — three lines in a loop, zero runtime dependencies, shards untouched.
-- [x] Seven fixtures written by the real trainer, and `make resume` / `make py` / `make drill` in the CI
-  gate.
-- [x] Documentation: `docs/resume-contract.md`, decision 0026, `docs/product-v0.2.md`.
+```
+holders admitted: 4 (of 4)
+taken after 3s: job-writer-c3df0     False
+generations 18 · verified 18 · broken 0 · unchecked 0
+invalid rate 0.00%
+```
+
+**Disk.** The sweep is bounded in bytes and runs every round, so a job that is preempted and then stops writing
+no longer leaves a copy in `.trash` forever; a round's sweep must be able to give back what that round retired
+(without it the trash grew at 31 copies); retention tightens under space pressure; the ledger's one unbounded map
+is capped. A full volume is now a test: three copies survive and verify, the fourth fails, the writer exits
+non-zero.
+
+**Building this repository.** `hack/pr-check.sh` builds the tree a PR will be, not the working directory — CI
+compiles *main plus the PR's files*, and four pull requests went red today because a declaration or a test was
+missing from that list. `hack/footprint.sh` reports what a machine has spent on experiments and fails over
+budget; it reports rather than deletes.
 
 ## v0.15.0 — 2026-11-02
 
