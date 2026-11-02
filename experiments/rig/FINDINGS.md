@@ -72,9 +72,24 @@ printer.
 `sed -n '2p'` picks up a blank line for a passing row. Harmless for a human, and a trap for anything that
 parses the CSV by column.
 
-**Not changed.** A CSV whose columns shift by row is the kind of thing that gets trusted for a month and then
-breeds a wrong chart. When the matrix becomes part of `make ci` (Day 3), the row should be built by a
-structured emitter rather than by `sed`.
+**Changed:** the CSV is `fault,line` — one row, one line, commas neutralised — so a column cannot shift by
+row. The fragile second `sed` call is gone rather than guarded: a field that exists only on failure is a
+field that will be misread as success one day.
+
+**Still owed:** when the matrix becomes part of `make ci` (Day 3), the row should come from a structured
+emitter rather than from formatted text at all.
+
+## F5 — a rebuild from a stale tree silently reverted a rule-fix on main
+
+**Seen:** rebuilding #145 on current main by copying whole files from an older worktree put back
+`docs/product-v1.md` as a citation in `run.go`, which `TestCommentsCiteDecisionsNotPagePaths` catches.
+
+**Means:** the build was fine, the tests were fine locally — because the local tree did not have that test.
+Copying files between trees is a merge, and it was done as a copy.
+
+**Changed:** the rebuild restored the file from main and re-applied the single intended edit. The rule:
+**when transplanting work onto a newer main, take main's file and re-apply the change; never overwrite the
+file.**
 
 ## F6 — the receipt mixed two clocks and invented eight hours
 
@@ -93,14 +108,69 @@ they made a timeline that never happened.
 **Changed:** the receipt formats all three timestamps in UTC. A log line that means different things on
 different machines is worse than one that is inconveniently offset.
 
-## F5 — a rebuild from a stale tree silently reverted a rule-fix on main
+## F7 — retracted: I wrote a finding on top of an experiment that never ran
 
-**Seen:** rebuilding #145 on current main by copying whole files from an older worktree put back
-`docs/product-v1.md` as a citation in `run.go`, which `TestCommentsCiteDecisionsNotPagePaths` catches.
+**What I first wrote:** that an unmounted volume leaves the writer quietly writing to the container's root
+filesystem, producing a checkpoint we verify.
 
-**Means:** the build was fine, the tests were fine locally — because the local tree did not have that test.
-Copying files between trees is a merge, and it was done as a copy.
+**What actually happened:**
 
-**Changed:** the rebuild restored the file from main and re-applied the single intended edit. The rule:
-**when transplanting work onto a newer main, take main's file and re-apply the change; never overwrite the
-file.**
+```
+$ umount /tmp/u1
+umount: /tmp/u1: target is busy.
+```
+
+The kernel refuses to unmount a filesystem with open files. My script ran `umount ... 2>/dev/null || true`,
+so the failure was invisible, the mount stayed up, and the `verified` I saw was **correct behaviour on a
+volume that had never gone away**.
+
+**Why this is written down instead of deleted:** the wrong version was plausible, specific, and had a
+mechanism — the kind of finding that gets repeated in a design review six months later. A retraction with the
+command output is worth more than a deleted paragraph.
+
+**Changed:** the scenario now records whether the unmount actually happened. A refused unmount is its own
+result, not a data-loss story.
+
+## F8 — the instrument lied twice, and both times plausibly
+
+Two entries in this file were produced by a broken measuring device rather than by the system under test.
+They are together because the lesson is the same one, twice.
+
+**(a) A suppressed precondition.** `umount "$mnt" 2>/dev/null || true`. The kernel refuses to unmount a
+filesystem with open files; the `|| true` hid it, the mount stayed up, and the run "proved" a scenario that
+had not happened. The script now records which detach actually occurred — `unmounted`, `lazy-detach`, or
+`none` — so a refused unmount is a result instead of a silence.
+
+**(b) A lost exit code.** `wait $pid; echo "rc=$?"` reported 0 for a process that was failing, because `$?`
+does not survive this shell invocation. Measured directly:
+
+```
+$ sh -c 'exit 7'; echo rc=$?
+rc=0
+$ if sh -c 'exit 7'; then echo ok; else echo failed; fi
+failed
+```
+
+The status is there; the *expansion* is not. Every exit-code claim made with `$?` through a wrapped shell is
+therefore suspect, and the ones still standing here were re-measured with control flow
+(`cmd || echo FAILED`).
+
+**Rule:** a suppressed error is a suppressed result, and a status read through an interpreter you have not
+tested is a guess. Before trusting a harness, make it fail on purpose and check that the failure arrives.
+
+## F9 — retracted: the writer fails loudly, as it turned out
+
+**What I first wrote:** a failed seal is printed and the process exits 0, so any supervisor sees success.
+
+**What actually happened:** the exit code was lost by the shell (F8b). Measured with control flow:
+
+```
+$ /tmp/trainer2 --dir=/proc/denied --steps=1 >/dev/null 2>&1 || echo FAILED
+FAILED
+```
+
+and for a save that fails mid-run, after the directory is deleted under it: `FAILED` as well. The writer
+exits non-zero in both cases; `main` prints the error and calls `os.Exit(1)`, exactly as the code reads.
+
+**Kept, not deleted:** two findings in one session came from instruments rather than from the system, and
+both were more specific and more alarming than the truth. That ratio is the argument for keeping this file.
