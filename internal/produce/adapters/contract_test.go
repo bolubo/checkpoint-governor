@@ -133,8 +133,10 @@ func TestTheProbeContract(t *testing.T) {
 
 		// risk.eviction-likely: an inference over the world, with four guardrails, so all four
 		// answers are reachable.
+		// The firing case needs both terms now: pressure *and* somebody higher waiting. A full node with
+		// nobody waiting above it took nobody in any of the twelve sweep cases (experiments/kueue).
 		{"risk.eviction-likely", big, produce.Fresh, true, func(t *testing.T) produce.Probe {
-			return (evictionLikely{}).with(writeWorldAt(t, worldOpts{cpuPct: 92, memPct: 40, tracking: true}, big.Now))
+			return (evictionLikely{}).with(writeWorldAt(t, worldOpts{cpuPct: 92, memPct: 40, pending: 2, tracking: true}, big.Now))
 		}},
 		{"risk.eviction-likely", big, produce.Fresh, false, func(t *testing.T) produce.Probe {
 			return (evictionLikely{}).with(writeWorldAt(t, worldOpts{cpuPct: 10, memPct: 10, tracking: true}, big.Now))

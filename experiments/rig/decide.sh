@@ -122,11 +122,22 @@ d_eviction() {
 }
 
 d_cordoned() {
+	# A cordon only stops new pods from arriving. It does not take the ones already running: the death is
+	# the drain, and the drain announces itself. This case used to expect `save` from the inference on a
+	# cordon alone, which is the conflation 0023 removed — and which the Kueue sweep measured: a waiting
+	# arrival with room to spare takes nobody.
 	d="$TMP/d-cordoned"; mkdir -p "$d"
 	world "$d" yes 10 0 no
 	ms=$(round "$d")
-	assert_decision d-cordoned "$d" save risk.eviction-likely "$ms" \
-		"an almost empty node that is being drained"
+	assert_decision d-cordoned "$d" skip - "$ms" \
+		"a cordon alone takes nobody; nothing says this work is at risk yet"
+
+	# The same node once the drain speaks. Now the death is a fact, and the answer is the write.
+	d="$TMP/d-cordoned-announced"; mkdir -p "$d"
+	world "$d" yes 10 0 yes
+	ms=$(round "$d")
+	assert_decision d-cordoned-announced "$d" save - "$ms" \
+		"the drain announced itself: that is the death, and it is worth a write"
 }
 
 d_low_space() {

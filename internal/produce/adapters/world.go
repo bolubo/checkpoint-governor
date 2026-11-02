@@ -55,6 +55,9 @@ type WorldSummary struct {
 	At                time.Time                 `json:"at"`
 	StaleAfterSeconds int                       `json:"staleAfterSeconds"`
 	Capabilities      map[string]CapabilityWire `json:"capabilities,omitempty"`
+	// Queues is what each queue can still admit and whether it may preempt: the two facts the measured
+	// rule needs besides "somebody higher is waiting" (0022).
+	Queues []QueueWire `json:"queues,omitempty"`
 	// PendingEvent names the fact "higher-priority work is waiting for room", as one id for the whole
 	// cluster (0022). It is a fact about the arrival — not about any unit, and not about what the
 	// scheduler will do with it. While the same work waits the id stays the same, so one write answers
@@ -81,6 +84,9 @@ type UnitRecord struct {
 	QoS               string     `json:"qos"`
 	DeletionTimestamp *time.Time `json:"deletionTimestamp"`
 	Evicted           bool       `json:"evicted"`
+	// HigherPriorityWaiting counts the held-back jobs that outrank this unit: the second term of the
+	// measured rule, and zero means this unit cannot be the one taken to make room.
+	HigherPriorityWaiting int `json:"higherPriorityWaiting,omitempty"`
 	// Permit is the fleet's verdict for this unit (docs/decisions/0021). Absent means permission: an
 	// observer that predates the field, a cluster with one unit, and every unreadable value all leave
 	// the governor behaving exactly as it did before.
@@ -231,4 +237,38 @@ func writeAtomic(path string, raw []byte) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// QueueWire is one queue's numbers, as the observer published them.
+type QueueWire struct {
+	Name        string `json:"name"`
+	FreeMilli   int64  `json:"freeMilli"`
+	DemandMilli int64  `json:"demandMilli"`
+	Allowed     bool   `json:"allowed"`
+}
+
+// ShortfallMilli is how much more the waiting work needs than the queue can give.
+func (q QueueWire) ShortfallMilli() int64 {
+	if d := q.DemandMilli - q.FreeMilli; d > 0 {
+		return d
+	}
+	return 0
+}
+
+// PressingQueue picks the queue that is actually under pressure: the one with the largest shortfall.
+//
+// With one queue — the common deployment — this is exact. With several it is an upper bound on the
+// shortfall a unit in any of them faces, and the display names the queue it read so a person can see
+// which one that was.
+func (s WorldSummary) PressingQueue() (QueueWire, bool) {
+	if len(s.Queues) == 0 {
+		return QueueWire{}, false
+	}
+	best := s.Queues[0]
+	for _, q := range s.Queues[1:] {
+		if q.ShortfallMilli() > best.ShortfallMilli() {
+			best = q
+		}
+	}
+	return best, true
 }

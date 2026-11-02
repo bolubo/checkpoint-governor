@@ -41,6 +41,14 @@ type UnitView struct {
 	RatiosKnown           bool
 	Cordoned              bool
 	PendingHigherPriority int
+	// HigherPriorityWaiting is how many held-back jobs outrank this unit — the term the measured rule
+	// uses, because the node-level count cannot answer "could I be the one taken".
+	HigherPriorityWaiting int
+	// The queue's numbers, when the cluster publishes them. QueueKnown is false when it does not, and a
+	// rule that needs them must then say unknown rather than guess.
+	ShortfallMilli    int64
+	PreemptionAllowed bool
+	QueueKnown        bool
 
 	// Unit facts.
 	Priority  int32
@@ -96,6 +104,7 @@ func Project(worldDir, cluster, unitID string, declared Deployment, now time.Tim
 		v.Priority = u.Priority
 		v.QoS = u.QoS
 		v.Announced = u.Evicted || (u.DeletionTimestamp != nil && !u.DeletionTimestamp.IsZero())
+		v.HigherPriorityWaiting = u.HigherPriorityWaiting
 	case os.IsNotExist(err):
 		// Not an error: this deployment may not track units at all.
 	default:
@@ -111,8 +120,18 @@ func Project(worldDir, cluster, unitID string, declared Deployment, now time.Tim
 	}
 	v.Cordoned = n.Cordoned
 	v.PendingHigherPriority = n.PendingHigherPriority
+	if v.HigherPriorityWaiting == 0 {
+		// No queue holds work back here, so the node's pending count is the same fact measured one
+		// layer down. Without this, a cluster with no Kueue could never report the condition.
+		v.HigherPriorityWaiting = n.PendingHigherPriority
+	}
 	if n.Allocatable.CPUMilli > 0 && !n.RequestsUnknown {
 		v.RatiosKnown = true
+	}
+	if q, ok := s.PressingQueue(); ok {
+		v.QueueKnown = true
+		v.ShortfallMilli = q.ShortfallMilli()
+		v.PreemptionAllowed = q.Allowed
 	}
 	v.CPUUse = ratio(n.Requested.CPUMilli, n.Allocatable.CPUMilli)
 	v.MemUse = ratio(n.Requested.MemBytes, n.Allocatable.MemBytes)
