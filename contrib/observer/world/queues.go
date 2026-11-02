@@ -25,11 +25,24 @@ type QueueState struct {
 	DemandMilli int64 `json:"demandMilli"`
 	// Allowed is false when the queue may not preempt within itself: the arrival waits instead.
 	Allowed bool `json:"allowed"`
+	// Cohort is the group this queue belongs to, empty when it stands alone.
+	Cohort string `json:"cohort,omitempty"`
+	// CohortFreeMilli is what the whole cohort can still admit. Members lend each other their unused
+	// quota, so this — not FreeMilli — is the number a shortfall has to be measured against. Measured:
+	// with only the queue's own headroom, a cohort case predicted 3 and 5 preemptions where Kueue took
+	// none (experiments/kueue, rows `cohort`).
+	CohortFreeMilli int64 `json:"cohortFreeMilli,omitempty"`
 }
 
-// ShortfallMilli is how much more the waiting work needs than the queue can give.
+// ShortfallMilli is how much more the waiting work needs than can be given, counting what the queue's
+// cohort would lend it. The cohort number is what the measurement asked for: without it a lending queue
+// reports a shortfall that nobody has to die for.
 func (q QueueState) ShortfallMilli() int64 {
-	if d := q.DemandMilli - q.FreeMilli; d > 0 {
+	room := q.FreeMilli
+	if q.Cohort != "" {
+		room = q.CohortFreeMilli
+	}
+	if d := q.DemandMilli - room; d > 0 {
 		return d
 	}
 	return 0
@@ -44,7 +57,7 @@ var clusterQueueGVR = schema.GroupVersionResource{
 //
 // A cluster without Kueue returns nothing rather than an error: the product serves clusters that have
 // no queue at all, and "no queue" is a fact the caller already handles.
-func QueueUsage(dyn dynamic.Interface, jobs []batchv1.Job, now time.Time) []QueueState {
+func QueueUsage(dyn dynamic.Interface, jobs []batchv1.Job, now time.Time, window time.Duration) []QueueState {
 	if dyn == nil {
 		return nil
 	}
@@ -56,7 +69,7 @@ func QueueUsage(dyn dynamic.Interface, jobs []batchv1.Job, now time.Time) []Queu
 		return nil
 	}
 
-	demand := demandByQueue(jobs)
+	demand := demandByQueue(jobs, now, window)
 	out := make([]QueueState, 0, len(list.Items))
 	for i := range list.Items {
 		cq := &list.Items[i]
@@ -69,18 +82,67 @@ func QueueUsage(dyn dynamic.Interface, jobs []batchv1.Job, now time.Time) []Queu
 			q.FreeMilli = 0
 		}
 		q.DemandMilli = demand[cq.GetName()]
+		q.Cohort = cohortOf(cq)
 		out = append(out, q)
 	}
+
+	// A cohort lends its members' unused quota to each other, so the room available to one member is the
+	// whole group's. Summed rather than bounded by each member's borrowingLimit: the limit caps what a
+	// member may take, and ignoring it over-states the room, which is the safe direction for a rule whose
+	// job is to stop warning about preemptions that will not happen.
+	byCohort := map[string]int64{}
+	for _, q := range out {
+		if q.Cohort != "" {
+			byCohort[q.Cohort] += q.FreeMilli
+		}
+	}
+	for i := range out {
+		if out[i].Cohort != "" {
+			out[i].CohortFreeMilli = byCohort[out[i].Cohort]
+		}
+	}
 	return out
+}
+
+// countsAsDemand says whether this job is asking for room, or asked for it recently enough that its
+// arrival is still the event being answered.
+//
+// Measured on the lab: an arrival on a preemptible queue is suspended for **1117ms** before Kueue admits
+// it (experiments/kueue/window.py). A controller that looks every five seconds misses that entirely, so
+// "currently suspended" cannot be the definition of the event — it is a flash. A job that was admitted a
+// moment ago still explains the pressure it created, and its admission time is a fact that stays put.
+// waitingOrArrived is the identity of an event: a job that has never run (so it is waiting for room,
+// however long it has waited), or one created within the window (so it has just arrived).
+//
+// The two clauses matter separately, and picking the wrong one is what made this unstable:
+//
+//   - a *preempted holder* is suspended too, but it ran before, so it is a victim and not an arrival —
+//     counting suspended jobs alone put the victim into the event and changed the id mid-event;
+//   - an *admitted arrival* is no longer suspended, and counting suspended jobs alone made the event
+//     vanish 1.1s after it appeared.
+//
+// Together they hold one id from the moment a job appears until the window after it is admitted.
+func waitingOrArrived(j batchv1.Job, now time.Time, window time.Duration) bool {
+	if j.Status.StartTime == nil {
+		return true
+	}
+	return window > 0 && now.Sub(j.CreationTimestamp.Time) <= window
+}
+
+func cohortOf(cq *unstructured.Unstructured) string {
+	name, _, _ := unstructured.NestedString(cq.Object, "spec", "cohort")
+	return name
 }
 
 // demandByQueue sums the requests of the jobs the queues are holding back, keyed by the queue the job
 // asked for. Kueue names the LocalQueue on the job, and a LocalQueue points at a ClusterQueue; in the
 // common single-queue deployment the two share a name, and where they do not the demand for a queue
 // with no matching name is simply not attributed (the shortfall then reads low, never high).
-func demandByQueue(jobs []batchv1.Job) map[string]int64 {
+func demandByQueue(jobs []batchv1.Job, now time.Time, window time.Duration) map[string]int64 {
 	out := map[string]int64{}
 	for _, j := range jobs {
+		// Suspended only, deliberately. The shortfall is `demand − free`, and an admitted arrival is
+		// already inside `free`: counting it again would predict deaths for room it has taken.
 		if !suspended(j) {
 			continue
 		}
@@ -181,7 +243,9 @@ func parseMilli(s string) int64 {
 		case r == '.':
 			seenDot = true
 		case r == 'm':
-			return v*1000 + frac*1000/div
+			// Already milli-units: `2500m` is 2500, not 2,500,000. Multiplying here is how a queue with
+			// 1.5 cores free reported zero, and how every shortfall came out equal to the arrival's size.
+			return v + frac/div
 		default:
 			return v * 1000
 		}

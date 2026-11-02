@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"sort"
+	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
 )
@@ -23,8 +24,8 @@ func suspended(j batchv1.Job) bool {
 // work produce the same id — it is still the same thing happening — while a different waiting job
 // produces a different one and gets its own decision. It is a fact about the arrival, not a verdict
 // about who will be taken.
-func pendingEvent(jobs []batchv1.Job) string {
-	names := suspendedNames(jobs)
+func pendingEvent(jobs []batchv1.Job, now time.Time, window time.Duration) string {
+	names := demandNames(jobs, now, window)
 	if len(names) == 0 {
 		return ""
 	}
@@ -38,18 +39,18 @@ func pendingEvent(jobs []batchv1.Job) string {
 
 // suspendedCount is how many workloads the queue is holding back. With one slot per arrival that is
 // also the number of units which must die to let them in — the estimate the fanout comparison needs.
-func suspendedCount(jobs []batchv1.Job) int {
-	return len(suspendedNames(jobs))
+func demandCount(jobs []batchv1.Job, now time.Time, window time.Duration) int {
+	return len(demandNames(jobs, now, window))
 }
 
 // higherPriorityWaiting counts the jobs the queue holds back that outrank this unit.
 //
 // It is the second term of the measured rule. A unit with nothing above it cannot be the one taken to
 // make room, which is why equal priorities do not preempt — measured, not assumed.
-func higherPriorityWaiting(mine int32, jobs []batchv1.Job, classes map[string]int32) int {
+func higherPriorityWaiting(mine int32, jobs []batchv1.Job, classes map[string]int32, now time.Time, window time.Duration) int {
 	n := 0
 	for _, j := range jobs {
-		if suspended(j) && jobPriority(j, classes) > mine {
+		if waitingOrArrived(j, now, window) && jobPriority(j, classes) > mine {
 			n++
 		}
 	}
@@ -71,10 +72,10 @@ func jobPriority(j batchv1.Job, classes map[string]int32) int32 {
 	return 0
 }
 
-func suspendedNames(jobs []batchv1.Job) []string {
+func demandNames(jobs []batchv1.Job, now time.Time, window time.Duration) []string {
 	var names []string
 	for _, j := range jobs {
-		if !suspended(j) {
+		if !waitingOrArrived(j, now, window) {
 			continue
 		}
 		names = append(names, j.Namespace+"/"+j.Name)

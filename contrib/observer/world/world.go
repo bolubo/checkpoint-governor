@@ -78,7 +78,7 @@ type UnitRecord struct {
 	// this unit cannot be the one taken to make room, whatever else is true.
 	HigherPriorityWaiting int `json:"higherPriorityWaiting,omitempty"`
 	// Permit is this unit's permission to spend a write when one cause endangers several units
-	// (decision 0021). It is written here, and only here, because the answer needs the set: a
+	// (docs/decisions/0021). It is written here, and only here, because the answer needs the set: a
 	// governor that sees one unit cannot tell "I am the victim" from "my neighbour is".
 	Permit *Permit `json:"permit,omitempty"`
 }
@@ -106,6 +106,10 @@ type Options struct {
 	// "none" for a summary-only observer.
 	Units     string
 	UnitLabel string
+	// EventWindow is how long an admitted job keeps counting as "just arrived". It has to exceed the
+	// decision cadence by a comfortable margin: the suspension that makes a job visible lasts about a
+	// second on a preemptible queue.
+	EventWindow time.Duration
 	// Dynamic reads the queue's own numbers. Nil means the cluster has no queue API (or the caller did
 	// not build one), and the summary then simply has no queue section.
 	Dynamic dynamic.Interface
@@ -142,7 +146,7 @@ func Read(client kubernetes.Interface, opts Options, now time.Time) (Snapshot, e
 	}
 
 	snap := FoldWithJobs(nodes.Items, pods.Items, jobs.Items, classes, opts, now)
-	snap.Summary.Queues = QueueUsage(opts.Dynamic, jobs.Items, now)
+	snap.Summary.Queues = QueueUsage(opts.Dynamic, jobs.Items, now, opts.EventWindow)
 	return snap, nil
 }
 
@@ -221,7 +225,7 @@ func FoldWithJobs(nodes []corev1.Node, pods []corev1.Pod, jobs []batchv1.Job, cl
 		units = append(units, u)
 	}
 	for i := range units {
-		units[i].HigherPriorityWaiting = higherPriorityWaiting(units[i].Priority, jobs, classes)
+		units[i].HigherPriorityWaiting = higherPriorityWaiting(units[i].Priority, jobs, classes, now, opts.EventWindow)
 	}
 	sort.Slice(units, func(i, j int) bool { return units[i].UnitID < units[j].UnitID })
 
@@ -230,13 +234,13 @@ func FoldWithJobs(nodes []corev1.Node, pods []corev1.Pod, jobs []batchv1.Job, cl
 	// there and not a guess.
 	waiting := int(pendingPriority)
 	if jobs != nil {
-		waiting = suspendedCount(jobs)
+		waiting = demandCount(jobs, now, opts.EventWindow)
 	}
 	assignPermits(units, waiting)
 
 	summary := Summary{
 		Schema: 1, Cluster: opts.Cluster, At: now.UTC(), StaleAfterSeconds: stale,
-		PendingEvent: pendingEvent(jobs),
+		PendingEvent: pendingEvent(jobs, now, opts.EventWindow),
 		Nodes:        make([]NodeState, 0, len(nodes)),
 	}
 	for i := range nodes {

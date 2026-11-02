@@ -38,6 +38,33 @@ A timer cannot know that the same workload is still waiting; the event's identit
 room, ordered and hashed. Two rounds of the same waiting workload carry the same id, because they are
 the same thing happening; a different waiting workload is a new event and gets its own decision.
 
+### The identity had to be measured, and it cost two corrections
+
+The event was first defined as "the jobs the queue is holding back", which is the suspended set. Measured
+on the lab (`experiments/kueue/window.py`):
+
+```
+  165ms  suspended (waiting)
+ 1281ms  admitted
+waiting window: 1117ms
+```
+
+A controller that decides every five seconds will usually miss that entirely, so "waiting *now*" is not an
+identity — it is a flash. Two amendments followed, and one hole is still open:
+
+1. **The event survives admission**: identity is "has never run, or was created within the window". A job
+   held back has not started, however long it has waited; a job admitted a minute ago still explains the
+   pressure it created.
+2. **A preempted holder is not an arrival**: it is suspended too, but it ran before, so it has a start
+   time and is excluded. Without that clause the victim entered the event and the id changed mid-event.
+
+**Still open, stated plainly:** a job *recreated inside the window* joins the id, so in a lab that
+recreates its holders every case, the id hashes the holders along with the arrival. In production a unit is
+created once and this does not arise — which is exactly the kind of difference a lab can hide. The honest
+fix is not a cleverer window: it is publishing the per-job facts (name, created-at, priority, waiting)
+and letting the **governor**, which remembers its last write, decide what is new. A stateless observer
+cannot answer "has this already been paid for".
+
 **An unreadable id is not an identity.** No observer, no field, an observer that predates the field: the
 gate has nothing to compare, and refusing on that would suppress exactly the write the risk exists to
 justify. Empty means write.

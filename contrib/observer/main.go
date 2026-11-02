@@ -29,6 +29,8 @@ func main() {
 	units := fs.String("units", "labeled", "which pods get a unit record: labeled|all|none")
 	unitLabel := fs.String("unit-label", "ckpt-governor.io/unit", "pods with this label are units")
 	staleAfter := fs.Int("stale-after-seconds", 30, "how long a reader may believe the summary")
+	eventWindow := fs.Duration("event-window", 5*time.Minute,
+		"how long an admitted job keeps counting as just arrived (must exceed the reader's cadence)")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		os.Exit(2)
 	}
@@ -58,7 +60,7 @@ func main() {
 
 	opts := world.Options{
 		Cluster: name, StaleAfter: time.Duration(*staleAfter) * time.Second,
-		Units: *units, UnitLabel: *unitLabel, Dynamic: dyn,
+		Units: *units, UnitLabel: *unitLabel, Dynamic: dyn, EventWindow: *eventWindow,
 	}
 
 	for {
