@@ -55,6 +55,20 @@ never hangs: it ends in `expired` at the deadline.
 **Done when** `make ci` prints the matrix, and the cluster run ends with a verified generation after a
 preemption that was actually caused by Kueue.
 
+**What actually happened (first half done, second half not).** `make exp-verify` is in the gate: five real
+processes, a real tmpfs, and the deterministic rows now fail the build when a verdict is wrong. The cluster
+half did not go as planned, and the reason is worth more than the run would have been:
+
+- `kueue-lab` came up and the controller reached 1/1, but `run.sh c1` — the case that exists to prove
+  preemption — **admitted the arrival instead of preempting**. A case that quietly stops testing its own
+  claim is worse than a failing one, because it stays green.
+- more importantly, **the loop is not in the cluster at all**: there is no deploy target here, no governor
+  workload, no `ckpttrainer` under Kueue. Two green halves (classifier, preemption) do not make a joined
+  whole, and Day 4 must not write as if they did.
+
+So Day 3 is "the matrix is a gate" plus "a negative result about the lab", and the joined run becomes the
+first item of Day 4 — or, if it cannot be built in the time left, the thing the write-up says is missing.
+
 ## Day 4 — the write-up
 
 - the CSV, the numbers, and the two that matter: **work lost per preemption** and **invalid-checkpoint rate**
