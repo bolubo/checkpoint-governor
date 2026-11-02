@@ -113,11 +113,14 @@ the manifest", and the receipt says so.
 
 ## Phase 5 — wire it up
 
-- [ ] **5.1 `explain` answers "why is this checkpoint not verified".**
+- [x] **5.1 `explain` answers "why is this checkpoint not verified".**
   Same door-list discipline as `why-no-write.md`: the first thing that refused is the answer.
+  **Built as its own command, `ckptctl verify`.** `explain` reads the plan and explains a *decision*;
+  `verify` reads the disk and reports a *state*. One command answering both would be about a decision and
+  a file at once, and worse at each.
 - [ ] **5.2 Metrics.** `P(verified | a unit was taken)`, attempts per preemption, work lost in seconds
   (as a range), invalid-checkpoint rate (must be 0).
-- [ ] **5.3 The integration contract, one page for the writer's author.** Save-on-demand, seal-last, the
+- [x] **5.3 The integration contract, one page for the writer's author.** Save-on-demand, seal-last, the
   manifest schema, and what we do when it is late.
 
 ---
