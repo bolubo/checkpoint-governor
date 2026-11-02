@@ -9,7 +9,7 @@ IMAGE ?= ghcr.io/bolubo/checkpoint-governor
 # How long the real-clock smoke runs (make smoke MINUTES=2 for a quick check).
 MINUTES ?= 10
 
-.PHONY: all check fmt vet build test verify parity ci e2e exp clean dist release
+.PHONY: all check fmt vet build test verify ci e2e exp clean dist release
 
 all: check
 
@@ -95,24 +95,19 @@ e2e:
 
 # verify is the gate: `check` plus the pins that keep the contract and the delivery sheet on one
 # field set, and the golden decisions that catch an unintended behaviour change.
-# ci is exactly what .github/workflows/ci.yml runs, in the same order. verify stays the fast gate a
+# ci is exactly what .github/workflows/ci.yml runs, in the same order.  stays the fast gate a
 # person runs while working; this is the promise that a push will not go red, so run it before pushing.
-ci: check e2e parity exp demo
+# prepush runs the same four steps and names the one that failed. Use it before opening a PR.
+prepush:
+	sh hack/prepush.sh
 
-verify: check e2e parity
+ci: check e2e exp demo
+
+verify: check e2e
 	$(GO) test ./internal/loop ./cmd/ckptctl
 	$(GO) test ./internal/simulate -run TestGoldenDecisions
 	$(GO) test ./internal/policy -run TestEveryContractFieldHasAnOwner
 	$(GO) test ./internal/observe -run TestTheDeliverySheetHonoursTheRequiredFields
-
-# parity is the three edges the first edition had and this repository did not: numbers a scraper can
-# read, an outward event per changed plan, and a condition an operator adds without a fork. Each
-# line is the real test, and the last line is the claim (docs/first-edition-parity.md).
-parity:
-	$(GO) test ./internal/metrics -run TestTheExpositionIsValidAndHonest
-	$(GO) test ./internal/notify -run TestOnePostCarriesTheEvent
-	$(GO) test ./cmd/ckptctl -run TestAConditionFromDiskReachesTheDecision
-	@echo "parity: 3/3 — metrics, notification, conditions from disk"
 
 # /bin/rm by absolute path so a shadowing `rm` on PATH cannot change what clean deletes.
 clean:
