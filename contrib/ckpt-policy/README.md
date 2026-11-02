@@ -1,21 +1,37 @@
-# ckptctl-pytorch
+# ckpt-policy
 
-The training loop's half of the contract. Three lines, no runtime dependencies, and the shards stay with
-whatever library you already use.
+The training loop's half of the contract: one install, three lines, no runtime dependencies, and the
+shards stay with whatever library you already use.
+
+```bash
+make wheel                     # from the repository root: the wheel carries the Go engine
+python3 -m pip install dist/wheels/ckpt_policy-*.whl
+```
 
 ```python
-from ckptctl_pytorch import Governor, World, Saves
+from ckpt_policy import Governor, World, Saves
 
-g = Governor("/ckpt/job-1", world=World(ranks=8), saves=Saves())
+g = Governor("/ckpt/job-1", world=World(ranks=8), saves=Saves(), start_engine=True)
 
 # ... load the latest checkpoint, then say what you adopted (one call)
 g.resumed(gen=7, step=512, seconds=load_seconds)
 
 for step, batch in loader:
     g.step(step)
-    if g.requested():
+    if g.should_save():               # the plan asked; the whole write side, one line
         gen = g.generation()          # write into gen-<gen>/, with your library
         g.sealed(gen, step, ["rank-00.bin", "..."])
+```
+
+`start_engine=True` starts the engine for that directory; `close()` (or `with Governor(...)`) stops it.
+If the engine dies, the plan ages out and `should_save()` answers false — the caller's fallback is the
+end-of-training write and the announced stop. The decision stays in Go; this package does not
+re-implement it.
+
+To see the two arms without Go on PATH:
+
+```bash
+python -m ckpt_policy.demo
 ```
 
 ## What it writes, and what it never writes
@@ -41,7 +57,7 @@ says `adopted gen 7 (step 512), load 9.1s` (decision 0026).
 Standard library only:
 
 ```bash
-python3 -m unittest discover -s contrib/ckptctl-pytorch/tests -q
+python3 -m unittest discover -s contrib/ckpt-policy/tests -q
 ```
 
 `torch` appears only in `examples/`, because that example has to be a real training loop to be worth

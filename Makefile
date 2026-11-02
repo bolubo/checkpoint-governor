@@ -130,8 +130,8 @@ resume:
 # The training-script adapter. Standard library only: no install step, and no torch on the runner.
 # The engine is built here so the client's start/read/degrade path is exercised by the same gate.
 py:
-	$(GO) build -trimpath -o contrib/ckptctl-pytorch/ckptctl_pytorch/_bin/ckptctl ./cmd/ckptctl
-	python3 -m unittest discover -s contrib/ckptctl-pytorch/tests -q
+	$(GO) build -trimpath -o contrib/ckpt-policy/ckpt_policy/_bin/ckptctl ./cmd/ckptctl
+	python3 -m unittest discover -s contrib/ckpt-policy/tests -q
 
 # The wheel carries the engine, so `pip install` is the whole install (decision 0028, P1.1).
 wheel:

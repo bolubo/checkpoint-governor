@@ -17,7 +17,7 @@ left, say what it is, and ask again when it is wrong.
   in which format, and what the loader will skip. It is untrusted input: bounded, strict, one JSON value.
 - **Three verdicts, one per question.** `ckptctl resumable` (can this continue?), `ckptctl resumed` (did
   the job adopt the newest seal it could see?), `ckptctl drill` (prove it with one real step).
-- **A one-line adapter.** `contrib/ckptctl-pytorch`: `step()`, `requested()`, `sealed()`, `resumed()`,
+- **A one-line adapter.** `contrib/ckptctl-pytorch` (now `contrib/ckpt-policy`): `step()`, `requested()`, `sealed()`, `resumed()`,
   `ending()`; zero runtime dependencies; the shards stay with the user's library.
 - **Two accounts of time-to-resume.** Restart belongs to the platform; load belongs to the job (`load
   seconds`); a drill owns both and prints the total.

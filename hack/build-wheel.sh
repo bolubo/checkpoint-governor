@@ -7,8 +7,8 @@
 set -eu
 
 HERE=$(cd "$(dirname "$0")/.." && pwd)
-PKG="$HERE/contrib/ckptctl-pytorch"
-BIN="$PKG/ckptctl_pytorch/_bin"
+PKG="$HERE/contrib/ckpt-policy"
+BIN="$PKG/ckpt_policy/_bin"
 OUT="$HERE/dist/wheels"
 GO=${GO:-go}
 
@@ -29,7 +29,7 @@ echo "engine: $GOOS/$GOARCH"
 # laptop with pip can produce the wheel.
 python3 -m pip wheel "$PKG" -w "$OUT" --no-deps -q
 
-WHEEL=$(ls -t "$OUT"/ckptctl_pytorch-*.whl 2>/dev/null | head -1)
+WHEEL=$(ls -t "$OUT"/ckpt_policy-*.whl 2>/dev/null | head -1)
 if [ -z "$WHEEL" ]; then
 	echo "wheel: not built" >&2
 	exit 1

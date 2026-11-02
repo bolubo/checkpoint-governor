@@ -10,7 +10,7 @@ import time
 import torch
 from torch import nn
 
-from ckptctl_pytorch import Governor, Saves, World
+from ckpt_policy import Governor, Saves, World
 
 JOB = "/ckpt/job-1"
 

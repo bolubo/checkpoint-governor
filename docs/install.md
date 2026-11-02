@@ -21,11 +21,11 @@ With Go, the same two binaries come from a checkout: `make install`, or
 If the job is Python, one package tells the governor where the loop is:
 
 ```bash
-pip install ./contrib/ckptctl-pytorch     # zero runtime dependencies
+pip install ./contrib/ckpt-policy     # zero runtime dependencies
 ```
 
 ```python
-from ckptctl_pytorch import Governor, World, Saves
+from ckpt_policy import Governor, World, Saves
 g = Governor("/ckpt/job-1", world=World(ranks=8), saves=Saves())
 ```
 

@@ -6,8 +6,8 @@ dist/
 __pycache__/
 *.pyc
 *.egg-info/
-contrib/ckptctl-pytorch/build/
-contrib/ckptctl-pytorch/ckptctl_pytorch/_bin/
+contrib/ckpt-policy/build/
+contrib/ckpt-policy/ckpt_policy/_bin/
 .idea/
 .vscode/
 experiments/rig/.bin/

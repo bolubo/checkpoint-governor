@@ -45,7 +45,7 @@ CLI-first, and not a standards body.
 ## Consequences
 
 - **Python becomes the product surface without a rewrite.** The wheel carries the engine
-  (`ckptctl_pytorch/_bin`), the client starts it and reads `.ckpt-governor/state.json`; the Go engine, its
+  (`ckpt_policy/_bin`), the client starts it and reads `.ckpt-governor/state.json`; the Go engine, its
   tests and the plan contract are unchanged. The price is a platform wheel and one small process per job
   we actually decide for.
 - **The repository's first screen changes.** `pip install` plus three lines, then the contrast table;

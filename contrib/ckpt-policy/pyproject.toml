@@ -3,7 +3,7 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ckptctl-pytorch"
+name = "ckpt-policy"
 version = "0.2.0"
 description = "Tell checkpoint-governor where the loop is, and let it tell you when a write is worth doing"
 readme = "README.md"
@@ -11,9 +11,9 @@ requires-python = ">=3.9"
 dependencies = []
 
 [tool.setuptools.packages.find]
-include = ["ckptctl_pytorch*"]
+include = ["ckpt_policy*"]
 
 # The wheel carries the Go engine so `pip install` is the whole install: no second download, no PATH
 # entry, no `go install`. `hack/build-wheel.sh` compiles it here before the wheel is built.
 [tool.setuptools.package-data]
-ckptctl_pytorch = ["_bin/*"]
+ckpt_policy = ["_bin/*"]
