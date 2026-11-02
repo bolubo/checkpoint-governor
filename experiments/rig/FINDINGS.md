@@ -93,6 +93,68 @@ they made a timeline that never happened.
 **Changed:** the receipt formats all three timestamps in UTC. A log line that means different things on
 different machines is worse than one that is inconveniently offset.
 
+## F7 — retracted: I wrote a finding on top of an experiment that never ran
+
+**What I first wrote:** that an unmounted volume leaves the writer quietly writing to the container's root
+filesystem, producing a checkpoint we verify.
+
+**What actually happened:**
+
+```
+$ umount /tmp/u1
+umount: /tmp/u1: target is busy.
+```
+
+The kernel refuses to unmount a filesystem with open files. My script ran `umount ... 2>/dev/null || true`,
+so the failure was invisible, the mount stayed up, and the `verified` I saw was **correct behaviour on a
+volume that had never gone away**.
+
+**Why this is written down instead of deleted:** the wrong version was plausible, specific, and had a
+mechanism — the kind of finding that gets repeated in a design review six months later. A retraction with the
+command output is worth more than a deleted paragraph.
+
+**Changed:** the scenario now records whether the unmount actually happened. A refused unmount is its own
+result, not a data-loss story.
+
+## F8 — the harness swallowed its own failure signal
+
+**Seen:** the same `umount ... || true`.
+
+**Means:** the matrix has one job — report what the world did — and it was discarding the single fact that
+decided whether the scenario had occurred at all. Every other `|| true` in the script was re-read after this:
+the trainer's exit code, the `wait` status, and the mount check.
+
+**Rule:** in an experiment, a suppressed error is a suppressed result. `|| true` is only acceptable where
+"this failing does not change what we are measuring", and that judgement has to be made per line — not once,
+at the top.
+
+## F9 — the writer reports a failed seal, and exits zero
+
+**Seen:** `umount -l` (a lazy detach, which does succeed). The path disappears, and the trainer's last save
+fails:
+
+```
+open /tmp/u3/gen-0010/manifest.json.tmp: no such file or directory
+...
+trainer exit 0
+```
+
+**Means:** the write failed and **the process said everything was fine**. Anything supervising it — a
+Job, a shell script, a retry loop — sees success. The failure is only visible in a log line, and only if
+someone reads it.
+
+**The mechanism is not explained yet, and that is written here on purpose.** All three save call sites
+return the error, and `main` prints it and calls `os.Exit(1)` — which is what printed that line. So an exit
+code of 0 contradicts the code path that produced the message. Either the failing save happens somewhere
+that recovers, or the measurement is wrong again (F7's lesson). The next step is a test that asserts the
+exit code in-process, not a shell that has already misled me once.
+
+**The good half:** the classifier was right afterwards — `generations 0`, because the volume and its data
+were gone from the namespace. It did not invent a verified checkpoint.
+
+**Not yet changed.** A writer that cannot seal should exit non-zero; this is the rig's trainer, so the fix is
+one line, and it belongs with the rest of the writer's contract rather than in a quiet patch here.
+
 ## F5 — a rebuild from a stale tree silently reverted a rule-fix on main
 
 **Seen:** rebuilding #145 on current main by copying whole files from an older worktree put back

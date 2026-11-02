@@ -12,7 +12,7 @@ set -eu
 root=$(cd "$(dirname "$0")/../.." && pwd)
 out=${OUT:-$root/experiments/rig/matrix.csv}
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
+trap 'umount "$work/unmount" 2>/dev/null || true; rm -rf "$work"' EXIT
 
 cd "$root"
 go build -o "$work/ckpttrainer" ./cmd/ckpttrainer
@@ -73,5 +73,48 @@ race() {
 }
 
 race
+
+# The volume goes away while the writer is writing. This is not a kill: the process is alive and its next
+# write fails with EIO. The interesting answers are "did it hang" and "what does the classifier say
+# afterwards", because a directory that no longer exists is not the same as a directory that is being written.
+unmount() {
+	mnt="$work/unmount"
+	mkdir -p "$mnt"
+	if ! mount -t tmpfs -o size=16m tmpfs "$mnt" 2>/dev/null; then
+		printf 'unmount,skipped,needs mount privileges\n' >> "$out"
+		printf '%-14s skipped (needs mount privileges)\n' "unmount"
+		return
+	fi
+
+	"$work/ckpttrainer" --dir="$mnt" --steps=400 --step-ms=20 --write-ms=500 \
+		--shard-bytes=1048576 --ranks=2 --contract --save-every=120ms >/dev/null 2>&1 &
+	pid=$!
+
+	# Wait for a generation directory with no manifest: that is a write in flight, by construction.
+	i=0
+	while [ "$i" -lt 200 ]; do
+		for d in "$mnt"/gen-*; do
+			[ -d "$d" ] || continue
+			if [ ! -f "$d/manifest.json" ]; then
+				break 2
+			fi
+		done
+		i=$((i + 1))
+		sleep 0.05
+	done
+
+	# What we say while it is still writing: anything but `verified`, because nothing has been sealed.
+	during=$("$work/ckptctl" verify --dir="$mnt" --all 2>&1 | sed -n '1p')
+
+	umount "$mnt" 2>/dev/null || true
+	rc=0
+	wait "$pid" 2>/dev/null || rc=$?
+
+	after=$("$work/ckptctl" verify --dir="$mnt" --all 2>&1 | sed -n '1p')
+	printf 'unmount,%s,during=[%s] exit=%s\n' "${after:-no-generation}" "${during:-none}" "$rc" >> "$out"
+	printf '%-14s %s  (during: %s, exit %s)\n' "unmount" "${after:-no-generation}" "${during:-none}" "$rc"
+}
+
+unmount
 
 printf '\nresults in %s\n' "$out"

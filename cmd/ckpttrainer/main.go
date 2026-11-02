@@ -46,6 +46,10 @@ type config struct {
 	// fsyncMS forces a Sync after every 64 KiB, so a shard pays many real fsyncs rather than one. The time
 	// comes from syscalls, not from a sleep: a sleep would test the timer, not the deadline.
 	fsyncMS int
+	// volDev is the device the checkpoint directory lived on when the run started. A writer that keeps
+	// writing after the volume is unmounted writes to whatever the path resolves to next — the container's
+	// root filesystem — and the result verifies, because it is internally consistent (F7).
+	volDev uint64
 }
 
 func main() {
@@ -64,6 +68,16 @@ func main() {
 	flag.BoolVar(&c.tear, "tear", false, "corrupt the last block of the final shard, keeping its size")
 	flag.IntVar(&c.fsyncMS, "fsync-ms", 0, "fsync after every 64 KiB, so a write pays many real syncs")
 	flag.Parse()
+
+	// Remember where the checkpoint directory lives, so a later save can tell that it moved — an unmounted
+	// tmpfs leaves the path pointing at the container's own filesystem, and writes there would look fine.
+	if c.dir != "" {
+		if err := os.MkdirAll(c.dir, 0o755); err == nil {
+			if dev, err := volumeID(c.dir); err == nil {
+				c.volDev = dev
+			}
+		}
+	}
 
 	if c.dir == "" {
 		fmt.Fprintln(os.Stderr, "usage: ckpttrainer --dir=<checkpointDir> [--steps=300] [--step-ms=100] [--write-ms=800] [--trace=trace.jsonl]")
@@ -347,6 +361,15 @@ func (p planView) ownTimer(now, lastWriteAt time.Time, lead time.Duration) bool 
 // rename. It is the only writer shape the fault matrix can judge — a directory with no manifest is a write
 // in flight, and seven faults would all come back as "still writing".
 func writeContractCheckpoint(c config, base string, step int64, tr *trace) error {
+	if c.volDev != 0 {
+		if now, err := volumeID(c.dir); err == nil && now != c.volDev {
+			// Refusing here is the whole point: sealing would produce a checkpoint on the wrong disk, and
+			// every check we have would call it verified.
+			return fmt.Errorf("volume identity changed under %s (was %d, now %d): refusing to seal",
+				c.dir, c.volDev, now)
+		}
+	}
+
 	gen := step
 	dir := filepath.Join(c.dir, fmt.Sprintf("gen-%04d", gen))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -576,4 +599,19 @@ func memberList(n int) string {
 		b.WriteString("rank-" + strconv.Itoa(i) + "\n")
 	}
 	return b.String()
+}
+
+// volumeID is the device number behind a path. It is the cheapest way for a writer to notice that the
+// directory it has been writing to is now a different filesystem — an unmounted tmpfs falls back to
+// whatever the mountpoint was before, and the write goes somewhere nobody will look for it.
+func volumeID(path string) (uint64, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, fmt.Errorf("no device number for %s", path)
+	}
+	return uint64(st.Dev), nil
 }
