@@ -462,7 +462,11 @@ func TestP90(t *testing.T) {
 func TestParseStepName(t *testing.T) {
 	cases := map[string]bool{
 		"step-0": true, "step-12000": true,
+		// The contract writer (0025) names its directories by generation. Not accepting these made every
+		// checkpoint written under the contract invisible to this package (F11).
+		"gen-1": true, "gen-0007": true,
 		"step-": false, "step-x": false, "step--1": false, "other": false, "step-1x": false,
+		"gen-": false, "gen-x": false, "gen--1": false,
 	}
 	for name, want := range cases {
 		if _, ok := parseStepName(name); ok != want {
