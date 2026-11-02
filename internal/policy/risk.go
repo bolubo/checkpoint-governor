@@ -11,7 +11,7 @@ const riskVersion = "risk-v1"
 
 // Risk is the risk policy (docs/decisions/0015-risk-core.md).
 //
-// Extra holds the conditions a deployment added from disk (decision 0023). They are appended after
+// Extra holds the conditions a deployment added from disk (decision 0024). They are appended after
 // the frozen catalogue, so when two urgent conditions fire the decision still names the built-in one:
 // a condition this repository owns is more certain than one an operator wrote, and precedence is
 // consequence, not file order. The zero value is the built-in catalogue, which is what every caller

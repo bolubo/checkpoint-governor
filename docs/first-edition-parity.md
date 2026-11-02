@@ -31,19 +31,26 @@ The three checks are the real tests, not a checklist: `TestTheExpositionIsValidA
 
 ## Measured, not estimated
 
-Files on `main` when the comparison was taken (counted with `git ls-files`, so the numbers move with
-every commit and the table says when):
+Files at the moment of the comparison, counted over the tree (`.git` excluded; the references come from
+their GitHub trees at the tag, ours from the working tree):
 
-| Repository, tag | files | Go | test files | Markdown | YAML |
+| Repository, tag | files | Go | test files | Markdown (own) | YAML |
 |---|---|---|---|---|---|
 | checkpoint-governor, `main` (2026-11-01) | 344 | 205 | 114 | 41 | 20 |
-| node-problem-detector `v0.3.0-alpha.0` | 1464 | 997 | 8 | 24 | 9 |
+| checkpoint-governor, `main` + docs pass (2026-11-02) | 314 | 222 | 123 | 27 | 25 |
+| node-problem-detector `v0.3.0-alpha.0` | 1464 | 997 | 8 | 4 (+20 vendored) | 9 |
 | keda `v1.0.0` | 145 | 57 | 13 | 12 | 16 |
-| kube-state-metrics `v0.1.0` | 1273 | 860 | 1 | 31 | 11 |
+| kube-state-metrics `v0.1.0` | 1273 | 860 | 1 | 1 (+30 vendored) | 11 |
 
-The interesting column is test files. The first edition of node-problem-detector had eight; the
-repository it was replacing had none it could show. A controller that reports what it did has to be
-able to show that it did it, which is why our decision core is 114 test files for 205 Go files.
+Read the last two relevant columns, not the first three. The reference repositories' file and Go counts
+include their `vendor/` trees (997 of node-problem-detector's 1464 files, 860 of kube-state-metrics'
+1273), so those columns are a sense of scale rather than a comparison. The Markdown column counts the
+repository's own pages: the 20 and 30 extra files are vendored package READMEs, and counting them is how
+a first draft of this table claimed node-problem-detector had 24. It had 4.
+
+The test-file column is the one that matters. The first edition of node-problem-detector had eight; the
+repository it was replacing had none it could show. A controller that reports what it did has to be able
+to show that it did it, which is why the decision core is 123 test files for 222 Go files.
 
 ## What we deliberately do not match
 
@@ -54,7 +61,7 @@ able to show that it did it, which is why our decision core is 114 test files fo
   one write per volume at a time, which is an I/O interlock and not an admission decision.
 - **No plugin binary.** A subprocess with a RPC protocol is a second API surface to version, secure
   and crash-test. A JSON file and one file read is the same capability with none of that, and it is
-  bounded on purpose: it adds a name, not a measurement (`decisions/0023-conditions-from-disk.md`).
+  bounded on purpose: it adds a name, not a measurement (`decisions/0024-conditions-from-disk.md`).
 
 ## What this page is not
 

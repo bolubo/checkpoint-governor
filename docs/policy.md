@@ -6,7 +6,7 @@ The algorithm asks one question:
 
 It answers with a named boolean. It does not compute an interval, a tax, or a failure probability.
 `docs/decisions/0013-risk-conditions.md` holds the catalogue (the frozen names, their meaning, and
-what their absence means); `docs/decisions/0014-why-the-risk-pivot.md` holds why the earlier
+what their absence means); `docs/decisions/history.md#0014` holds why the earlier
 interval optimisation was abandoned; `docs/decisions/0017-two-numbers.md` holds what the user's two
 numbers mean and what the executor does with them. This page says how a decision is computed.
 
@@ -88,3 +88,29 @@ proven the same way: a truth table over its four states, plus one family in the 
 
 The measurement rules — what a trace must contain, which metrics are reported, and how a claim is
 accepted — are in `docs/experiments-matrix.md`.
+
+## 7. What was deleted, and why it must stay deleted
+
+The folder that used to sit beside this page described an optimisation of the checkpoint interval
+against an assumed failure rate. `math.md`, `worklist.md` and records 0006–0012 described it, and it
+was internally consistent and externally wrong: the quantity it optimises (expected lost work against
+a tax budget) is one the user cannot observe, and the arithmetic showed the best a constant period can
+be is a few percent away from the best an oracle could do. That is why the risk core replaced it
+(`docs/decisions/0014`), and why those pages are only in git history. Do not resurrect them; if a new
+claim needs arithmetic, derive it again against the risk model.
+
+## 8. What still has to be proven
+
+Only these, each with a mechanical check:
+
+1. **A condition fires exactly when it should.** A truth table per condition over `0`, `1`, absent
+   and unknown; no condition may trigger a write when it is a diagnostic.
+2. **Blindness is urgent.** A required condition that becomes unreadable produces a write, and its
+   name appears in `Missing`.
+3. **The algorithm stays environment-blind.** The same snapshot with all conditions absent behaves
+   exactly like the same job with all conditions `0`; a CPU-shaped and a GPU-shaped snapshot with the
+   same conditions decide the same.
+4. **The old policy stays dead.** A decision that still carries `Interval`/`Tax` is a bug, not a
+   compatibility case.
+5. **The replay is the evidence.** The recorded replay over the generated families still runs, because
+   the executor's behaviour (backoff, sealing, verification) is what the traces exercise.

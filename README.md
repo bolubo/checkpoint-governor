@@ -104,13 +104,21 @@ use `python3`.
 
 ## Documentation
 
-- `docs/product-v1.md` — the surface: what is asked, shown, claimed.
-- `docs/decisions/0017-two-numbers.md` and `0019` — the contract, and why there is no custom resource.
-- `docs/design-backstop.md` and `docs/design-v1.md` — why this shape, and how it is built.
-- `docs/policy.md`, `docs/conditions.md`, `docs/glue.md` — the rule, the 14 conditions, the files.
-- `docs/probes.md` — what each probe reads, how often, and what the cadence costs.
+Eight pages, and one directory of decisions. Start here, then read only what your question needs.
+
+- `docs/product-v1.md` — the surface: what is asked, shown and claimed; the second user and their
+  price/certificate; why it did not write; what one write costs.
+- `docs/design.md` — one document in two parts: the argument (Appendix A) and the build (§1–§14).
+- `docs/policy.md` — the algorithm: the rule, the decision, the state file, what was deleted and why.
+- `docs/conditions.md` — the 14 condition cards, their probe cadences and the detection bound, and how
+  a deployment adds one.
+- `docs/glue.md` — the files the job writes and the controller reads.
 - `docs/experiments-matrix.md` — every claim and the experiment that checks it.
 - `docs/first-edition-parity.md` — what the last batch added, and why `make parity` exists.
+- `docs/language-boundary.md` — which layer may import which, and the tests that keep it.
+
+`docs/decisions/README.md` indexes the records that are still load-bearing; `docs/decisions/history.md`
+carries one paragraph each for the ones that are not, with their full text in git history.
 
 `RELEASE.md` says how a tag becomes a release.
 

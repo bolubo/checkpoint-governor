@@ -206,3 +206,65 @@ test pins it.
 - **The two "slow" conditions compare the job with itself.** Baseline and current rate are both
   written by the job, in the same unit. The controller never decides what fast means for a workload
   it cannot see.
+
+## Conditions an operator adds
+
+The catalogue above is frozen: a new row needs a producer, a card and a test in one commit (`decisions/0013-risk-conditions.md`). A deployment may add its own names without a fork, in `.ckpt-governor/conditions.d/*.json` (`decisions/0024-conditions-from-disk.md`):
+
+```json
+{
+  "name": "job.loss-exploded",
+  "tier": "urgent",
+  "missing": "urgent",
+  "why": "the loss left its normal range",
+  "read": {"file": "team-signal", "on": "1", "off": "0"}
+}
+```
+
+The rules are the boundary of the extension:
+
+- **A name, not a measurement.** `read.file` is one file inside the checkpoint directory; `on` and
+  `off` are the two values that mean 1 and 0. Nothing here can read a cgroup, a GPU or the world.
+- **Built-ins win a tie.** Added rows are appended after the frozen catalogue, so an urgent built-in
+  condition is named before an urgent added one.
+- **Blindness is the operator's call.** A missing file or a third value is `unknown`; `missing` decides
+  whether that is inert or urgent. There is no third value that quietly means calm.
+- **A bad file fails startup.** Duplicate names, unknown keys, `on == off`, absolute paths and texts
+  that parse to nothing are refusals, because the one outcome this must not allow is a run that watches
+  less than the operator believes.
+
+`ckptctl run` says what it loaded: `conditions: 14 built-in + 1 from disk`. In `supervise`, the rows
+are per unit: a directory's `conditions.d` is that job's, never its cluster's.
+
+## Probe intervals, and the detection bound
+
+The cards above give each reading's meaning. This section gives the cost and the delay, because a
+cadence is a tradeoff, not a measurement of what is optimal. Defaults are in
+`internal/produce/adapters/adapters.go`; the storage cadence is the one an operator can move
+(`storeEvery` in `conditions.json` or `--store-every`), and the rest are fixed per adapter.
+
+| Probe / condition | Default | Reads | Larger / smaller |
+|---|---|---|---|
+| `risk.preempt` | 5s | the observer's summary and unit record, as an announcement | larger: less grace left to write; smaller: more world reads, no fresher input until the observer writes |
+| `risk.shutdown` | 5s | presence of `.ckpt-governor/stopping` | larger: more of the grace period passes before detection; smaller: more stats |
+| `store.low-space` | 5s | free bytes on the checkpoint filesystem | larger: free space falls further before detection; smaller: more statfs |
+| `store.blocked` | 5s | whether a temporary file can be created and removed | larger: a refusal stays unreported; smaller: more temporary I/O on the checkpoint volume |
+| `job.ending` | 10s | presence of `.ckpt-governor/ending` | larger: the final-write request can be delayed; smaller: more stats |
+| `host.memory-pressure` | 10s | cgroup v2 `memory.current` and `memory.max` | larger: the job can reach its limit between reads; smaller: more cgroup reads, still no guarantee before an abrupt kill |
+| `host.cpu-throttled` | 10s | cgroup v2 `cpu.stat` counters | diagnostic only: larger delays reporting, smaller reads the same counters more often |
+| `job.step-slow`, `store.slow` | 10s | `.ckpt-governor` rate and baseline files the job writes | larger: slower steps or writes stay unreported longer; smaller: more reads, no new measurement until the job updates |
+| `risk.eviction-likely` | 15s | the observer's ratios, pending work and cordon state | an inference, not an announcement: smaller intervals cannot make it certain |
+| `host.gpu-fault`, `host.gpu-hot`, `net.long-outage` | 5s | nothing; absent on this build | changes sampler bookkeeping, not detection |
+
+`watch.broken` is derived by the sampler each round: no probe, no interval. A probe not yet due keeps
+its last reading, and lengthening an interval also lengthens the time needed to accumulate consecutive
+unreadable readings. Shortening it spends that failure budget sooner.
+
+**The bound is not the interval.** For `risk.preempt` the path is: the platform records the
+announcement, the observer reads the cluster and publishes world files (5s default), a round samples
+the probe when due, and the job reads the plan and writes if it fits. With timely rounds, polling adds
+up to one observer interval plus one probe interval before the controller sees the announcement; cluster
+reads, publication and controller work add more. `internal/produce/sampler.go` only checks whether a
+probe is due, and schedules the next read from that round's time, so a delayed round reads later than
+the table says. A polling interval alone does not guarantee a completed checkpoint in time, and a death
+with no announcement has no detection guarantee at all.

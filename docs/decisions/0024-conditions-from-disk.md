@@ -1,4 +1,4 @@
-# 0023 — Conditions an operator adds, without adding code
+# 0024 — Conditions an operator adds, without adding code
 
 Date: 2026-11-02. Status: accepted.
 

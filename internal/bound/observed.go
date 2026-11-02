@@ -23,7 +23,7 @@ type Observed struct {
 	// day is a bound that has never been tested.
 	Longest time.Duration
 	// WriteCost is the 90th percentile of measured write durations; zero means unknown, and then
-	// nothing is priced (docs/write-cost.md).
+	// nothing is priced (docs/product-v1.md §16).
 	WriteCost time.Duration
 }
 

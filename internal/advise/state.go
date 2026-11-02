@@ -81,7 +81,7 @@ type stateSensitivity struct {
 //
 // 2: `requestId`, `baselineSeconds`/`baselineNone` and `windowSeconds` replace
 // `fallbackIntervalSeconds`; the expiry means "a live governor exists" rather than a period
-// (docs/design-v1.md §5).
+// (docs/design.md §5).
 const SchemaVersion = 2
 
 // stateOf builds the published structure. It takes expiresAt rather than a clock so that the bytes

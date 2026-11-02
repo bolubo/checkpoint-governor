@@ -4,7 +4,7 @@
 // test. Some conditions, though, belong to the deployment rather than to this repository — "the loss
 // exploded", "the scratch volume the team shares is gone" — and the governor cannot know their
 // names. This is the one extension point: one JSON file per condition, read by one file probe, and
-// appended after the built-ins, so a built-in always wins a tie (decision 0023).
+// appended after the built-ins, so a built-in always wins a tie (decision 0024).
 //
 // A file probe can only read a file. That is the point: the extension point adds names, not
 // authority. A condition that needed a new measurement would be a new probe in the code, with a card

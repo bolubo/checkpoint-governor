@@ -4,7 +4,7 @@
 // It exists because the two things a person actually argues about are not the controller's inputs:
 // "can we hold 15 minutes" and "may writes ever take more than 1% of training". Both are one
 // equation, and it is exact rather than modelled because `mount` is the measured p90 of sealed
-// writes (docs/write-cost.md), never a guess:
+// writes (docs/product-v1.md §16), never a guess:
 //
 //	tax    = mount / bound        (independent of the run)
 //	writes = run / bound

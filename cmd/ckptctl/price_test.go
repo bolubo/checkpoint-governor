@@ -31,7 +31,7 @@ func setTreeTimes(t *testing.T, root string, at time.Time) {
 
 // A directory with no history has no price. The sheet must say so rather than pick a ladder value
 // and call it a recommendation: an unmeasured write cost is the one number this command may not
-// invent (docs/write-cost.md).
+// invent (docs/product-v1.md §16).
 func TestPriceWithNoHistoryPromisesNothing(t *testing.T) {
 	dir := t.TempDir()
 	testutil.Sealed(t, dir, 100, 1_000_000)

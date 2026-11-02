@@ -37,7 +37,7 @@ type Config struct {
 	ProbesFor func(unit.Unit) []produce.Probe
 
 	// PolicyFor builds the policy for one unit, for the same reason: a deployment may add conditions
-	// from disk (conditions.d, decision 0023), and those rows are per directory. Nil means Policy for
+	// from disk (conditions.d, decision 0024), and those rows are per directory. Nil means Policy for
 	// every unit, which is a deployment with nothing added.
 	PolicyFor func(unit.Unit) policy.Policy
 

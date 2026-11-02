@@ -15,12 +15,19 @@ import (
 var markdownLink = regexp.MustCompile(`\[[^\]]+\]\(([^)\s]+)\)`)
 
 // F10's "zero dead links": a page that tells a user where to look must not send them nowhere. This
-// walks every page in docs/ and checks that each relative link resolves to a file that exists.
+// walks every page in docs/ and docs/decisions/ and checks that each relative link resolves to a
+// file that exists. The decisions directory is included because a folded record is exactly where a
+// stale pointer hides: the page is gone, and the citation in another page still names it.
 func TestDocsHaveNoDeadLinks(t *testing.T) {
 	docs, err := filepath.Glob("../../docs/*.md")
 	if err != nil || len(docs) == 0 {
 		t.Fatalf("no docs found: %v", err)
 	}
+	records, err := filepath.Glob("../../docs/decisions/*.md")
+	if err != nil {
+		t.Fatalf("cannot list decisions: %v", err)
+	}
+	docs = append(docs, records...)
 
 	links := 0
 	for _, page := range docs {

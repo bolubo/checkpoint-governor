@@ -120,9 +120,9 @@ func reasonSentence(r policy.ReasonEntry) string {
 	case "store.low-space":
 		free, need, factor := r.Values["free"], r.Values["need"], r.Values["factor"]
 		if need <= 0 {
-			// The policy currently names the condition without the sizes behind it
-			// (docs/backlog.md). Say what is true and stop: inventing a comparison that was never
-			// made is worse than a shorter sentence.
+			// The policy names the condition without the sizes behind it, which is a known gap. Say
+			// what is true and stop: inventing a comparison that was never made is worse than a
+			// shorter sentence.
 			return "store.low-space fired; free space is below the checkpoint scale"
 		}
 		s := fmt.Sprintf("store.low-space fired; free %s < need %s",

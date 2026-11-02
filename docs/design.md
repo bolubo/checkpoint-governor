@@ -1,8 +1,11 @@
-# v1 engineering design: the backstop, built
+# Design: the backstop, and how it is built
 
-Status: engineering design. Date: 2026-11-01. Companion to `docs/design-backstop.md` (why and
-what); this page is *how*, and it is the page an implementer works from. Where an older page
-conflicts (`docs/policy.md` §4), this page wins for v1.
+This page is one document in two parts: the argument (Appendix A) and the build (§1–§14).
+It absorbs `design-backstop.md` and `design-v1.md`; both stay in git history.
+
+Status: engineering design. Date: 2026-11-01. Companion to Appendix A (why and what); this page is
+*how*, and it is the page an implementer works from. Where an older page conflicts (`docs/policy.md`
+§4), this page wins for v1.
 
 The definitions this design is cut against, in three lines:
 
@@ -276,3 +279,79 @@ fifteen `Snapshot` fields the risk core never reads · `ReasonEntry.Values` numb
 3. **The job's local default for `baseline`**: one value in `conditions.json` read by both sides, with
    `doctor` complaining on mismatch, or the plan's value always wins after the first plan? (This
    design: plan wins after the first plan; the local copy decides only before the first plan.)
+
+## Appendix A — the saving, and the hole
+
+This appendix is what was `docs/design-backstop.md`. It restates the frozen rule and says why the
+product exists; §1–§14 above say how it is built.
+
+### A.1 The saving, in one paragraph
+
+Without the governor a user writes every 10 minutes because he is afraid of what he cannot see. With
+it he configures 30 minutes, because the exceptions are covered. The saving is the difference between
+those two periods: 3× fewer scheduled writes for the same protection. Everything else follows:
+
+- The window's refresh rule saves nothing. It only refuses to charge the user twice for a window that
+  an exception write has already served.
+- Configuration convenience is real value, but it is not the saving: it is why the longer period is
+  reachable without trusting a guess.
+- The report is real value: it is how the user checks that the longer period is safe.
+
+### A.2 The two numbers, two questions
+
+| | `no-us` (required answer) | `with-us` (optional) |
+|---|---|---|
+| the question | "without the governor, how often would you have written?" | "with the governor, how long may a checkpoint be stale?" |
+| while we run | nobody uses it | **the executor** keeps the window |
+| when we die | **the job's own timer** | nobody |
+| in the report | **the baseline: `run / no-us`** | the comparison: `run / with-us` |
+| valid answers | a duration, or `none` (you would not have written at all) | a duration, or unset (no time-based write) |
+
+The window is a deadman, and its refresh is bookkeeping. It is measured seal to seal, and any write
+restarts it:
+
+```
+written at 09:00 (exception, sealed 09:05) → the window is served; next due 10:05
+written at 10:05 (window,   sealed 10:10) → next due 11:10
+written at 10:40 (exception, sealed 10:45) → next due 11:45
+```
+
+The middle line is *not* a saving: had the exception not happened, the window write would have
+happened anyway. The refresh only stops the window from billing twice. The window bounds the staleness
+of the newest **sealed** copy, so the request goes out one write-time early (`due − W`); if
+`W ≥ with-us` the window is infeasible and is reported as such. `no-us` is asked once, and the CLI
+states which answer is in force on the first line of every run.
+
+### A.3 The saving, as arithmetic
+
+```
+no-us = 10m   → 8h/10m  = 48 scheduled writes
+with-us = 30m → 8h/30m  = 16 scheduled writes
+exceptions in that run: 2   (each one eats a window slot it would have paid anyway)
+actual: 16 + 2 − 2 = 16, plus the final write (excluded)
+saved: 32 writes; time: 32 × W
+
+writes 18 (16 window + 2 exception + final excluded)
+no-us 10m → 48 scheduled · with-us 30m → 16 scheduled · saved 32 (66%), 32 × write time
+window refreshed by an exception 2 times (not a saving; the window saved twice)
+```
+
+The arithmetic has one baseline: **the number the user stated as his own habit.** It is not a claim
+about what he would have chosen — he chose it. If `no-us` is `none`, the baseline is zero writes and
+the saving is zero, and the report says the value there is the coverage, not the count.
+
+### A.4 The hole, and where it lives
+
+With `with-us` **unset**, while we are alive and every condition reads false, nothing is written: an
+environment failure that produces no boolean loses everything since the last exception. That is the
+explicit trade, and it is displayed (`protecting: exceptions only · oldest safe point: step 0 (2h14m)`).
+With `with-us` set, the hole is bounded by that number — which is the only reason to set it.
+
+### A.5 What we never add
+
+1. No controller-invented period, in any disguise (no `auto`, no `k × write time`).
+2. No second role for the algorithm: it stays boolean, clock-free, arithmetic-free.
+3. No severity or probability in the plan; no prediction of the platform.
+4. No third number.
+5. No silent absence: "governor gone", "blind", "read-only", "final write failed", "baseline unset"
+   are named states.

@@ -5,7 +5,7 @@ import "time"
 // NoUsMode says what the job does when the governor is not there to answer. It is the user's own
 // number (`no-us`), and it has three states. The middle one matters: "not answered yet" is not "no
 // writes for ever", and an executor must never infer the latter from an empty value
-// (docs/decisions/0015-risk-core.md §4, docs/design-v1.md §6).
+// (docs/decisions/0015-risk-core.md §4, docs/design.md §6).
 type NoUsMode string
 
 const (
@@ -35,7 +35,7 @@ type Bounds struct {
 	NoUsEvery time.Duration
 	// WithUs is the longest a checkpoint may stay stale while the governor is alive. Zero means
 	// exceptions only. It is a deadman window: every write that seals restarts it, so it bounds
-	// staleness without becoming a schedule (docs/design-v1.md §3).
+	// staleness without becoming a schedule (docs/design.md §3).
 	WithUs time.Duration
 }
 
