@@ -56,16 +56,27 @@ strategy. The extended grid measured the three ways that could be wrong, and two
 
 | extension | predicted | observed | verdict |
 |---|---|---|---|
-| cohort, 2000m | 3 | 0 | **false positive** |
-| cohort, 3000m | 5 | 0 | **false positive** |
+| cohort, 2000m | 0 | 0 | agreed, after reading the cohort's room |
+| cohort, 3000m | 2 | 0 | **false positive, still open** |
 | equal priority, `LowerOrNewerEqualPriority` | 0 | 0 | agreed |
 | two arrivals at once (1000m, 2000m) | 1, 5 | 1, 5 | agreed |
 
-**Borrowing breaks the rule, and it breaks it in the expensive direction.** A queue inside a cohort may
-lend and borrow, so a shortfall on paper is absorbed by a sibling without taking anybody. The fix is
-known and not yet made: the third term must be *the cohort's* headroom, not the queue's. Until then, a
-deployment that uses cohorts will get preemption warnings for preemptions that do not happen — writes
-nobody needed, which is the failure this rule exists to remove.
+**Borrowing breaks the rule in the expensive direction, and half of it is now fixed.** A queue inside a
+cohort lends and borrows, so a shortfall on paper can be absorbed by a sibling without taking anybody.
+The third term now reads *the cohort's* headroom rather than the queue's, which turned the 2000m row from
+a false positive into agreement.
+
+**The 3000m row is still wrong, and the reason is a different fact.** The arrival is never admitted:
+
+```
+$ kubectl get job arrival -o jsonpath='{.spec.suspend}'
+true
+```
+
+Its queue's own quota is 500m, and `borrowWithinCohort` defaults to *prohibit*, so 3000m can never fit,
+however much the cohort has free. Kueue does not preempt to make room for work that cannot fit no matter
+what: it waits. So a shortfall is only a death when the arrival can be admitted *after* the taking, which
+needs one more term — the queue's capacity to admit, not just the cohort's room to lend.
 
 The equal-priority row is reassuring but thin: one queue policy, one priority pair, one sample. It says
 the strict "higher" requirement did not miss a death here; it does not say it never will.

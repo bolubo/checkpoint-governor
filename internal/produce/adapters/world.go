@@ -87,7 +87,7 @@ type UnitRecord struct {
 	// HigherPriorityWaiting counts the held-back jobs that outrank this unit: the second term of the
 	// measured rule, and zero means this unit cannot be the one taken to make room.
 	HigherPriorityWaiting int `json:"higherPriorityWaiting,omitempty"`
-	// Permit is the fleet's verdict for this unit (decision 0021). Absent means permission: an
+	// Permit is the fleet's verdict for this unit (docs/decisions/0021). Absent means permission: an
 	// observer that predates the field, a cluster with one unit, and every unreadable value all leave
 	// the governor behaving exactly as it did before.
 	Permit *UnitPermit `json:"permit,omitempty"`
@@ -245,11 +245,20 @@ type QueueWire struct {
 	FreeMilli   int64  `json:"freeMilli"`
 	DemandMilli int64  `json:"demandMilli"`
 	Allowed     bool   `json:"allowed"`
+	// Cohort is the group this queue lends to and borrows from, empty when it stands alone.
+	Cohort          string `json:"cohort,omitempty"`
+	CohortFreeMilli int64  `json:"cohortFreeMilli,omitempty"`
 }
 
-// ShortfallMilli is how much more the waiting work needs than the queue can give.
+// ShortfallMilli is how much more the waiting work needs than can be given, counting the cohort's
+// lending. Measuring the queue alone produced two false positives in the sweep: a 500m queue inside a
+// four-core cohort reported a 2.5-core shortfall for work its sibling absorbed without taking anybody.
 func (q QueueWire) ShortfallMilli() int64 {
-	if d := q.DemandMilli - q.FreeMilli; d > 0 {
+	room := q.FreeMilli
+	if q.Cohort != "" {
+		room = q.CohortFreeMilli
+	}
+	if d := q.DemandMilli - room; d > 0 {
 		return d
 	}
 	return 0

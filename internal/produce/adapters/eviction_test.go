@@ -119,6 +119,23 @@ func TestPendingWorkOnACordonedNodeIsNotAPick(t *testing.T) {
 	}
 }
 
+// A queue inside a cohort lends and borrows, so its own headroom is not the shortfall it faces.
+//
+// Measured: a 500m queue sharing a four-core cohort absorbed a 3000m arrival without taking anybody,
+// while the queue's own arithmetic said 2.5 cores were missing. Two rows of the sweep, both false
+// positives, both paid for in writes nobody needed.
+func TestACohortsRoomIsTheShortfallThatMatters(t *testing.T) {
+	alone := QueueWire{Name: "a", FreeMilli: 500, DemandMilli: 3000}
+	if got := alone.ShortfallMilli(); got != 2500 {
+		t.Fatalf("standing alone, shortfall = %d, want 2500", got)
+	}
+
+	inCohort := QueueWire{Name: "a", FreeMilli: 500, DemandMilli: 3000, Cohort: "c", CohortFreeMilli: 5500}
+	if got := inCohort.ShortfallMilli(); got != 0 {
+		t.Fatalf("with the cohort's room, shortfall = %d, want 0", got)
+	}
+}
+
 // The conjunction, and each term on its own. This table is the sweep from experiments/kueue written as
 // a test: only the row where all three hold takes a unit.
 func TestLikelyNeedsAllThreeTerms(t *testing.T) {

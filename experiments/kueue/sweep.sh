@@ -64,7 +64,9 @@ except Exception:
     sys.exit(0)
 for q in s.get("queues") or []:
     if q.get("name") == want:
-        print(f"{q.get('freeMilli', 0)},{1 if q.get('allowed') else 0}")
+        # A cohort lends its members' unused room, so the headroom an arrival sees is the group's.
+        free = q.get("cohortFreeMilli") or q.get("freeMilli", 0)
+        print(f"{free},{1 if q.get('allowed') else 0}")
         sys.exit(0)
 # No fallback: a queue the summary does not name is a queue we cannot read, and guessing one is how a
 # Never queue once predicted five preemptions that could not happen.

@@ -25,11 +25,24 @@ type QueueState struct {
 	DemandMilli int64 `json:"demandMilli"`
 	// Allowed is false when the queue may not preempt within itself: the arrival waits instead.
 	Allowed bool `json:"allowed"`
+	// Cohort is the group this queue belongs to, empty when it stands alone.
+	Cohort string `json:"cohort,omitempty"`
+	// CohortFreeMilli is what the whole cohort can still admit. Members lend each other their unused
+	// quota, so this — not FreeMilli — is the number a shortfall has to be measured against. Measured:
+	// with only the queue's own headroom, a cohort case predicted 3 and 5 preemptions where Kueue took
+	// none (experiments/kueue, rows `cohort`).
+	CohortFreeMilli int64 `json:"cohortFreeMilli,omitempty"`
 }
 
-// ShortfallMilli is how much more the waiting work needs than the queue can give.
+// ShortfallMilli is how much more the waiting work needs than can be given, counting what the queue's
+// cohort would lend it. The cohort number is what the measurement asked for: without it a lending queue
+// reports a shortfall that nobody has to die for.
 func (q QueueState) ShortfallMilli() int64 {
-	if d := q.DemandMilli - q.FreeMilli; d > 0 {
+	room := q.FreeMilli
+	if q.Cohort != "" {
+		room = q.CohortFreeMilli
+	}
+	if d := q.DemandMilli - room; d > 0 {
 		return d
 	}
 	return 0
@@ -69,9 +82,31 @@ func QueueUsage(dyn dynamic.Interface, jobs []batchv1.Job, now time.Time) []Queu
 			q.FreeMilli = 0
 		}
 		q.DemandMilli = demand[cq.GetName()]
+		q.Cohort = cohortOf(cq)
 		out = append(out, q)
 	}
+
+	// A cohort lends its members' unused quota to each other, so the room available to one member is the
+	// whole group's. Summed rather than bounded by each member's borrowingLimit: the limit caps what a
+	// member may take, and ignoring it over-states the room, which is the safe direction for a rule whose
+	// job is to stop warning about preemptions that will not happen.
+	byCohort := map[string]int64{}
+	for _, q := range out {
+		if q.Cohort != "" {
+			byCohort[q.Cohort] += q.FreeMilli
+		}
+	}
+	for i := range out {
+		if out[i].Cohort != "" {
+			out[i].CohortFreeMilli = byCohort[out[i].Cohort]
+		}
+	}
 	return out
+}
+
+func cohortOf(cq *unstructured.Unstructured) string {
+	name, _, _ := unstructured.NestedString(cq.Object, "spec", "cohort")
+	return name
 }
 
 // demandByQueue sums the requests of the jobs the queues are holding back, keyed by the queue the job
@@ -181,7 +216,9 @@ func parseMilli(s string) int64 {
 		case r == '.':
 			seenDot = true
 		case r == 'm':
-			return v*1000 + frac*1000/div
+			// Already milli-units: `2500m` is 2500, not 2,500,000. Multiplying here is how a queue with
+			// 1.5 cores free reported zero, and how every shortfall came out equal to the arrival's size.
+			return v + frac/div
 		default:
 			return v * 1000
 		}
