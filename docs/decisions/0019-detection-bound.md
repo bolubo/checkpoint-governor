@@ -27,6 +27,17 @@ For preemption that is 5s plus the measured write: on the reference mount, 2.0 G
 1.2s. A preemption therefore costs roughly six seconds of work, against a default of losing everything
 since the job started.
 
+**Amendment, 2026-11-02.** The formula above is understated for `risk.preempt`, and the record stays
+as written rather than being quietly rewritten. Detection is not one probe interval: the platform
+writes the announcement, the observer reads the cluster and publishes the world file (5s by default),
+the round samples the probe when it is due (5s), and only then does the job act. So the number to use
+is **observer interval + probe interval + scheduling + the write**, not `5s + the write`.
+
+`docs/probes.md` §Bound is the authoritative arithmetic and lists every probe's cadence with the file
+that holds it. Read the `5s` above as one of three terms. The conclusion of this record does not
+change — the intervals stay fixed, and the receipt reports the observed latency — but anyone quoting
+"six seconds" should quote the four-term sum instead.
+
 **Why not a flag.** Three reasons, in order of weight:
 
 1. **A knob invites tuning without measurement.** The interval is the only input to the detection half

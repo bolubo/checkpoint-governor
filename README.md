@@ -105,6 +105,7 @@ use `python3`.
 - `docs/decisions/0017-two-numbers.md` and `0019` — the contract, and why there is no custom resource.
 - `docs/design-backstop.md` and `docs/design-v1.md` — why this shape, and how it is built.
 - `docs/policy.md`, `docs/conditions.md`, `docs/glue.md` — the rule, the 14 conditions, the files.
+- `docs/probes.md` — what each probe reads, how often, and what the cadence costs.
 - `docs/experiments-matrix.md` — every claim and the experiment that checks it.
 
 `RELEASE.md` says how a tag becomes a release.
