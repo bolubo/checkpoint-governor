@@ -159,6 +159,45 @@ unmount() {
 
 unmount
 
+
+# The volume runs out mid-write. Not a kill and not a corrupt byte: ENOSPC, which the product has to survive
+# without losing the copy that was already good.
+space() {
+	mnt="$work/space"
+	mkdir -p "$mnt"
+	if ! mount -t tmpfs -o size=24m tmpfs "$mnt" 2>/dev/null; then
+		printf 'space,skipped,needs mount privileges\n' >> "$out"
+		printf '%-14s skipped (needs mount privileges)\n' "space"
+		return
+	fi
+
+	# 4 MiB per shard, two shards: 8 MiB per copy, so the third copy cannot land in 24 MiB.
+	rc=0
+	"$work/ckpttrainer" --dir="$mnt" --steps=60 --step-ms=40 --write-ms=80 \
+		--shard-bytes=4194304 --ranks=2 --contract --save-every=100ms >/dev/null 2>&1 || rc=$?
+
+	line=$("$work/ckptctl" verify --dir="$mnt" --all 2>&1 | sed -n '1p')
+	gen=$("$work/ckptctl" verify --dir="$mnt" --all 2>&1 | grep -c 'verified' || true)
+
+	umount "$mnt" 2>/dev/null || true
+
+	printf 'space,after=[%s] verified=%s writer_exit=%s\n' \
+		"${line:-no-generation}" "$gen" "$rc" | sed 's/,/;/;s/,/;/' >> "$out"
+	printf '%-14s %s  (verified %s, writer exit %s)\n' "space" "${line:-no-generation}" "$gen" "$rc"
+
+	# A full volume must leave the writer saying so, and must not leave a half copy looking whole.
+	if [ "$rc" -eq 0 ]; then
+		printf 'MISMATCH space: the writer exited 0 although the volume filled\n'
+		failed=$((failed + 1))
+	fi
+	if [ "$gen" -eq 0 ]; then
+		printf 'MISMATCH space: no copy survived the full volume\n'
+		failed=$((failed + 1))
+	fi
+}
+
+space
+
 printf '\nresults in %s\n' "$out"
 if [ "${failed:-0}" -gt 0 ]; then
 	printf '%d row(s) did not match what the classifier promises\n' "$failed"
