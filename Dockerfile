@@ -11,10 +11,13 @@ ARG VERSION=dev
 WORKDIR /src
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/ckptctl ./cmd/ckptctl \
-	&& CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/ckpttrainer ./cmd/ckpttrainer
+	&& CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/ckpttrainer ./cmd/ckpttrainer \
+	&& CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/contrast ./experiments/contrast/main.go
 
 FROM scratch
 COPY --from=build /out/ckptctl /ckptctl
+# The contrast table runs in the image too: `docker run --rm --entrypoint /contrast <image>`.
+COPY --from=build /out/contrast /contrast
 # The demo job is in the image too, so a second container can write checkpoints for the first one to
 # govern without pulling anything else.
 COPY --from=build /out/ckpttrainer /ckpttrainer

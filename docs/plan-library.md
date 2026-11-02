@@ -43,6 +43,9 @@ cluster, under two minutes from a clone.
       `docker build` line moved into `Install` as the second shape.
 - [ ] **0.3 A one-liner for people without Go or Python.** The same command inside a container.
   **done when** `docker run …` prints the same four rows.
+  **status** the Dockerfile builds the contrast binary and copies it into the image
+      (`docker run --rm --entrypoint /contrast <image>`); the daemon is not running in this environment,
+      so the four rows were not observed here.
 - [x] **0.4 What the framework defaults cost, per scale.** `internal/waste` + `experiments/waste`:
       the waste fraction is `T_write / (interval × t_step)`, and the interval is **the framework's
       actual default, not a round number**: Hugging Face `save_steps=500` with `save_total_limit=None`
@@ -102,11 +105,17 @@ announced stop is HF's own `enable_jit_checkpoint`.
       nothing while the plan is silent, and a request is honoured at the next logging step and only once.
   **observed** `make py` runs 23 tests; the four HF cases pass (`[500, 1000]` for the default, `[]` for
       silence, `[10]` for a request), and `on_train_end` records `ending`.
-- [ ] **2.2 The real run (manual, torch only).** `make hf` runs a 1000-step CPU loop with `save_steps=500`
-      and then with the callback.
+- [x] **2.2 The real run (torch only).** `make hf` runs a 1000-step CPU loop with `save_steps=500` and then
+      with the callback. `PYTHON` selects the interpreter when torch lives in a virtualenv.
   **done when** it prints the checkpoint count for both arms and `trainer.state` is unchanged.
-  **status** `hack/hf-smoke.py` and `make hf` exist; the guard (no torch) was exercised here, and the
-      real numbers are pending on a machine with `torch` and `transformers`.
+  **observed** with torch 2.13.0+cu130 / transformers 5.6.0:
+  ```
+  framework default (save every 500 steps)   2 checkpoint(s)
+  ckpt-policy, unconfigured                  0 checkpoint(s) while training
+  end write                                   True (final/)
+  ```
+  Transformers 5 calls **every** event on every callback, so the class subclasses `TrainerCallback`
+      when transformers is installed and stays a plain class when it is not (the import stays optional).
 - [x] **2.3 The supported-integration page.** The exact diff, the receipt to expect, and the exclusions.
   **done when** `make docs` passes and the page is linked from the README.
   **observed** `docs/huggingface.md` carries the diff, the four events table, and the two caveats
@@ -131,13 +140,19 @@ Same shape, same contract test; the real runs need torch, so they stay manual ta
 
 ## P4 — the contributor ladder
 
-- [ ] **4.1 The integration template.** One page: how to write a callback for framework X, what the
+- [x] **4.1 The integration template.** One page: how to write a callback for framework X, what the
       receipt must contain, what the test must assert, which files to add.
   **done when** the page names every file and a second person can follow it without asking.
-- [ ] **4.2 Five good-first issues.** Fixtures, a fault script, one example, one docs gap, one test.
+  **observed** `docs/integration-template.md`: the six rules, the skeleton, the fake-trainer test, and
+      the five files an integration adds.
+- [x] **4.2 Five good-first issues.** Fixtures, a fault script, one example, one docs gap, one test.
   **done when** the repository has ≥5 issues labelled `good first issue`, each with a done-when.
-- [ ] **4.3 The roadmap is public.** This page, linked from the README, with the same states.
+  **observed** #202–#206 created: a Lightning example, a Composer example, `demo --json` with a test,
+      a Megatron row with an explicit interval, and the 100k-step glue measurement.
+- [x] **4.3 The roadmap is public.** This page, linked from the README, with the same states.
   **done when** the README links it and the states match the issues.
+  **observed** `docs/plan-library.md` is in the README's documentation list, and its checkboxes are the
+      roadmap.
 
 ## P5 — the article (not code)
 

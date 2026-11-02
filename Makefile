@@ -1,4 +1,6 @@
 GO ?= go
+# The interpreter for the Python package and its tests; override when torch lives in a virtualenv.
+PYTHON ?= python3
 
 # The release the binaries report. Plain `make build` says "dev"; `make dist VERSION=v0.6.0` and
 # `make release VERSION=v0.6.0` set it in the binary itself.
@@ -138,8 +140,10 @@ wheel:
 	sh hack/build-wheel.sh
 
 # The real Trainer run: needs torch and transformers (the contract test in `make py` does not).
+# Override the interpreter when torch lives in a virtualenv: `make hf PYTHON=/path/to/python`.
 hf:
-	python3 hack/hf-smoke.py
+	$(GO) build -trimpath -o contrib/ckpt-policy/ckpt_policy/_bin/ckptctl ./cmd/ckptctl
+	$(PYTHON) hack/hf-smoke.py
 
 # The only check that earns `restorable`: load it, take one step, and refuse a drill that changed the
 # checkpoint. A synthetic loader keeps it seconds and torch-free.

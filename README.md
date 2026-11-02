@@ -154,7 +154,7 @@ use `python3`.
 
 ## Documentation
 
-Thirty pages, and one directory of decisions. Start here, then read only what your question needs.
+Thirty-one pages, and one directory of decisions. Start here, then read only what your question needs.
 
 - `docs/ci.md` — the gate: what was red, what runs for which change, and the rules that keep it deterministic.
 
@@ -170,6 +170,8 @@ Thirty pages, and one directory of decisions. Start here, then read only what yo
 - `docs/lightning.md` — the Lightning integration: one batch of latency, because its save is public.
 - `docs/composer.md` — the Composer integration: and what `CheckpointSaver` used to provide that it no
   longer does.
+- `docs/integration-template.md` — the six rules for adding a framework, the skeleton, and the five
+  files an integration adds.
 - `docs/references.md` — what fifteen neighbouring projects actually do about "when to save", read from
   their source, and what that says about who the customer is.
 - `docs/plan-library.md` — the current plan: the contrast, the Python front door, and the three

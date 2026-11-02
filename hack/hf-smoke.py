@@ -7,7 +7,9 @@ The contract test in `make py` is torch-free; this is the run a person does once
 their own machine. It prints the checkpoint directories each arm left, which is the count that matters.
 """
 
+import contextlib
 import glob
+import io
 import os
 import sys
 import tempfile
@@ -16,10 +18,14 @@ try:
     import torch
     from torch import nn
     from transformers import Trainer, TrainingArguments
+    from transformers.utils import logging as hf_logging
 except ImportError as exc:  # pragma: no cover - the guard is the only path without torch
     print("make hf needs torch and transformers: pip install torch transformers", file=sys.stderr)
     print(f"  ({exc})", file=sys.stderr)
     sys.exit(2)
+
+# The run prints two numbers; the Trainer's own loss lines are noise here.
+hf_logging.set_verbosity_error()
 
 
 class TinyModel(nn.Module):
@@ -64,11 +70,12 @@ def arm_cadence(steps):
     out = tempfile.mkdtemp(prefix="hf-cadence-")
     args = TrainingArguments(
         output_dir=out, max_steps=steps, save_steps=500, logging_steps=50,
-        report_to=[], use_cpu=True, save_safetensors=False,
+        report_to=[], use_cpu=True,
     )
     trainer = Trainer(model=TinyModel(), args=args, train_dataset=TinyDataset(steps),
                       data_collator=collate)
-    trainer.train()
+    with contextlib.redirect_stdout(io.StringIO()):
+        trainer.train()
     return out, checkpoints(out)
 
 
@@ -83,11 +90,12 @@ def arm_policy(steps):
     try:
         args = TrainingArguments(
             output_dir=out, max_steps=steps, save_strategy="no", logging_steps=10,
-            report_to=[], use_cpu=True, save_safetensors=False,
+            report_to=[], use_cpu=True,
         )
         trainer = Trainer(model=TinyModel(), args=args, train_dataset=TinyDataset(steps),
                           data_collator=collate, callbacks=[GovernorCallback(g)])
-        trainer.train()
+        with contextlib.redirect_stdout(io.StringIO()):
+            trainer.train()
         final = os.path.join(out, "final")
         trainer.save_model(final)      # the job's own end write; weights only (see the page)
         return out, checkpoints(out), final

@@ -33,6 +33,18 @@ trainer.save_model("/ckpt/job-1/final")   # the job's own end write
 
 The callback itself is four lines: `on_step_end` sets `control.should_save` when `should_save()` is
 true, and `on_train_end` records `ending`. The decision stays in the engine; the callback only relays.
+Transformers 5 calls **every** event on every callback, so the class subclasses `TrainerCallback` when
+transformers is installed and stays a plain class when it is not.
+
+## Observed
+
+With torch 2.13.0+cu130 / transformers 5.6.0, `make hf` on a 1000-step CPU job:
+
+```
+framework default (save every 500 steps)   2 checkpoint(s)
+ckpt-policy, unconfigured                  0 checkpoint(s) while training
+end write                                   True (final/)
+```
 
 ## Two caveats, stated rather than hidden
 
