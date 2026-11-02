@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"sort"
@@ -55,6 +56,9 @@ type WorldSummary struct {
 	At                time.Time                 `json:"at"`
 	StaleAfterSeconds int                       `json:"staleAfterSeconds"`
 	Capabilities      map[string]CapabilityWire `json:"capabilities,omitempty"`
+	// Arrivals is every job asking for room or that has just taken it — the facts the event identity is
+	// built from, left unaggregated so each unit can ask "which of these outrank me" (0022).
+	Arrivals []ArrivalWire `json:"arrivals,omitempty"`
 	// Queues is what each queue can still admit and whether it may preempt: the two facts the measured
 	// rule needs besides "somebody higher is waiting" (0022).
 	Queues []QueueWire `json:"queues,omitempty"`
@@ -87,7 +91,7 @@ type UnitRecord struct {
 	// HigherPriorityWaiting counts the held-back jobs that outrank this unit: the second term of the
 	// measured rule, and zero means this unit cannot be the one taken to make room.
 	HigherPriorityWaiting int `json:"higherPriorityWaiting,omitempty"`
-	// Permit is the fleet's verdict for this unit (decision 0021). Absent means permission: an
+	// Permit is the fleet's verdict for this unit (docs/decisions/0021). Absent means permission: an
 	// observer that predates the field, a cluster with one unit, and every unreadable value all leave
 	// the governor behaving exactly as it did before.
 	Permit *UnitPermit `json:"permit,omitempty"`
@@ -239,17 +243,68 @@ func writeAtomic(path string, raw []byte) error {
 	return os.Rename(tmp, path)
 }
 
+// ArrivalWire is one job that is asking for room, or has just taken it.
+type ArrivalWire struct {
+	Name      string    `json:"name"`
+	Priority  int32     `json:"priority"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// CauseID is the identity of the event *for this unit*: the arrivals that outrank it, ordered and
+// hashed; empty when nothing does.
+//
+// It is computed here rather than in the observer on purpose (0022). The observer publishes facts and
+// keeps no memory; deciding what is new is a comparison against the last write this unit made, and that
+// memory lives in the ledger. Putting the hash on the observer's side meant every unit saw one global
+// id — including the arrivals that could never take it.
+func CauseID(arrivals []ArrivalWire, mine int32) string {
+	names := make([]string, 0, len(arrivals))
+	for _, a := range arrivals {
+		if a.Priority > mine {
+			names = append(names, a.Name)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	sort.Strings(names)
+
+	h := fnv.New64a()
+	for _, n := range names {
+		_, _ = h.Write([]byte(n))
+		_, _ = h.Write([]byte{0})
+	}
+	return fmt.Sprintf("arrival:%x", h.Sum64())
+}
+
 // QueueWire is one queue's numbers, as the observer published them.
 type QueueWire struct {
 	Name        string `json:"name"`
 	FreeMilli   int64  `json:"freeMilli"`
 	DemandMilli int64  `json:"demandMilli"`
 	Allowed     bool   `json:"allowed"`
+	// Cohort is the group this queue lends to and borrows from, empty when it stands alone.
+	Cohort          string `json:"cohort,omitempty"`
+	CohortFreeMilli int64  `json:"cohortFreeMilli,omitempty"`
+	// CapacityMilli is the most this queue could ever admit: its own quota plus the borrowing its policy
+	// permits. Work past that is never admitted, so it never displaces anybody.
+	CapacityMilli int64 `json:"capacityMilli,omitempty"`
 }
 
-// ShortfallMilli is how much more the waiting work needs than the queue can give.
+// ShortfallMilli is how much more the waiting work needs than can be given, counting the cohort's
+// lending. Measuring the queue alone produced two false positives in the sweep: a 500m queue inside a
+// four-core cohort reported a 2.5-core shortfall for work its sibling absorbed without taking anybody.
 func (q QueueWire) ShortfallMilli() int64 {
-	if d := q.DemandMilli - q.FreeMilli; d > 0 {
+	// "Does not fit now" and "cannot fit at all" are different: past its capacity the arrival waits
+	// forever and nobody is taken, which is the one remaining false positive the sweep found.
+	if q.CapacityMilli > 0 && q.DemandMilli > q.CapacityMilli {
+		return 0
+	}
+	room := q.FreeMilli
+	if q.Cohort != "" {
+		room = q.CohortFreeMilli
+	}
+	if d := q.DemandMilli - room; d > 0 {
 		return d
 	}
 	return 0

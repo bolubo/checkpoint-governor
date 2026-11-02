@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/bolubo/checkpoint-governor/internal/advise"
-	"github.com/bolubo/checkpoint-governor/internal/conditions"
 	"github.com/bolubo/checkpoint-governor/internal/loop"
 	"github.com/bolubo/checkpoint-governor/internal/permit"
 	"github.com/bolubo/checkpoint-governor/internal/policy"
@@ -71,7 +70,6 @@ func runRun(args []string, out io.Writer) int {
 	verifyEvery := fs.Duration("verify-every", 10*time.Minute, "how often one checkpoint may be read back (negative disables)")
 	verifyBytes := fs.Int64("verify-bytes-per-hour", 0, "how many bytes may be read back per hour (0 = 2 GiB, negative = unlimited)")
 	inflight := fs.Duration("inflight-every", 200*time.Millisecond, "how often to look while a write is running (it is what makes a write's cost measurable)")
-	webhook := fs.String("webhook", "", "POST one JSON event to this URL when a plan changes")
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "usage: ckptctl run --dir=<checkpointDir> [--unit=<name>] [--lost=10m] [--tax=0.05] [--copies=1] [--every=5s] [--once]")
 		fs.PrintDefaults()
@@ -102,7 +100,7 @@ func runRun(args []string, out io.Writer) int {
 		}
 	}
 
-	// No configuration is a valid configuration (product-v1 §2): unset means `none` — the job
+	// No configuration is a valid configuration (docs/product-v1.md §2): unset means `none` — the job
 	// would have written nothing — and the start-up line says so out loud. The earlier rule refused to
 	// start instead, on the grounds that a silent "no write" is an accident; it is, unless the run
 	// states it, which is now the first thing this program prints.
@@ -160,15 +158,6 @@ func runRun(args []string, out io.Writer) int {
 		})
 	}
 
-	// What this deployment adds to the frozen catalogue. A malformed file is a startup failure:
-	// governing a job while believing a condition is watched, when it is not, is the one outcome this
-	// extension point must not allow.
-	extra, err := conditions.Load(*dir)
-	if err != nil {
-		fmt.Fprintf(out, "error: %v\n", err)
-		return 2
-	}
-
 	// Record what this process actually uses, so the plan can be explained later with the same
 	// numbers even when a flag — not the operator's file — set them.
 	if err := adapters.WriteThresholds(*dir, probeCfg); err != nil {
@@ -184,12 +173,6 @@ func runRun(args []string, out io.Writer) int {
 		noUsText = strings.Replace(noUsText, " (", " (unset — ", 1)
 	}
 	fmt.Fprintf(out, "watching %s every %s (inflight %s, no-us %s, window %s)\n", *dir, cadence, *inflight, noUsText, windowAnswer(*window))
-	if *webhook != "" {
-		fmt.Fprintf(out, "notifying %s on every plan change\n", *webhook)
-	}
-	if extra.Len() > 0 {
-		fmt.Fprintf(out, "conditions: %d built-in + %d from disk\n", len(policy.Conditions()), extra.Len())
-	}
 
 	host, _ := os.Hostname()
 	probeCfg = probeCfg.WithWorld(*dir)
@@ -205,7 +188,7 @@ func runRun(args []string, out io.Writer) int {
 			NoUsEvery: noUsEvery,
 			WithUs:    *window,
 		},
-		Policy: policy.Risk{Extra: extra.Rows},
+		Policy: policy.Risk{},
 
 		// A one-shot process has no next round to throttle: it must answer the question it was
 		// started for, even when the ledger says asking again is not yet worth it.
@@ -229,8 +212,7 @@ func runRun(args []string, out io.Writer) int {
 		WriteEstimate:      *estimate,
 		VerifyEvery:        *verifyEvery,
 		VerifyBytesPerHour: *verifyBytes,
-		Probes:             append(adapters.All(probeCfg), extra.Probes...),
-		Notify:             webhookPoster(*webhook),
+		Probes:             adapters.All(probeCfg),
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -410,6 +392,12 @@ func causeFor(cfg adapters.Config) func(time.Time) string {
 		if err != nil {
 			return ""
 		}
-		return s.PendingEvent
+		var mine int32
+		if u, err := adapters.ReadUnit(cfg.WorldDir, cfg.Cluster, cfg.UnitID); err == nil {
+			mine = u.Priority
+		}
+		// The identity is the arrivals that outrank *this* unit. A unit cannot be taken to make room
+		// for work that ranks below it, so those arrivals are not its event (0022).
+		return adapters.CauseID(s.Arrivals, mine)
 	}
 }
