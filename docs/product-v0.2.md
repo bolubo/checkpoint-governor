@@ -1,6 +1,6 @@
 # Product v0.2 — the release that says whether the work can continue
 
-Status: scope, 2026-11-02. v0.2 ships in two halves, and both are about the same question asked at
+Status: released as `v0.2.0`, 2026-11-02. v0.2 ships in two halves, and both are about the same question asked at
 different times: **is the checkpoint worth anything after the machine is gone?**
 
 | half | question | state |

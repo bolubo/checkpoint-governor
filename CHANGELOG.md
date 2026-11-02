@@ -3,7 +3,7 @@
 One entry per released tag. The prototype's history before this file is `git log`; this file starts at
 the first release that makes a compatibility promise.
 
-## v0.2.0 — planned
+## v0.2.0 — 2026-11-02
 
 The release that says whether the work can continue. It ships in two halves, and neither writes a
 checkpoint. Scope and acceptance lines: `docs/product-v0.2.md`.
