@@ -9,7 +9,7 @@ IMAGE ?= ghcr.io/bolubo/checkpoint-governor
 # How long the real-clock smoke runs (make smoke MINUTES=2 for a quick check).
 MINUTES ?= 10
 
-.PHONY: all check fmt vet build test verify parity ci e2e exp clean dist release install install-smoke release-notes spot prepush resume
+.PHONY: all check fmt vet build test verify parity ci e2e exp clean dist release install install-smoke release-notes spot prepush resume py drill
 
 all: check
 
@@ -109,6 +109,15 @@ spot:
 resume:
 	sh hack/resume-claims.sh
 
+# The training-script adapter. Standard library only: no install step, and no torch on the runner.
+py:
+	python3 -m unittest discover -s contrib/ckptctl-pytorch/tests -q
+
+# The only check that earns `restorable`: load it, take one step, and refuse a drill that changed the
+# checkpoint. A synthetic loader keeps it seconds and torch-free.
+drill:
+	sh hack/drill-claims.sh
+
 test:
 	$(GO) test ./...
 
@@ -125,9 +134,9 @@ e2e:
 prepush:
 	sh hack/prepush.sh
 
-ci: check e2e exp demo install-smoke spot resume
+ci: check e2e exp demo install-smoke spot resume py drill
 
-verify: check e2e parity spot resume
+verify: check e2e parity spot resume py drill
 	$(GO) test ./internal/loop ./cmd/ckptctl
 	$(GO) test ./internal/simulate -run TestGoldenDecisions
 	$(GO) test ./internal/policy -run TestEveryContractFieldHasAnOwner

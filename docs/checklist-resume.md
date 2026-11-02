@@ -65,28 +65,36 @@ demand another. This half answers the other question: what a restore would get, 
 
 ## P2 — the one-line integration (4h)
 
-- [ ] **2.1** `contrib/ckptctl-pytorch` with zero runtime dependencies (`pyproject.toml`).
-  **done when** `python -m pytest contrib/ckptctl-pytorch/tests -q` passes without torch installed.
-- [ ] **2.2** `Governor.step/requested/sealed/resumed/ending` plus SIGTERM glue, rank0-only, every write
-  by rename. **done when** `TestTheCallbackWritesOnlyGlue` shows no shard was created by the callback.
-- [ ] **2.3** One preemption cycle end to end without torch.
-  **done when** the test prints `cycle: requested → sealed → resumed(512, 512)`.
-- [ ] **2.4** An `examples/` loader for real runs (not in CI), and the README's three-line snippet matches
-  it byte for byte.
-- [ ] **2.5** Regenerate P0's fixtures through the callback.
-  **done when** `make resume` still prints `6/6` and `git status` is clean.
+- [x] **2.1** `contrib/ckptctl-pytorch` with zero runtime dependencies (`pyproject.toml`).
+  **done when** `python3 -m unittest discover -s contrib/ckptctl-pytorch/tests -q` passes — 13 tests, no
+  torch, no pytest.
+- [x] **2.2** `Governor.step/requested/sealed/resumed/ending` plus SIGTERM glue, rank0-only, every write
+  by rename. **done when** `TestTheCallbackWritesOnlyGlue` shows the callback added only `manifest.json`
+  and `resume.json` to a generation, and nothing outside the glue whitelist.
+- [x] **2.3** One preemption cycle end to end without torch.
+  **done when** `test_one_cycle_creates_no_shard` runs requested → sealed → resumed in one test.
+- [x] **2.4** `examples/torch_loop.py` for real runs (not in CI), and the README's snippet mirrors it.
+- [x] **2.5** Fixtures: **kept with the Go writer** instead of regenerating them through the adapter.
+  The Go trainer writes the shards *and* the manifest, so the fixtures are already real-writer output;
+  rebuilding them from Python would make two writers for one fixture set. The adapter's own tests build
+  their trees in a temp directory, and the schema they write is the one the Go reader parses.
+  **done when** `make resume` still prints `6/6` and `make py` prints `OK`.
 
 ## P3 — proof (3h)
 
-- [ ] **3.1** Fingerprint: paths, sizes, mtimes, tail hashes.
-  **done when** `TestDrillRefusesAMutatedCheckpoint` prints `drill refused: the checkpoint changed during the drill`, exit 2.
-- [ ] **3.2** Runner: `CKPT_DIR`/`CKPT_GEN`, `--timeout`, truncated output, last line `step=<n>`.
-  **done when** a timeout prints `drill failed: the loader did not finish within 2m`, exit 1.
-- [ ] **3.3** `ckptctl drill`, refusing a declared loader unless `--trust-declared-loader`.
-  **done when** `resume: ok — step 512 → 513; 0.9s` (exit 0) and a step-0 loader prints
-  `not restorable: the loader reported step 0 (declared 512)` (exit 1).
-- [ ] **3.4** A synthetic loader for CI (`experiments/rig/tools/drill-loader`), and `make drill`.
-  **done when** it runs inside `ci`, `verify` and `prepush`.
+- [x] **3.1** Fingerprint: paths, sizes, mtimes, tail hashes.
+  **done when** `TestADrillThatChangesTheCheckpointIsRefused` prints
+  `drill refused: the checkpoint changed during the drill (gen-0007/rank-00.bin changed)`, exit 2.
+- [x] **3.2** Runner: `CKPT_DIR`/`CKPT_GEN`, `--timeout`, truncated output, last line `step=<n>`.
+  **done when** `TestALoaderThatDoesNotFinishInTimeFails` prints
+  `drill failed: the loader did not finish within 100ms`, exit 1.
+- [x] **3.3** `ckptctl drill`, refusing a declared loader unless `--trust-declared-loader`.
+  **done when** `resume: ok — step 512 → 513; 0.0s` (exit 0), a step-0 loader prints
+  `not restorable: the loader reported step 0 (declared 512)` (exit 1), and a declared loader is refused
+  by default (`TestADeclaredLoaderIsNotExecutedByDefault`).
+- [x] **3.4** A synthetic loader for CI (`experiments/rig/tools/drill-loader`), and `make drill`.
+  **done when** it prints `drill: 4/4 — restorable, wrong-step, mutation-refused, no-loader` and runs
+  inside `ci`, `verify` and `prepush`.
 
 ## P4 — release (2h)
 

@@ -41,6 +41,18 @@ jobs:
       - name: make spot
         run: make spot
 
+      # can a restore be judged, and did the job adopt one: six sentences and one tally
+      - name: make resume
+        run: make resume
+
+      # the training loop's half, with the standard library only (no torch on the runner)
+      - name: make py
+        run: make py
+
+      # the only check that earns `restorable`, and the refusal when a drill changes the evidence
+      - name: make drill
+        run: make drill
+
       # the shortest path has to keep working, or the README is fiction
       - name: docker build
         run: docker build -t governor .
