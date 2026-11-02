@@ -3,7 +3,7 @@ package policy
 import "sort"
 
 // Helpers the risk core shares with the rest of the package. The interval policy that used to own
-// these is deleted (docs/decisions/0014, 0015 §5).
+// these is deleted (decision 0014, 0015 §5).
 
 // newestCopy returns the copy with the highest step, or nil when there is none.
 func newestCopy(copies []Copy) *Copy {

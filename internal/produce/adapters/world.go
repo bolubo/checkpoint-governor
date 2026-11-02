@@ -87,7 +87,7 @@ type UnitRecord struct {
 	// HigherPriorityWaiting counts the held-back jobs that outrank this unit: the second term of the
 	// measured rule, and zero means this unit cannot be the one taken to make room.
 	HigherPriorityWaiting int `json:"higherPriorityWaiting,omitempty"`
-	// Permit is the fleet's verdict for this unit (docs/decisions/0021). Absent means permission: an
+	// Permit is the fleet's verdict for this unit (decision 0021). Absent means permission: an
 	// observer that predates the field, a cluster with one unit, and every unreadable value all leave
 	// the governor behaving exactly as it did before.
 	Permit *UnitPermit `json:"permit,omitempty"`

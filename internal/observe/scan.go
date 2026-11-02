@@ -28,7 +28,7 @@ type Request struct {
 	UnitID     string
 	Generation int64
 
-	// Step and Progress come from the job's files (docs/design.md, "What the training job writes").
+	// Step and Progress come from the job's files (design, "What the training job writes").
 	Step     *int64
 	Progress *float64
 

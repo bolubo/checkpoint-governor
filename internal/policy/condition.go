@@ -4,7 +4,7 @@ package policy
 //
 // Every entry is a named boolean with a fixed meaning. The algorithm never sees a percentage, a
 // millisecond or a machine; it sees these names, each of which is 0, 1, "not applicable" or
-// "cannot be read". The catalogue is frozen (docs/decisions/0013-risk-conditions.md): adding one is
+// "cannot be read". The catalogue is frozen (decision 0013): adding one is
 // a row here, a producer, and a test in the same commit.
 //
 // Three facts deliberately have no condition, because they are already typed fields that the

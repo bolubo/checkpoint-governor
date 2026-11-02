@@ -1,6 +1,6 @@
 // Package unit decides what one write unit is, and how many units may write at once on one volume.
 //
-// A unit is the set of processes that seal one checkpoint directory together (docs/decisions/0001).
+// A unit is the set of processes that seal one checkpoint directory together (decision 0001).
 // The directory is the identity; a member is only a process. This package exists so that the
 // algorithm never learns what a pod, a rank or a gang is: it sees one UnitID and one Generation.
 package unit

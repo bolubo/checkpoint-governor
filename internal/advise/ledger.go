@@ -71,7 +71,7 @@ type Ledger struct {
 
 	// AbsentAt is the last moment a step directory was seen **without** a manifest. With the first
 	// sighting it brackets when the seal happened, which is what turns a write cost from "one
-	// observation" into an interval (see docs/design.md, "Measurement").
+	// observation" into an interval (see design, "Measurement").
 	AbsentAt map[string]int64 `json:"absentAt,omitempty"`
 
 	// Verified and Mismatch are the sampled verifier's results, by step. They persist because
@@ -79,7 +79,7 @@ type Ledger struct {
 	Verified     map[int64]int64  `json:"verified,omitempty"`
 	Mismatch     map[int64]string `json:"mismatch,omitempty"`
 	LastVerifyAt int64            `json:"lastVerifyAt,omitempty"`
-	// Status is the human view (docs/design.md, "The human view"). It lives here because it is the
+	// Status is the human view (design, "The human view"). It lives here because it is the
 	// implementation's memory, not the contract's.
 	Status Status `json:"status"`
 }

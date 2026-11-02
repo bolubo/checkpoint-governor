@@ -9,7 +9,7 @@ import (
 	"github.com/bolubo/checkpoint-governor/internal/advise"
 )
 
-// Skipping writes nothing at all. Decision in docs/product-v1.md §13: "zero config" has to keep
+// Skipping writes nothing at all. Decision in product-v1 §13: "zero config" has to keep
 // meaning what it says, and a file saying `no-us=none` would make the next run look configured when
 // nobody decided anything.
 func TestInitWritesNothingWhenTheAnswerIsNone(t *testing.T) {

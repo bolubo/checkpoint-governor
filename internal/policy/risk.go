@@ -9,7 +9,7 @@ import (
 // and advises a write when the work may be lost. It has no clock, no threshold, and no arithmetic.
 const riskVersion = "risk-v1"
 
-// Risk is the risk policy (docs/decisions/0015-risk-core.md).
+// Risk is the risk policy (decision 0015).
 //
 // Extra holds the conditions a deployment added from disk (decision 0024). They are appended after
 // the frozen catalogue, so when two urgent conditions fire the decision still names the built-in one:

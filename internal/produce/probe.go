@@ -44,7 +44,7 @@ func (s State) String() string {
 
 // Reading is one probe's answer at one moment.
 type Reading struct {
-	// Condition is the frozen name from the catalogue (docs/decisions/0013-risk-conditions.md).
+	// Condition is the frozen name from the catalogue (decision 0013).
 	Condition string
 	State     State
 	// Value is meaningful only when State is Fresh.

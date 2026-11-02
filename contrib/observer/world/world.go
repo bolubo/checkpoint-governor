@@ -78,7 +78,7 @@ type UnitRecord struct {
 	// this unit cannot be the one taken to make room, whatever else is true.
 	HigherPriorityWaiting int `json:"higherPriorityWaiting,omitempty"`
 	// Permit is this unit's permission to spend a write when one cause endangers several units
-	// (docs/decisions/0021). It is written here, and only here, because the answer needs the set: a
+	// (decision 0021). It is written here, and only here, because the answer needs the set: a
 	// governor that sees one unit cannot tell "I am the victim" from "my neighbour is".
 	Permit *Permit `json:"permit,omitempty"`
 }

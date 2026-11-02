@@ -27,7 +27,7 @@ const MayExitFile = "may-exit"
 //
 // The job's own claim ("my last write is done") is deliberately not an input: the job cannot see what
 // is in flight, and taking its word for a fact only the controller can observe is the mistake this
-// handshake exists to avoid. The caller decides when the answer is owed (docs/design.md §7) and
+// handshake exists to avoid. The caller decides when the answer is owed (design §7) and
 // asks us the narrow question: may the job go *now*?
 func Release(dir string, recent []Attempt, now time.Time) (released bool, why string, err error) {
 	for _, a := range recent {

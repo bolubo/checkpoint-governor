@@ -96,7 +96,7 @@ func (m WriteModel) DeltaShareAt() float64 {
 
 // SmallTeamModel is the target user of V1: a 300 MB checkpoint with optimizer state on a mount that
 // moves about 10 MB/s and charges one second per write. It is the model the V2 ladder is priced
-// against in docs/policy.md §7–8.
+// against in policy §7–8.
 func SmallTeamModel() WriteModel {
 	return WriteModel{
 		Overhead:            time.Second,

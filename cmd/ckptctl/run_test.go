@@ -44,7 +44,7 @@ func TestRunOnceHoldsWhileAWriteIsRunning(t *testing.T) {
 	}
 }
 
-// No configuration is a configuration (docs/product-v1.md §2). A run with no flags starts, treats
+// No configuration is a configuration (product-v1 §2). A run with no flags starts, treats
 // `no-us` as `none`, and says so on its first line: the user is entitled to know which sentence is in
 // force, and "unset" is the difference between a policy they chose and one we assumed.
 func TestRunStartsWithNoConfiguration(t *testing.T) {

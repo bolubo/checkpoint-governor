@@ -8,8 +8,10 @@ answers "why is it this way", so a later change either follows it or replaces it
 1. **A record is written when a decision is made, not when it is convenient.** Copy `0000-template.md`.
 2. **Status is one of: proposed, accepted, superseded.** A superseded record keeps its number and says
    what replaced it; it is never deleted while the code still cites it.
-3. **Every decision a Go file cites must exist here.** The citation is `docs/decisions/<number>` or
-   `decision <number>`; if the record moves to `history.md`, the citation moves with it.
+3. **Code cites a number, a page links a path.** A Go comment says `decision 0013`, never
+   `docs/decisions/0013-...md`: a path rots when a page moves, and `TestCommentsCiteDecisionsNotPagePaths`
+   fails the build if one appears. A Markdown page may link a path, and `TestDocsHaveNoDeadLinks` checks
+   that it resolves. Every number cited in code must be described here or in `history.md`.
 4. **Historical records are one paragraph in `history.md`.** Their full text is in git history
    (`git log --follow -- docs/decisions/`); folding them keeps the tree readable without pretending
    the reasoning never happened.

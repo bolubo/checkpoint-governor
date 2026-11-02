@@ -107,7 +107,7 @@ func runInit(args []string, out io.Writer) int {
 	}
 
 	if pick.key == "none" {
-		// Decision (docs/product-v1.md §13): skipping writes nothing, so "zero config" keeps meaning
+		// Decision (product-v1 §13): skipping writes nothing, so "zero config" keeps meaning
 		// what it says. A file saying `no-us=none` would be louder, and would also make the next run
 		// look configured when nobody decided anything.
 		fmt.Fprintln(out, "nothing written: the run will say `no-us none (unset)` and write once, at the end.")

@@ -233,7 +233,7 @@ func Open(cfg Config) (*Loop, error) {
 	if cfg.Policy == nil {
 		// The only shipped policy: it writes when a reported condition says the work is at risk,
 		// and never otherwise. A deployment with no producers therefore writes nothing, which is
-		// the state its user signed for (docs/decisions/0013, 0015).
+		// the state its user signed for (decisions 0013, 0015).
 		cfg.Policy = policy.Risk{}
 	}
 	if cfg.Now == nil {

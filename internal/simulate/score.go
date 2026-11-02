@@ -9,7 +9,7 @@ import (
 )
 
 // EvalBounds are the evaluation's targets: what a careful user would have asked for. They are not
-// the controller's contract — that contract is two numbers and no targets (docs/design-backstop.md)
+// the controller's contract — that contract is two numbers and no targets (design, Appendix A)
 // — but a comparison needs a yardstick, and this is it.
 type EvalBounds struct {
 	MaxLostWork time.Duration

@@ -16,7 +16,7 @@ const (
 	FieldOptional FieldStatus = "optional"
 	// FieldUnknownOK: V1 leaves it unknown on purpose; a filled value would change nothing today.
 	FieldUnknownOK FieldStatus = "unknown-ok"
-	// FieldDeprecated: the field belongs to the retired interval line (docs/decisions/0014). The
+	// FieldDeprecated: the field belongs to the retired interval line (decision 0014). The
 	// algorithm never reads it; filling it changes nothing and misleads the reader.
 	FieldDeprecated FieldStatus = "deprecated"
 )

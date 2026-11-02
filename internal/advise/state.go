@@ -20,7 +20,7 @@ const BaseDir = ".ckpt-governor"
 // stateName is the published file: the contract with the job and the platform.
 const stateName = "state.json"
 
-// stateFile is the published contract: the fields are listed in docs/decisions/0017-two-numbers.md
+// stateFile is the published contract: the fields are listed in decision 0017
 // and consumed by cmd/ckpttrainer. A field that no reader uses is a second thing to keep in sync.
 //
 // SaveNow is deliberately absent: it is true exactly when Action is save or repair, and a second
@@ -81,7 +81,7 @@ type stateSensitivity struct {
 //
 // 2: `requestId`, `baselineSeconds`/`baselineNone` and `windowSeconds` replace
 // `fallbackIntervalSeconds`; the expiry means "a live governor exists" rather than a period
-// (docs/design.md §5).
+// (design §5).
 const SchemaVersion = 2
 
 // stateOf builds the published structure. It takes expiresAt rather than a clock so that the bytes

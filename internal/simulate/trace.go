@@ -26,7 +26,7 @@ const (
 	KindKill      Kind = "kill"
 )
 
-// Event is one line of a trace (docs/policy.md, "Trace format").
+// Event is one line of a trace (policy, "Trace format").
 type Event struct {
 	T      time.Time
 	Kind   Kind

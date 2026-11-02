@@ -18,7 +18,7 @@ import (
 //
 // It is read-only: one scan of the directory, one read of the ledger, then arithmetic. The controller
 // never reads this output, which is the point — a price sheet that could influence a decision would
-// be a second policy. See internal/bound for the equation and docs/product-v1.md §14 for who it is for.
+// be a second policy. See internal/bound for the equation and product-v1 §14 for who it is for.
 func runPrice(args []string, out io.Writer) int {
 	fs := flag.NewFlagSet("price", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)

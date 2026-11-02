@@ -46,7 +46,7 @@ type Options struct {
 	// free space is below two checkpoints, store.low-space. Zero means no conditions are reported at
 	// all, which is the honest behaviour of a deployment without producers: nothing fires, nothing
 	// is written. It is a modelled warning window, not a measurement; the real one is what a
-	// deployment has to measure (docs/decisions/0014 §8).
+	// deployment has to measure (decision 0014 §8).
 	WarnBefore time.Duration
 }
 

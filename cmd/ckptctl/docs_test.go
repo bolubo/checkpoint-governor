@@ -15,7 +15,7 @@ import (
 var markdownLink = regexp.MustCompile(`\[[^\]]+\]\(([^)\s]+)\)`)
 
 // F10's "zero dead links": a page that tells a user where to look must not send them nowhere. This
-// walks every page in docs/ and docs/decisions/ and checks that each relative link resolves to a
+// walks every page under the docs tree and checks that each relative link resolves to a
 // file that exists. The decisions directory is included because a folded record is exactly where a
 // stale pointer hides: the page is gone, and the citation in another page still names it.
 func TestDocsHaveNoDeadLinks(t *testing.T) {
@@ -88,4 +88,90 @@ func TestEveryConditionHasACard(t *testing.T) {
 	for name := range cards {
 		t.Errorf("docs/conditions.md documents %s, which is not in the catalogue", name)
 	}
+}
+
+// pageInComment finds a documentation page named by path in a comment. A numbered decision
+// ("decision 0015") is a stable identifier and is allowed; a page path is not.
+var pageInComment = regexp.MustCompile(`docs/[A-Za-z0-9_./-]*\.md`)
+
+// decisionInComment finds a numbered decision cited in a comment.
+var decisionInComment = regexp.MustCompile(`decision (0\d{3})`)
+
+// A comment must not name a documentation page by path.
+//
+// The top controllers do not do it: node-problem-detector, keda and kube-state-metrics cite no
+// internal page from Go code (the matches for "docs/" are external URLs), karpenter cites none, and
+// Kubernetes cites design records as KEP URLs — a stable identifier, not a path. A path in a comment
+// rots silently: this repository moved three pages and folded fourteen records in one day, and every
+// path citation became a lie the compiler cannot see.
+//
+// What a comment may do is name a numbered decision, which resolves through the decision index; that
+// index is checked here too, so a number cannot be cited after the record behind it is deleted. Data
+// paths (the world example files) are inputs a test reads, not pages, and the pattern above does not
+// match them.
+func TestCommentsCiteDecisionsNotPagePaths(t *testing.T) {
+	cited := map[string]bool{}
+	files := 0
+
+	err := filepath.WalkDir("../..", func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", "bin", "dist":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		files++
+		for i, line := range strings.Split(string(raw), "\n") {
+			idx := strings.Index(line, "//")
+			if idx < 0 {
+				// "//" inside a string literal (a URL) is not a comment.
+				continue
+			}
+			if strings.Contains(line[:idx], `"`) || strings.Contains(line[:idx], "`") {
+				continue
+			}
+			comment := line[idx:]
+			if pageInComment.MatchString(comment) {
+				t.Errorf("%s:%d cites a page path instead of a decision: %s", path, i+1, comment)
+			}
+			for _, m := range decisionInComment.FindAllStringSubmatch(comment, -1) {
+				cited[m[1]] = true
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("cannot walk the repository: %v", err)
+	}
+	if len(cited) == 0 {
+		t.Fatal("no numbered decisions found in comments: the pattern changed and this test stopped looking")
+	}
+
+	// Every cited number must be described in the decision tree: an index row, or a history entry.
+	index, err := os.ReadFile("../../docs/decisions/README.md")
+	if err != nil {
+		t.Fatalf("cannot read the decision index: %v", err)
+	}
+	history, err := os.ReadFile("../../docs/decisions/history.md")
+	if err != nil {
+		t.Fatalf("cannot read the decision history: %v", err)
+	}
+	described := string(index) + string(history)
+	for n := range cited {
+		if !strings.Contains(described, n) {
+			t.Errorf("decision %s is cited in code but neither indexed nor in history", n)
+		}
+	}
+	t.Logf("code citations: %d decisions, %d Go files, 0 page paths", len(cited), files)
 }

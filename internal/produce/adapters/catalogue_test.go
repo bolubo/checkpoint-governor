@@ -25,7 +25,7 @@ var cardFields = []string{
 
 var cardHeading = regexp.MustCompile("^## `([a-z][a-z0-9.\\-]+)`$")
 
-// TestEveryCatalogueRowHasACard reads docs/conditions.md and checks both directions: every row in
+// TestEveryCatalogueRowHasACard reads conditions.md and checks both directions: every row in
 // the catalogue has a card with all nine answers, and every card names a row that exists. This is
 // the test that makes "the catalogue is complete" a fact rather than an intention.
 func TestEveryCatalogueRowHasACard(t *testing.T) {

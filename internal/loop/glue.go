@@ -148,7 +148,7 @@ func (l *Loop) throughput() float64 {
 	}
 	if l.cfg.DryRun {
 		// The probe writes 32 MiB; a dry run writes nothing, so the number stays unknown. Unknown is
-		// already a state this build can answer with (docs/product-v1.md §16, the fourth option).
+		// already a state this build can answer with (product-v1 §16, the fourth option).
 		return 0
 	}
 	l.throughputOnce.Do(func() {

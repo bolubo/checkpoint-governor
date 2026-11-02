@@ -6,7 +6,7 @@ import (
 )
 
 // TestTheCatalogueMatchesTheRecord pins the frozen names, tiers, missing policies and order against
-// docs/decisions/0013-risk-conditions.md. A rename or a reorder is a contract change, so it fails
+// decision 0013. A rename or a reorder is a contract change, so it fails
 // here first; the implementation layer builds adapters against these strings and this order.
 func TestTheCatalogueMatchesTheRecord(t *testing.T) {
 	want := []struct {

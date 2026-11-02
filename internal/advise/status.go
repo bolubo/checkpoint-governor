@@ -10,7 +10,7 @@ import (
 	"github.com/bolubo/checkpoint-governor/internal/policy"
 )
 
-// Phase is where a unit is in the write lifecycle (docs/design.md, "The write lifecycle").
+// Phase is where a unit is in the write lifecycle (design, "The write lifecycle").
 //
 // It is the implementation's vocabulary, not the contract's: the job reads an action, a person reads
 // a phase. Keeping them apart is what lets the view say "writing, 45%, 2m10s" without inventing a

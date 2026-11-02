@@ -13,7 +13,7 @@ import (
 
 // ManifestName is the file written last: its presence is the seal.
 //
-// The layout is named in docs/design.md ("The layout it reads"). Nothing else is promised about a
+// The layout is named in design ("The layout it reads"). Nothing else is promised about a
 // checkpoint directory: a directory without this file is a write that has not finished, and a
 // manifest that does not match its shards is a broken checkpoint, not an old format.
 const ManifestName = "manifest.json"

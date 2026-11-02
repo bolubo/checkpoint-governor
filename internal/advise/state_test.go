@@ -26,7 +26,7 @@ func exampleDecision() policy.Decision {
 }
 
 // The published file is a contract; its bytes are the contract. This test is the one place the
-// keys, their order and their spelling are pinned to docs/design.md.
+// keys, their order and their spelling are pinned to design.
 func TestEncodeMatchesTheDocumentedFile(t *testing.T) {
 	got, err := encode(exampleDecision(), 7, time.Unix(1730000000, 0))
 	if err != nil {

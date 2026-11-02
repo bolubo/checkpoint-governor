@@ -102,7 +102,7 @@ func runRun(args []string, out io.Writer) int {
 		}
 	}
 
-	// No configuration is a valid configuration (docs/product-v1.md §2): unset means `none` — the job
+	// No configuration is a valid configuration (product-v1 §2): unset means `none` — the job
 	// would have written nothing — and the start-up line says so out loud. The earlier rule refused to
 	// start instead, on the grounds that a silent "no write" is an accident; it is, unless the run
 	// states it, which is now the first thing this program prints.

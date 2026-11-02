@@ -4,7 +4,7 @@
 // The implementation layer turns the world (directories, pods, job groups, storage) into a
 // Snapshot, calls Decide, and carries out the Decision. Everything the algorithm needs is in the
 // Snapshot; everything it decides is in the Decision. See "The line between the algorithm and the
-// implementation" in docs/design.md.
+// implementation" in design.
 //
 // The rules that keep the isolation real:
 //
@@ -15,5 +15,5 @@
 //   - the algorithm may be replaced by a simpler one at any time, because it is one function
 //     behind the Policy interface.
 //
-// The arithmetic is described in docs/policy.md.
+// The arithmetic is described on the policy page.
 package policy

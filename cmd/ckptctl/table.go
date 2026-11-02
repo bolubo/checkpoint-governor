@@ -61,7 +61,7 @@ func runTable(args []string, out io.Writer) int {
 				Model:      env.Model,
 				// The replay stands in for a producer: a kill is visible this long before it
 				// happens, and the end of the trace is visible the same way. It is a modelled
-				// warning window (docs/decisions/0014 §8); the real one has to be measured.
+				// warning window (decision 0014 §8); the real one has to be measured.
 				WarnBefore: 90 * time.Second,
 			})
 			if err != nil {
