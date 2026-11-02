@@ -51,4 +51,27 @@ run torn-tail $common --tear
 # shellcheck disable=SC2086
 run slow-fsync $common --fsync-ms=100
 
+# Two writers, one generation. The contract says one write per volume at a time; this asks what a deployment
+# that ignores it leaves behind. They are given different shard sizes on purpose, so one writer's manifest
+# cannot describe the other writer's bytes: the only safe answer is "not verified".
+race() {
+	dir="$work/dual-writer"
+	mkdir -p "$dir"
+	"$work/ckpttrainer" --dir="$dir" --steps=2 --step-ms=60 --write-ms=120 --shard-bytes=65536 \
+		--ranks=2 --contract --save-every=150ms >/dev/null 2>&1 &
+	one=$!
+	"$work/ckpttrainer" --dir="$dir" --steps=2 --step-ms=60 --write-ms=120 --shard-bytes=98304 \
+		--ranks=3 --contract --save-every=150ms >/dev/null 2>&1 &
+	two=$!
+	wait "$one" || true
+	wait "$two" || true
+
+	verdict=$("$work/ckptctl" verify --dir="$dir" --all 2>&1 | sed -n '1p')
+	detail=$("$work/ckptctl" verify --dir="$dir" --all 2>&1 | sed -n '2p' | sed 's/^ *//')
+	printf 'dual-writer,%s,%s\n' "${verdict:-no-generation}" "${detail:-}" >> "$out"
+	printf '%-14s %s\n' "dual-writer" "${verdict:-no-generation}"
+}
+
+race
+
 printf '\nresults in %s\n' "$out"

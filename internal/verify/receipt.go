@@ -56,14 +56,17 @@ func NewReceipt(v Verdict, opts Options, requested, sealed time.Time) (Receipt, 
 func (r Receipt) Line() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "generation %d", r.Generation)
+	// Everything in UTC. A receipt that mixed zones read `sealed 04:48 verified 12:48` on a CST machine —
+	// eight hours between two events that happened in the same second — because the seal time comes from
+	// the writer and the verify time from us.
 	if !r.RequestedAt.IsZero() {
-		fmt.Fprintf(&b, "  requested %s", r.RequestedAt.Format("15:04:05"))
+		fmt.Fprintf(&b, "  requested %s", r.RequestedAt.UTC().Format("15:04:05"))
 	}
 	if !r.SealedAt.IsZero() {
-		fmt.Fprintf(&b, "  sealed %s", r.SealedAt.Format("15:04:05"))
+		fmt.Fprintf(&b, "  sealed %s", r.SealedAt.UTC().Format("15:04:05"))
 	}
 	if !r.VerifiedAt.IsZero() {
-		fmt.Fprintf(&b, "  verified %s", r.VerifiedAt.Format("15:04:05"))
+		fmt.Fprintf(&b, "  verified %s", r.VerifiedAt.UTC().Format("15:04:05"))
 	}
 	if r.Check != "" {
 		fmt.Fprintf(&b, "  %s", r.Check)

@@ -44,6 +44,9 @@ type Verdict struct {
 	Detail     string
 	Generation int64
 	Step       int64
+	// SealedAt is the manifest's own claim about when it sealed, carried through so a receipt can show the
+	// middle of the three claims. It is never used to decide lateness (see the Options comment).
+	SealedAt time.Time
 }
 
 // Options are the two facts from the environment a verdict needs, plus what to spend on content.
@@ -99,7 +102,7 @@ func Classify(genDir string, want int64, opts Options) Verdict {
 	}
 
 	if want > 0 && m.Generation < want {
-		return Verdict{State: policy.CopyBroken, Reason: ReasonStale, Generation: m.Generation, Step: m.Step,
+		return Verdict{State: policy.CopyBroken, Reason: ReasonStale, Generation: m.Generation, Step: m.Step, SealedAt: m.SealedAt,
 			Detail: fmt.Sprintf("sealed generation %d, but %d was asked for", m.Generation, want)}
 	}
 
@@ -108,33 +111,33 @@ func Classify(genDir string, want int64, opts Options) Verdict {
 	for _, s := range m.Shards {
 		info, err := os.Stat(filepath.Join(genDir, s.Name))
 		if err != nil {
-			return Verdict{State: policy.CopyBroken, Reason: ReasonShort, Generation: m.Generation, Step: m.Step,
+			return Verdict{State: policy.CopyBroken, Reason: ReasonShort, Generation: m.Generation, Step: m.Step, SealedAt: m.SealedAt,
 				Detail: fmt.Sprintf("shard %s is missing", s.Name)}
 		}
 		if info.Size() != s.Size {
-			return Verdict{State: policy.CopyBroken, Reason: ReasonShort, Generation: m.Generation, Step: m.Step,
+			return Verdict{State: policy.CopyBroken, Reason: ReasonShort, Generation: m.Generation, Step: m.Step, SealedAt: m.SealedAt,
 				Detail: fmt.Sprintf("shard %s is %d bytes, sealed at %d", s.Name, info.Size(), s.Size)}
 		}
 	}
 
 	if !opts.CheckContent {
-		return Verdict{State: policy.CopySealed, Reason: ReasonSealed, Generation: m.Generation, Step: m.Step,
+		return Verdict{State: policy.CopySealed, Reason: ReasonSealed, Generation: m.Generation, Step: m.Step, SealedAt: m.SealedAt,
 			Detail: "structure agrees; content not checked"}
 	}
 
 	for _, s := range m.Shards {
 		ok, detail, err := checkContent(filepath.Join(genDir, s.Name), s, opts.Full)
 		if err != nil {
-			return Verdict{State: policy.CopyBroken, Reason: ReasonHash, Generation: m.Generation, Step: m.Step,
+			return Verdict{State: policy.CopyBroken, Reason: ReasonHash, Generation: m.Generation, Step: m.Step, SealedAt: m.SealedAt,
 				Detail: fmt.Sprintf("shard %s cannot be read: %v", s.Name, err)}
 		}
 		if !ok {
-			return Verdict{State: policy.CopyBroken, Reason: ReasonHash, Generation: m.Generation, Step: m.Step,
+			return Verdict{State: policy.CopyBroken, Reason: ReasonHash, Generation: m.Generation, Step: m.Step, SealedAt: m.SealedAt,
 				Detail: fmt.Sprintf("shard %s %s", s.Name, detail)}
 		}
 	}
 
-	return Verdict{State: policy.CopyVerified, Reason: ReasonOK, Generation: m.Generation, Step: m.Step,
+	return Verdict{State: policy.CopyVerified, Reason: ReasonOK, Generation: m.Generation, Step: m.Step, SealedAt: m.SealedAt,
 		Detail: "content matches the manifest"}
 }
 
