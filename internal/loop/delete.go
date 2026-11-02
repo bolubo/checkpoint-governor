@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -29,8 +30,17 @@ type Deleted struct {
 func retireBelow(dir string, oldest int64, keep int, copies []policy.Copy, now time.Time) ([]Deleted, error) {
 	var out []Deleted
 	for _, c := range retirableBelow(oldest, keep, copies) {
-		src := filepath.Join(dir, "step-"+strconv.FormatInt(c.Step, 10))
-		dst := filepath.Join(dir, trashDir, "step-"+strconv.FormatInt(c.Step, 10)+"-"+strconv.FormatInt(now.UnixNano(), 10))
+		// The directory on disk is named by whoever wrote it: `step-N` for the older writer, `gen-N` for the
+		// contract writer (0025). Retiring a name we assumed produced `rename ...: no such file or directory`
+		// inside a repair path and the run carried on — a quiet failure in the one place that must be loud
+		// (F11).
+		name := copyDirName(dir, c.Step)
+		if name == "" {
+			return out, fmt.Errorf("nothing to retire for step %d: neither step-%d nor gen-%d exists",
+				c.Step, c.Step, c.Step)
+		}
+		src := filepath.Join(dir, name)
+		dst := filepath.Join(dir, trashDir, name+"-"+strconv.FormatInt(now.UnixNano(), 10))
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return out, err
 		}
@@ -130,4 +140,20 @@ func sweepTrash(dir string, budget time.Duration) (int, error) {
 		removed++
 	}
 	return removed, nil
+}
+
+// copyDirName is the directory on disk for a step, whichever writer made it.
+//
+// Returns "" when neither layout is present: callers must refuse rather than rename a name they imagined.
+func copyDirName(dir string, step int64) string {
+	for _, name := range []string{
+		"step-" + strconv.FormatInt(step, 10),
+		"gen-" + strconv.FormatInt(step, 10),
+		fmt.Sprintf("gen-%04d", step),
+	} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+			return name
+		}
+	}
+	return ""
 }
