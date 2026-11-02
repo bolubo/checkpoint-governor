@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "generation": 512,
+  "step": 512,
+  "format": "dcp",
+  "world": {
+    "ranks": 8,
+    "tp": 1,
+    "pp": 1,
+    "dp": 8,
+    "reshardable": false
+  },
+  "state": {
+    "model": true,
+    "optimizer": false,
+    "scheduler": false,
+    "rng": false,
+    "dataloader": false,
+    "scaler": false,
+    "ema": false
+  }
+}

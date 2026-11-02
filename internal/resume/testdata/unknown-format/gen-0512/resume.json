@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "generation": 512,
+  "step": 512,
+  "format": "nemo",
+  "world": {
+    "ranks": 8,
+    "tp": 1,
+    "pp": 1,
+    "dp": 8,
+    "reshardable": false
+  },
+  "state": {
+    "model": true,
+    "optimizer": true,
+    "scheduler": true,
+    "rng": true,
+    "dataloader": true,
+    "scaler": false,
+    "ema": false
+  }
+}

@@ -32,6 +32,7 @@ answers "why is it this way", so a later change either follows it or replaces it
 | 0023 | [The eviction rule is a conjunction](0023-the-eviction-rule-is-a-conjunction.md) | when `risk.eviction-likely` fires: a held-back job **and** a shortfall **and** a queue that may preempt, instead of an *or* of pressure signals |
 | 0024 | [Conditions from disk](0024-conditions-from-disk.md) | the one extension point: a name, a file probe, and why a built-in wins a tie |
 | 0025 | [Verify and demand](0025-verify-and-demand.md) | we never write a checkpoint: we verify what landed and demand another, in a new generation |
+| 0026 | [Resumability is a verdict](0026-resume-is-a-verdict.md) | what a restore would get: a declaration we judge, an adoption the job reports, and a drill that is the only proof |
 
 ## Folded records
 

@@ -45,9 +45,10 @@ The product asks; the writer must be able to answer. A workload that only checkp
 cannot be protected by a request it will read in nine.
 
 ```
-<dir>/.ckpt/request.json      we write this (small, atomic, one file)
-<dir>/.ckpt/manifest.json     the writer writes this, last, per generation
-<dir>/gen-0007/...            the writer's own layout, opaque to us
+<dir>/request.json              we write this (small, atomic, one file)
+<dir>/gen-0007/manifest.json    the writer writes this, last, per generation
+<dir>/gen-0007/...              the writer's own layout, opaque to us
+<dir>/.ckpt-governor/           the plan and the job's own glue files
 ```
 
 The request carries a **generation** and a deadline:
