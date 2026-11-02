@@ -1,4 +1,6 @@
-fault,verdict,detail
-clean,generation 1  verified 12:43:55  sample  steps 1,
-torn-tail,generation 1  steps 1  hash (shard rank-01.bin tail hashes to ac2c64b4c803, sealed as 916b144867c3),
-slow-fsync,generation 1  verified 12:43:55  sample  steps 1,
+fault,line
+clean,generation 1  sealed 05:06:02  verified 05:06:02  sample  steps 1
+torn-tail,generation 1  sealed 05:06:03  steps 1  hash (shard rank-01.bin tail hashes to ac2c64b4c803; sealed as 916b144867c3)
+slow-fsync,generation 1  sealed 05:06:03  verified 05:06:03  sample  steps 1
+dual-writer,generation 1  sealed 05:06:03  verified 05:06:03  sample  steps 1
+unmount,after=[no-generation] during=[generation 6  waiting (no manifest yet: the write is in flight)] detach=lazy-detach writer_exit=1

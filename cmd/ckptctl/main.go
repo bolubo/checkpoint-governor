@@ -73,6 +73,10 @@ func main() {
 		if code := runGlue(os.Args[2:], os.Stdout); code != 0 {
 			os.Exit(code)
 		}
+	case "verify":
+		if code := runVerify(os.Args[2:], os.Stdout); code != 0 {
+			os.Exit(code)
+		}
 	case "explain":
 		if code := runExplain(os.Args[2:], os.Stdout); code != 0 {
 			os.Exit(code)
