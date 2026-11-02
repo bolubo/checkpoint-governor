@@ -9,7 +9,7 @@ IMAGE ?= ghcr.io/bolubo/checkpoint-governor
 # How long the real-clock smoke runs (make smoke MINUTES=2 for a quick check).
 MINUTES ?= 10
 
-.PHONY: all check fmt vet build test verify parity ci e2e exp clean dist release install install-smoke release-notes spot
+.PHONY: all check fmt vet build test verify parity ci e2e exp clean dist release install install-smoke release-notes spot prepush
 
 all: check
 
@@ -116,7 +116,11 @@ e2e:
 # field set, and the golden decisions that catch an unintended behaviour change.
 # ci is exactly what .github/workflows/ci.yml runs, in the same order. verify stays the fast gate a
 # person runs while working; this is the promise that a push will not go red, so run it before pushing.
-ci: check e2e parity exp demo install-smoke spot
+# prepush runs the same steps and names the one that failed. Use it before opening a PR.
+prepush:
+	sh hack/prepush.sh
+
+ci: check e2e exp demo install-smoke spot
 
 verify: check e2e parity spot
 	$(GO) test ./internal/loop ./cmd/ckptctl
