@@ -34,10 +34,13 @@ cluster, under two minutes from a clone.
   governor, unconfigured           1 write      40s   0            everything
   2h bound                         2 writes     80s   0            ≤2h
   ```
-- [ ] **0.2 The table is the README's first screen.** The install line comes first, the contrast
-      command and its table second; Docker and Kubernetes move below.
-  **done when** `make docs` passes and the README's first three sections are install, contrast,
+- [x] **0.2 The table is the README's first screen.** Install first, the contrast table second, Docker
+      and Kubernetes below. Until the wheel exists (P1.1), the install line is the one that actually
+      runs today — `install.sh` — and the page says so instead of promising `pip install`.
+  **done when** `make docs` passes and the README's first three sections are install, the contrast,
       deploy.
+  **observed** the first three sections are `Install`, `What the default costs`, `On a cluster`; the
+      `docker build` line moved into `Install` as the second shape.
 - [ ] **0.3 A one-liner for people without Go or Python.** The same command inside a container.
   **done when** `docker run …` prints the same four rows.
 - [x] **0.4 What the framework defaults cost, per scale.** `internal/waste` + `experiments/waste`:
@@ -59,20 +62,24 @@ cluster, under two minutes from a clone.
 
 ## P1 — the Python front door (engine bundled, not rewritten)
 
-- [ ] **1.1 A wheel that contains the engine.** `hack/build-wheel.sh` cross-compiles `ckptctl` into
+- [x] **1.1 A wheel that contains the engine.** `hack/build-wheel.sh` compiles `ckptctl` into
       `ckptctl_pytorch/_bin/`, then builds the wheel; the binary is package data, not a download.
-  **done when** the script prints `wheel: 1 file, engine inside` and `unzip -l` lists the binary.
-- [ ] **1.2 The client starts the engine and reads the plan.** `Governor(start_engine=True)` launches
+  **done when** the script prints `wheel: …, engine inside` and the wheel lists the binary.
+  **observed** `wheel: ckptctl_pytorch-0.2.0-py3-none-linux_x86_64.whl, engine inside`; the tag names
+      the platform, because a `py3-none-any` wheel would install on a machine whose engine cannot run.
+- [x] **1.2 The client starts the engine and reads the plan.** `Governor(start_engine=True)` launches
       `ckptctl run` for the directory, then `should_save()` reads `.ckpt-governor/state.json`.
-  **done when** a subprocess test in a clean virtualenv sees the plan appear and `should_save()`
-      answers `save` exactly when the plan says so.
+  **done when** a clean virtualenv sees the plan appear and `should_save()` answers exactly when the
+      plan says so.
+  **observed** in a fresh venv with the wheel installed: `plan: True · engine running: True ·
+      should_save: False · closed: True`; `make py` runs 17 tests, four of them new.
 - [ ] **1.3 Degradation when the engine dies.** If the engine exits, the client falls back to "write at
       end, and on an announced stop", and prints the reason once.
   **done when** a test kills the engine mid-run and the loop still writes at the end.
 - [ ] **1.4 The demo without Go.** `python -m ckptctl_pytorch.demo` prints the P0 table from the bundled
       engine.
   **done when** the demo runs in a clean virtualenv and prints four rows.
-- [ ] **1.5 The install page.** `docs/install-python.md`: install, three lines, what should appear, what
+- [x] **1.5 The install page.** `docs/install-python.md`: install, three lines, what should appear, what
       to do when it does not.
   **done when** `make docs` passes and the page is linked from the README.
 

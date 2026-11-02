@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from ckptctl_pytorch import Governor, Saves, World  # noqa: E402
 from ckptctl_pytorch.glue import BASE_DIR  # noqa: E402
+from ckptctl_pytorch.governor import engine_path  # noqa: E402
 
 
 def plan(root, **fields):
@@ -183,6 +184,56 @@ class TestTheCallbackWritesOnlyGlue(unittest.TestCase):
             names = os.listdir(os.path.join(root, BASE_DIR))
             self.assertEqual([n for n in names if n.startswith(".")], [],
                              "a half-written file was left visible")
+
+
+class TestShouldSave(unittest.TestCase):
+    """`should_save` is the whole write side: the plan says save, or it does not."""
+
+    def test_follows_the_plan(self):
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            plan(root, generation=7)
+            self.assertTrue(g.should_save())
+            plan(root, action="skip", generation=0)
+            self.assertFalse(g.should_save())
+            plan(root, expiresAt=int(time.time()) - 1)
+            self.assertFalse(g.should_save(), "an expired plan is not a request")
+
+
+class TestEngine(unittest.TestCase):
+    """The wheel carries the engine; the client starts it and reads the plan it writes."""
+
+    def test_starting_the_engine_makes_a_plan_and_stays_quiet(self):
+        if engine_path() is None:
+            self.skipTest("no ckptctl engine: build it with hack/build-wheel.sh, or set CKPTCTL_ENGINE")
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root, start_engine=True, engine_every="200ms")
+            try:
+                state = os.path.join(root, BASE_DIR, "state.json")
+                deadline = time.time() + 5
+                while time.time() < deadline and not os.path.exists(state):
+                    time.sleep(0.05)
+                self.assertTrue(os.path.exists(state), "the engine started but wrote no plan")
+                self.assertTrue(g.engine_running())
+                self.assertFalse(g.should_save(), "nothing is at risk, so the plan asks for nothing")
+            finally:
+                g.close()
+            self.assertFalse(g.engine_running())
+
+    def test_close_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            g.close()
+            g.close()
+            self.assertFalse(g.engine_running())
+
+    def test_a_missing_engine_says_what_to_do(self):
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root, start_engine=False)
+            g._engine_bin = "/nonexistent/ckptctl"
+            with self.assertRaises(RuntimeError) as caught:
+                g.start_engine()
+            self.assertIn("CKPTCTL_ENGINE", str(caught.exception))
 
 
 if __name__ == "__main__":

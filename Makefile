@@ -9,7 +9,7 @@ IMAGE ?= ghcr.io/bolubo/checkpoint-governor
 # How long the real-clock smoke runs (make smoke MINUTES=2 for a quick check).
 MINUTES ?= 10
 
-.PHONY: all check fmt fmt-check vet build test docs fast flake verify parity ci e2e exp clean dist release install install-smoke release-notes spot prepush resume py drill contrast waste
+.PHONY: all check fmt fmt-check vet build test docs fast flake verify parity ci e2e exp clean dist release install install-smoke release-notes spot prepush resume py drill contrast waste wheel
 
 all: check
 
@@ -128,8 +128,14 @@ resume:
 	sh hack/resume-claims.sh
 
 # The training-script adapter. Standard library only: no install step, and no torch on the runner.
+# The engine is built here so the client's start/read/degrade path is exercised by the same gate.
 py:
+	$(GO) build -trimpath -o contrib/ckptctl-pytorch/ckptctl_pytorch/_bin/ckptctl ./cmd/ckptctl
 	python3 -m unittest discover -s contrib/ckptctl-pytorch/tests -q
+
+# The wheel carries the engine, so `pip install` is the whole install (decision 0028, P1.1).
+wheel:
+	sh hack/build-wheel.sh
 
 # The only check that earns `restorable`: load it, take one step, and refuse a drill that changed the
 # checkpoint. A synthetic loader keeps it seconds and torch-free.

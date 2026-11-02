@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -12,3 +12,8 @@ dependencies = []
 
 [tool.setuptools.packages.find]
 include = ["ckptctl_pytorch*"]
+
+# The wheel carries the Go engine so `pip install` is the whole install: no second download, no PATH
+# entry, no `go install`. `hack/build-wheel.sh` compiles it here before the wheel is built.
+[tool.setuptools.package-data]
+ckptctl_pytorch = ["_bin/*"]

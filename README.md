@@ -6,17 +6,10 @@
 loss would cost. One Go binary, one plan file, no CRD, no API, no new permission: the job reads a file.
 
 A run with nothing configured writes once at the end, and once more if the platform announces the job
-is about to go. Every number below is printed by a test or an experiment in this repository
-(`make verify`, `make demo` — twenty seconds, four acts).
+is about to go. That is the point: our default is **zero periodic writes**, and the frameworks' defaults
+are not.
 
-## Quick start
-
-```bash
-docker build -t ckpt-governor:local .
-docker run --rm -v /ckpt:/ckpt ckpt-governor:local run --dir /ckpt
-```
-
-Or without Docker:
+## Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/bolubo/checkpoint-governor/main/install.sh | sh
@@ -24,8 +17,32 @@ ckptctl run --dir=/ckpt/job-1 --once
 ```
 
 `install.sh` verifies the release's checksum before it installs anything. With Go, `make install` puts
-the same two binaries on your PATH. The three shapes — binary, container, cluster manifest — are
-`docs/install.md`.
+the same two binaries on your PATH. Or in a container:
+
+```bash
+docker build -t ckpt-governor:local .
+docker run --rm -v /ckpt:/ckpt ckpt-governor:local run --dir /ckpt
+```
+
+The three shapes — binary, container, cluster manifest — are `docs/install.md`. In Python, `make wheel`
+builds a wheel with the engine inside; the three lines and the fallback are `docs/install-python.md`.
+
+## What the default costs
+
+```
+500 steps (framework default)   28 writes   1120s   ≤500 steps   ≤500 steps
+nothing installed                0 writes      0s   everything   everything
+governor, unconfigured           1 write      40s   0            everything
+2h bound                         2 writes     80s   0            ≤2h
+```
+
+Four policies on one four-hour job, printed by `make contrast`: the same steps, the same disk, the same
+write cost. Each row names its writes, its io and **what it covers** — a count without coverage is not
+a claim. The framework's cadence writes 28 times; the job that never configures anything writes once and
+says what that still costs.
+
+What the frameworks' actual defaults cost at four scales, with their real intervals and retention, is
+`make waste` and `docs/waste.md`.
 
 ## On a cluster
 
@@ -137,7 +154,7 @@ use `python3`.
 
 ## Documentation
 
-Twenty-six pages, and one directory of decisions. Start here, then read only what your question needs.
+Twenty-seven pages, and one directory of decisions. Start here, then read only what your question needs.
 
 - `docs/ci.md` — the gate: what was red, what runs for which change, and the rules that keep it deterministic.
 
@@ -146,6 +163,8 @@ Twenty-six pages, and one directory of decisions. Start here, then read only wha
 - `docs/product-v0.2.md` — the current release: the three verbs, the declaration, the drill, and what it
   refuses.
 - `docs/product-v0.15.md` — the previous release: one-line install, the compatibility promise, the proof.
+- `docs/install-python.md` — the wheel, the three lines, what should appear, and what to do when the
+  engine is missing.
 - `docs/references.md` — what fifteen neighbouring projects actually do about "when to save", read from
   their source, and what that says about who the customer is.
 - `docs/plan-library.md` — the current plan: the contrast, the Python front door, and the three

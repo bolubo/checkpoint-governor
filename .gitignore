@@ -2,6 +2,12 @@ bin/
 dist/
 *.test
 *.out
+# Build output of the Python package: byte-code, wheel staging, and the engine the wheel carries.
+__pycache__/
+*.pyc
+*.egg-info/
+contrib/ckptctl-pytorch/build/
+contrib/ckptctl-pytorch/ckptctl_pytorch/_bin/
 .idea/
 .vscode/
 experiments/rig/.bin/
