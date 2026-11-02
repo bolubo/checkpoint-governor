@@ -63,6 +63,31 @@ higher-priority arrival is waiting and somebody is about to be taken. The fact l
 the Job — and there it has a stable identity (`pendingEvent`, the suspended jobs hashed), which is what
 lets one arrival cost one write instead of one per round.
 
+## The matrix, 2026-11-02
+
+`sweep.sh` records what the rule said **before** the arrival and what Kueue did after, so the result is a
+confusion matrix rather than a paragraph:
+
+```
+        observed: yes   no
+predict yes |    2    0
+predict  no |    0   10
+
+12/12 agreed · 0 false positives · 0 false negatives · where it fired, the count was right 2/2
+```
+
+A false **positive** spends writes nobody needed; a false **negative** is a unit that died with nothing on
+disk. `report.py` exits non-zero on the second and stays quiet about the first being zero, because that is
+the direction that cannot be paid back.
+
+### Two ways to fool yourself, both hit while building this
+
+1. **Read the headroom before the arrival, never the demand after it.** Kueue admits a preemptible arrival
+   within about a second; the suspended set empties and the shortfall reads zero for a case that took a
+   unit. The rule's arithmetic is `what the arrival asks for − what the queue has free`, taken first.
+2. **`/tmp` does not survive a WSL restart.** The kubeconfig and the observer binary live there;
+   `./lab.sh` rebuilds both in one step, and a sweep in a fresh session should start with it.
+
 ## Running it
 
 ```sh

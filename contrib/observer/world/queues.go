@@ -181,7 +181,9 @@ func parseMilli(s string) int64 {
 		case r == '.':
 			seenDot = true
 		case r == 'm':
-			return v*1000 + frac*1000/div
+			// Already milli-units: `2500m` is 2500, not 2,500,000. Multiplying here is how a queue with
+			// 1.5 cores free reported zero, and how every shortfall came out equal to the arrival's size.
+			return v + frac/div
 		default:
 			return v * 1000
 		}
