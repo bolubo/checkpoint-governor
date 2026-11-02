@@ -36,30 +36,32 @@ demand another. This half answers the other question: what a restore would get, 
 
 ## P1 — can it be resumed (3h)
 
-- [ ] **1.1 The matrix.** `internal/resume/verdict.go`: required-full = model+optimizer+scheduler+rng+dataloader;
+- [x] **1.1 The matrix.** `internal/resume/verdict.go`: required-full = model+optimizer+scheduler+rng+dataloader;
   `Reason` is a closed set; a verdict carries the evidence it came from.
-  **done when** `TestVerdictMatrix` has one case per row of the contract's table.
+  **done when** `TestVerdictMatrix` has one case per row of the contract's table — eight cases, each
+  asserting the sentence *and* the exit code.
 
-- [ ] **1.2 `ckptctl resumable`.** Exit 0 yes / 1 checked-and-no / 2 cannot decide.
-  **done when**
+- [x] **1.2 `ckptctl resumable`.** Exit 0 yes / 1 checked-and-no / 2 cannot decide.
+  **done when** the command prints (observed):
   ```
   resumable (gen 512, step 512, world 8/8, full state)                                   exit 0
-  not resumable: optimizer state absent                                                 exit 1
+  not resumable: optimizer state absent (also: scheduler, rng, dataloader)              exit 1
   not resumable: world changed 8 → 16, and this format is not reshardable               exit 1
   resumable with resharding (8 → 16 ranks)                                              exit 0
   unknown: sealed, but nobody said what it holds                                        exit 2
   ```
 
-- [ ] **1.3 `ckptctl resumed`.** Four adoption verdicts, computed from `resumed-*` and the newest seal.
-  **done when** `TestAdoptionFourQuadrants` passes and the cold-start message is
-  `not adopted: step 3, newest sealed 512`.
+- [x] **1.3 `ckptctl resumed`.** Six sentences, computed from `resumed-*` and the seal that existed at
+  boot. **done when** `TestAdoptionFourQuadrants` passes, including the two inconsistencies
+  (`step matches, generation does not` and `ahead of the newest seal`).
 
-- [ ] **1.4 The guard.** `TestResumabilityNeverChangesADecision`: flipping a verdict from resumable to
-  not must leave the decision sequence byte-identical.
-  **done when** the test exists and passes.
+- [x] **1.4 The guard.** `TestResumabilityNeverChangesADecision`: two copies of the same work, one
+  `resumable`, one `unknown`, publish the same `action`/`reason`.
+  **done when** the test fails if the declaration is read by the loop.
 
-- [ ] **1.5 `make resume`.** Six assertions in one command, ending in a tally.
-  **done when** it prints `resume: 6/6 — …` and runs inside `make ci`, `make verify` and `hack/prepush.sh`.
+- [x] **1.5 `make resume`.** Six assertions in one command, ending in a tally.
+  **done when** it prints `resume: 6/6 — resumable, weights-only, world-changed, resharding, unstated, adoption`
+  and runs inside `make ci`, `make verify` and `hack/prepush.sh`.
 
 ## P2 — the one-line integration (4h)
 

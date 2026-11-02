@@ -65,6 +65,7 @@ required only for mixed precision, `ema` only when the run keeps one.
 | a required state absent | `not resumable: optimizer state absent` | 1 |
 | a required state skipped by the loader | `not resumable: declared partial (optimizer) — this is a fine-tune, not a resume` | 1 |
 | sealed, no declaration | `unknown: sealed, but nobody said what it holds` | 2 |
+| nothing sealed yet | `unknown: nothing sealed yet` | 2 |
 | a declaration that does not parse, or a format we cannot judge | `unknown: …` | 2 |
 
 Exit codes keep the meaning the rest of the product uses: **0 yes, 1 checked and no, 2 cannot decide**.
@@ -77,9 +78,16 @@ Comparing what the job says it adopted with the newest sealed generation:
 | evidence | verdict | exit |
 |---|---|---|
 | a seal exists, the job reported nothing | `not adopted: step 3, newest sealed 512` | 1 |
-| adopted an older generation | `adopted gen 6 (step 448), newest sealed 7 (step 512): 64 steps on disk unused` | 1 |
-| adopted the newest | `adopted gen 7 (step 512)` | 0 |
+| adopted an older generation | `adopted gen 480 (step 448), newest sealed 512 (step 512): 64 steps on disk unused` | 1 |
+| adopted the newest | `adopted gen 512 (step 512)` | 0 |
 | nothing sealed | `nothing to adopt: no sealed generation` | 0 |
+| step matches, generation does not | `adopted step 512 from generation 480, newest sealed is 512` | 1 |
+| adopted step is ahead of the newest seal | `unknown: adopted step 520 is ahead of the newest seal (512, step 512)` | 2 |
+| the report is not a number | `unknown: resumed-step is not a number: "…"` | 2 |
+
+The comparison uses the seal that **existed when the job started** (its `boot` stamp), not the newest one
+now: a job that resumed at 448 and has since saved 512 adopted 448, and calling that a loss would blame
+the job for doing exactly what it should. `sealedAt` orders generations and never decides lateness (0025).
 
 This is the sentence that separates a restart from a resume. The job reports what it loaded through three
 glue files (`resumed-generation`, `resumed-step`, `load-seconds`); absent means it did not say, which is

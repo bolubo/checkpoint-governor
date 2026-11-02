@@ -18,7 +18,7 @@ var version = "dev"
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: ckptctl <command>")
-		fmt.Fprintln(os.Stderr, "commands: init, version, simulate, table, status, price, audit, serve, run, trace, doctor, events, explain, glue, config, supervise, world, stats")
+		fmt.Fprintln(os.Stderr, "commands: init, version, simulate, table, status, price, audit, serve, run, trace, doctor, events, explain, glue, config, supervise, world, stats, resumable, resumed")
 		os.Exit(2)
 	}
 
@@ -91,6 +91,14 @@ func main() {
 		}
 	case "trace":
 		if code := runTrace(os.Args[2:], os.Stdout); code != 0 {
+			os.Exit(code)
+		}
+	case "resumable":
+		if code := runResumable(os.Args[2:], os.Stdout); code != 0 {
+			os.Exit(code)
+		}
+	case "resumed":
+		if code := runResumed(os.Args[2:], os.Stdout); code != 0 {
 			os.Exit(code)
 		}
 	default:

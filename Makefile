@@ -9,7 +9,7 @@ IMAGE ?= ghcr.io/bolubo/checkpoint-governor
 # How long the real-clock smoke runs (make smoke MINUTES=2 for a quick check).
 MINUTES ?= 10
 
-.PHONY: all check fmt vet build test verify parity ci e2e exp clean dist release install install-smoke release-notes spot prepush
+.PHONY: all check fmt vet build test verify parity ci e2e exp clean dist release install install-smoke release-notes spot prepush resume
 
 all: check
 
@@ -104,6 +104,11 @@ smoke:
 spot:
 	sh experiments/rig/spot.sh
 
+# Can this be resumed, and did it? The six sentences the resume contract promises, asserted against the
+# checked-in fixtures: one command and one tally (docs/resume-contract.md).
+resume:
+	sh hack/resume-claims.sh
+
 test:
 	$(GO) test ./...
 
@@ -120,9 +125,9 @@ e2e:
 prepush:
 	sh hack/prepush.sh
 
-ci: check e2e exp demo install-smoke spot
+ci: check e2e exp demo install-smoke spot resume
 
-verify: check e2e parity spot
+verify: check e2e parity spot resume
 	$(GO) test ./internal/loop ./cmd/ckptctl
 	$(GO) test ./internal/simulate -run TestGoldenDecisions
 	$(GO) test ./internal/policy -run TestEveryContractFieldHasAnOwner
