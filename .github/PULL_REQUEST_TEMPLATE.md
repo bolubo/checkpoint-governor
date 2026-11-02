@@ -27,7 +27,9 @@ Pick one:
 
 Run what the change touches, not everything:
 
-- [ ] `make check` — format, vet, build, tests
+- [ ] `make fast` — format check, vet, build, every unit test, the docs pins
+- [ ] `make docs` — the docs pins alone, when the change is only a page
+- [ ] `make prepush` — every step CI runs, with the failing one named
 - [ ] `make verify` — the contract pins and the recorded decisions
 - [ ] `make exp` — when a decision or a write changes
 - [ ] `make demo` — when what a user sees changes

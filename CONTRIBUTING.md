@@ -1,4 +1,20 @@
-# Conventions
+# Contributing
+
+## Start here
+
+- **Pick an issue.** `good first issue` is the entry point; every issue states a done-when. A comment
+  before you start keeps two people off the same change.
+- **Read `docs/index.md`** to find the page your change touches, and `docs/decisions/` to find out why
+  the current behaviour is what it is.
+- **Run `make fast`** while you work (format check, vet, build, every unit test, the docs pins).
+  `make docs` is the same gate for a page-only change, and `make prepush` is exactly what CI runs.
+- **Send one pull request per batch, not per file.** The run is what costs, and auto-merge is armed
+  when the pull request opens, so nobody sits watching a check.
+- **A change to what the product decides starts with a decision record** (`docs/decisions/`), not with
+  code. If you are not sure whether yours is one, ask in
+  [Discussions](https://github.com/bolubo/checkpoint-governor/discussions) before writing either.
+
+The rest of this page is the style the review will hold you to. It is short on purpose.
 
 ## Language
 

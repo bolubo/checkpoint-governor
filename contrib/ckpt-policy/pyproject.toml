@@ -8,7 +8,28 @@ version = "0.2.0"
 description = "Tell checkpoint-governor where the loop is, and let it tell you when a write is worth doing"
 readme = "README.md"
 requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [{ name = "The checkpoint-governor contributors" }]
 dependencies = []
+keywords = ["checkpoint", "fault tolerance", "training", "pytorch", "huggingface"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: System :: Distributed Computing",
+]
+
+[project.urls]
+Homepage = "https://github.com/bolubo/checkpoint-governor"
+Documentation = "https://github.com/bolubo/checkpoint-governor/blob/main/docs/index.md"
+Repository = "https://github.com/bolubo/checkpoint-governor"
+Issues = "https://github.com/bolubo/checkpoint-governor/issues"
+Changelog = "https://github.com/bolubo/checkpoint-governor/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 include = ["ckpt_policy*"]

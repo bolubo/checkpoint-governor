@@ -34,13 +34,16 @@ cluster, under two minutes from a clone.
   governor, unconfigured           1 write      40s   0            everything
   2h bound                         2 writes     80s   0            ≤2h
   ```
-- [x] **0.2 The table is the README's first screen.** Install first, the contrast table second, Docker
-      and Kubernetes below. Until the wheel exists (P1.1), the install line is the one that actually
-      runs today — `install.sh` — and the page says so instead of promising `pip install`.
-  **done when** `make docs` passes and the README's first three sections are install, the contrast,
-      deploy.
-  **observed** the first three sections are `Install`, `What the default costs`, `On a cluster`; the
-      `docker build` line moved into `Install` as the second shape.
+- [x] **0.2 The table is the README's first screen.** The contrast directly below the one-line claim, the
+      install line next, Docker and Kubernetes below. Until the wheel exists (P1.1), the install line is
+      the one that actually runs today — `install.sh` — and the page says so instead of promising
+      `pip install`.
+  **done when** `make docs` passes and the README opens with the claim, the contrast, and the install
+      line.
+  **observed** the order is the one-line claim, `The default is the problem` (the four-row table),
+      `Install`, `In a training loop`, then `On a cluster`; the `docker build` line is the second shape
+      inside `Install`. The table leads because the value is silence, which is P0's own premise, and
+      the title already says what the product is.
 - [ ] **0.3 A one-liner for people without Go or Python.** The same command inside a container.
   **done when** `docker run …` prints the same four rows.
   **status** the Dockerfile builds the contrast binary and copies it into the image
@@ -160,15 +163,38 @@ Same shape, same contract test; the real runs need torch, so they stay manual ta
       matters: writes per job. No money, only GPU-seconds and counts.
   **done when** a reader pastes the command and gets the same rows.
 
+## P6 — the community files (no code)
+
+A repository is read before the product is used. Each file here answers a question a newcomer asks
+anyway, and each one is checked by a link test rather than by memory.
+
+- [x] **6.1 The package a first-time reader needs.** `docs/index.md` (one line per page, grouped by the
+      question), a README of 586 words, "Start here" at the top of `CONTRIBUTING.md`, and
+      `GOVERNANCE.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CITATION.cff` at the root.
+  **done when** every local link in the README and `docs/index.md` resolves, and `make docs` passes.
+  **observed** `docs: 45 pages, 50 local links, 0 dead`; the README is 586 words and names the four
+      pages a reader needs instead of listing thirty-one.
+- [x] **6.2 Package metadata.** `pyproject.toml` carries the licence, the author, five `[project.urls]`
+      entries, eight classifiers and five keywords, so a PyPI page says what the repository says.
+  **done when** the wheel builds with that metadata and `make wheel` prints `engine inside`.
+  **observed** the wheel's `METADATA` lists `License: Apache-2.0`, the Documentation URL
+      (`docs/index.md`), and `Operating System :: POSIX :: Linux` — the platform the engine inside it
+      can actually run on.
+- [x] **6.3 The issues have a milestone.** #202–#206 are the contributor ladder; they now sit in one
+      milestone instead of floating.
+  **done when** `gh api repos/bolubo/checkpoint-governor/milestones` prints the milestone with five
+      open issues.
+  **observed** `1 v0.3 — the integrations open=5 closed=0`.
+
 ## What is demoted or removed (do these as part of P0/P1, not later)
 
-| Thing | Action | Done when |
-|---|---|---|
-| README first screen | rewritten: `pip install` + contrast + deploy last | `make docs` passes and the order is visible |
-| `docs/plan-4.2.md`, `docs/checklist-*.md` | moved to `/root/cg-internal-notes` (process, not product) | `docs/*.md` count drops by three and `make docs` passes |
-| `deploy/` | frozen; no new work, still documented | README's deploy section is one screen |
-| Certificate product, platform injection, adapter zoo, conformance | refused | no page or target appears for them |
-| CLI's 19 verbs | first screen names three (`run`, `init`, `price`); the rest move to the install page | `ckptctl` with no arguments prints three groups |
+| Thing | Action | Done when | State |
+|---|---|---|---|
+| README first screen | install first, the contrast table second, Docker and Kubernetes below | `make docs` passes and the sections are in that order | done — 586 words |
+| `docs/plan-4.2.md`, `docs/checklist-*.md` | moved to `/root/cg-internal-notes` (process, not product) | `docs/*.md` count drops by three and `make docs` passes | done — 31 → 28, plus `index.md` |
+| `deploy/` | frozen; no new work, still documented | README's deploy section is one screen | done |
+| Certificate product, platform injection, adapter zoo, conformance | refused | no page or target appears for them | holding |
+| CLI's 19 verbs | first screen names three (`run`, `init`, `price`); the rest move to the install page | `ckptctl` with no arguments prints three groups | open — it still prints 21 |
 
 ## Order and why
 

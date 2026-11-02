@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this policy in published work, cite it as below."
+title: "checkpoint-governor"
+abstract: >-
+  A checkpoint policy for training runs: it decides when a write is worth doing, and proves what a
+  loss would cost.
+authors:
+  - name: "The checkpoint-governor contributors"
+repository-code: "https://github.com/bolubo/checkpoint-governor"
+url: "https://github.com/bolubo/checkpoint-governor"
+license: Apache-2.0
+version: 0.2.0
+date-released: 2026-11-02
+type: software
+keywords:
+  - checkpoint
+  - training
+  - fault tolerance
+  - policy
