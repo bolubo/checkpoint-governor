@@ -202,3 +202,32 @@ test pins it.
 - **The two "slow" conditions compare the job with itself.** Baseline and current rate are both
   written by the job, in the same unit. The controller never decides what fast means for a workload
   it cannot see.
+
+## Conditions an operator adds
+
+The catalogue above is frozen: a new row needs a producer, a card and a test in one commit (`decisions/0013-risk-conditions.md`). A deployment may add its own names without a fork, in `.ckpt-governor/conditions.d/*.json` (`decisions/0023-conditions-from-disk.md`):
+
+```json
+{
+  "name": "job.loss-exploded",
+  "tier": "urgent",
+  "missing": "urgent",
+  "why": "the loss left its normal range",
+  "read": {"file": "team-signal", "on": "1", "off": "0"}
+}
+```
+
+The rules are the boundary of the extension:
+
+- **A name, not a measurement.** `read.file` is one file inside the checkpoint directory; `on` and
+  `off` are the two values that mean 1 and 0. Nothing here can read a cgroup, a GPU or the world.
+- **Built-ins win a tie.** Added rows are appended after the frozen catalogue, so an urgent built-in
+  condition is named before an urgent added one.
+- **Blindness is the operator's call.** A missing file or a third value is `unknown`; `missing` decides
+  whether that is inert or urgent. There is no third value that quietly means calm.
+- **A bad file fails startup.** Duplicate names, unknown keys, `on == off`, absolute paths and texts
+  that parse to nothing are refusals, because the one outcome this must not allow is a run that watches
+  less than the operator believes.
+
+`ckptctl run` says what it loaded: `conditions: 14 built-in + 1 from disk`. In `supervise`, the rows
+are per unit: a directory's `conditions.d` is that job's, never its cluster's.

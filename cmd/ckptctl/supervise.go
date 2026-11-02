@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bolubo/checkpoint-governor/internal/advise"
+	"github.com/bolubo/checkpoint-governor/internal/conditions"
 	"github.com/bolubo/checkpoint-governor/internal/policy"
 	"github.com/bolubo/checkpoint-governor/internal/produce"
 	"github.com/bolubo/checkpoint-governor/internal/produce/adapters"
@@ -36,6 +37,7 @@ func runSupervise(args []string, out io.Writer) int {
 	every := fs.Duration("every", 200*time.Millisecond, "between ticks")
 	freeFactor := fs.Float64("free-factor", 2, "free space below this multiple of one checkpoint is at risk")
 	storeEvery := fs.Duration("store-every", 5*time.Second, "how often the storage conditions are read")
+	webhook := fs.String("webhook", "", "POST one JSON event to this URL when a plan changes")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -63,33 +65,64 @@ func runSupervise(args []string, out io.Writer) int {
 		return 2
 	}
 
+	// The first member set is validated before anything is governed: at startup a malformed
+	// conditions.d is an operator mistake we can refuse, and a refusal is clearer than a run that
+	// silently watches fewer conditions than the operator wrote. A unit that appears later is a
+	// different case: the built-ins still protect it, and setFor says what was wrong.
+	for _, m := range ms {
+		if _, err := conditions.Load(m.Dir); err != nil {
+			fmt.Fprintf(out, "error: %s: %v\n", m.Dir, err)
+			return 2
+		}
+	}
+
 	host, _ := os.Hostname()
 
 	// One probe set per (worldDir, cluster). The cache is what makes a two-cluster supervisor
 	// one process rather than one process per cluster: the second unit of a cluster reuses the set
-	// the first one built.
+	// the first one built. The deployment's own conditions (conditions.d) are per directory, so they
+	// are loaded and cached separately and appended: a job's added condition is that job's, not its
+	// cluster's.
 	built := map[string][]produce.Probe{}
+	added := map[string]conditions.Set{}
+	setFor := func(dir string) conditions.Set {
+		if s, ok := added[dir]; ok {
+			return s
+		}
+		s, err := conditions.Load(dir)
+		if err != nil {
+			// A unit that appears later with a malformed conditions.d must not stop the units that
+			// are already governed: the built-ins still protect it, and the operator is told.
+			fmt.Fprintf(out, "error: %s: %v\n", dir, err)
+			s = conditions.Set{}
+		}
+		added[dir] = s
+		return s
+	}
 	probesFor := func(u unit.Unit) []produce.Probe {
 		key := u.WorldDir + "|" + u.Cluster
-		if p, ok := built[key]; ok {
-			return p
+		p, ok := built[key]
+		if !ok {
+			cfg, _, err := adapters.LoadConfig(u.Dir)
+			if err != nil {
+				fmt.Fprintf(out, "error: %s: %v\n", u.Dir, err)
+				cfg = adapters.Config{}
+			}
+			cfg.FreeSpaceFactor, cfg.StoreEvery = *freeFactor, *storeEvery
+			if u.WorldDir != "" {
+				cfg.WorldDir = u.WorldDir
+			}
+			if u.Cluster != "" {
+				cfg.Cluster = u.Cluster
+			}
+			cfg = cfg.WithWorld(u.Dir)
+			p = adapters.All(cfg)
+			built[key] = p
 		}
-		cfg, _, err := adapters.LoadConfig(u.Dir)
-		if err != nil {
-			fmt.Fprintf(out, "error: %s: %v\n", u.Dir, err)
-			cfg = adapters.Config{}
-		}
-		cfg.FreeSpaceFactor, cfg.StoreEvery = *freeFactor, *storeEvery
-		if u.WorldDir != "" {
-			cfg.WorldDir = u.WorldDir
-		}
-		if u.Cluster != "" {
-			cfg.Cluster = u.Cluster
-		}
-		cfg = cfg.WithWorld(u.Dir)
-		p := adapters.All(cfg)
-		built[key] = p
-		return p
+		return append(append([]produce.Probe{}, p...), setFor(u.Dir).Probes...)
+	}
+	policyFor := func(u unit.Unit) policy.Policy {
+		return policy.Risk{Extra: setFor(u.Dir).Rows}
 	}
 
 	sup := supervisor.Open(supervisor.Config{
@@ -99,8 +132,10 @@ func runSupervise(args []string, out io.Writer) int {
 			NoUs:      policy.NoUsNone,
 		},
 		ProbesFor: probesFor,
+		PolicyFor: policyFor,
 		// One holder for the whole supervisor: the lease is per directory, and every unit has its own.
 		Holder: fmt.Sprintf("%s-%d", host, os.Getpid()),
+		Notify: webhookPoster(*webhook),
 	})
 	defer sup.Close()
 

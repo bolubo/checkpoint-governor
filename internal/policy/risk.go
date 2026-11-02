@@ -10,9 +10,27 @@ import (
 const riskVersion = "risk-v1"
 
 // Risk is the risk policy (docs/decisions/0015-risk-core.md).
-type Risk struct{}
+//
+// Extra holds the conditions a deployment added from disk (decision 0023). They are appended after
+// the frozen catalogue, so when two urgent conditions fire the decision still names the built-in one:
+// a condition this repository owns is more certain than one an operator wrote, and precedence is
+// consequence, not file order. The zero value is the built-in catalogue, which is what every caller
+// without a conditions.d directory gets.
+type Risk struct {
+	Extra []Condition
+}
 
 func (Risk) Name() string { return riskVersion }
+
+// catalogue is the rows this policy watches: the frozen set, then the deployment's own.
+func (r Risk) catalogue() []Condition {
+	if len(r.Extra) == 0 {
+		return conditionCatalog
+	}
+	rows := make([]Condition, 0, len(conditionCatalog)+len(r.Extra))
+	rows = append(rows, conditionCatalog...)
+	return append(rows, r.Extra...)
+}
 
 // reading is what one look at one condition produced.
 type reading int
@@ -32,7 +50,7 @@ const (
 // The order is the rule: the configuration gate first, then the job-local facts that cannot wait
 // for a condition, then the catalogue in its precedence order. A condition that is true decides
 // nothing by itself; what it means is in its tier.
-func (Risk) Decide(b Bounds, s Snapshot) Decision {
+func (r Risk) Decide(b Bounds, s Snapshot) Decision {
 	d := Decision{
 		UnitID:        s.UnitID,
 		Generation:    s.Generation,
@@ -93,7 +111,7 @@ func (Risk) Decide(b Bounds, s Snapshot) Decision {
 
 	// The catalogue, in precedence order.
 	var watched []ReasonEntry
-	for _, c := range conditionCatalog {
+	for _, c := range r.catalogue() {
 		switch read(s, c.Name) {
 		case readingTrue:
 			if c.Tier == TierUrgent {

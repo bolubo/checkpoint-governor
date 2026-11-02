@@ -20,6 +20,7 @@ import (
 	"github.com/bolubo/checkpoint-governor/internal/advise"
 	"github.com/bolubo/checkpoint-governor/internal/exec"
 	"github.com/bolubo/checkpoint-governor/internal/lease"
+	"github.com/bolubo/checkpoint-governor/internal/notify"
 	"github.com/bolubo/checkpoint-governor/internal/observe"
 	"github.com/bolubo/checkpoint-governor/internal/permit"
 	"github.com/bolubo/checkpoint-governor/internal/policy"
@@ -127,6 +128,14 @@ type Config struct {
 	// cannot see the others, so the executor holds a slot from "a write was asked for" to "its
 	// verdict arrived". Nil means no limit, which is a single-unit deployment.
 	Volumes VolumeLimiter
+
+	// Cluster is the cluster this unit's world belongs to. Empty means the single-cluster case; it
+	// is carried so an event says which fleet the unit is in.
+	Cluster string
+	// Notify is told about every plan that changed, after it reached the disk. It is a report, not
+	// an input: a failure is recorded in events.jsonl and the round carries on, because a receiver
+	// that is down must never become a reason the job is not written.
+	Notify func(notify.Event) error
 }
 
 // VolumeLimiter is the per-volume write gate. The executor owns the slots; the algorithm only says
@@ -1162,6 +1171,7 @@ func (l *Loop) Reconcile() (Step, error) {
 			}
 			if published && changed {
 				l.ledger.PublishTimes = append(l.ledger.PublishTimes, now.Unix())
+				l.notifyChange(d, now)
 			}
 		} else {
 			// The plan flapped past the limit. Keep the old file — a consistent stale plan beats a
@@ -1357,6 +1367,34 @@ func (l *Loop) publishAllowed(now time.Time) bool {
 	}
 	l.ledger.PublishTimes = kept
 	return len(kept) < limit
+}
+
+// notifyChange posts one event for a plan that changed. A delivery failure is an event of its own
+// and never an error of the round: the plan is already on disk, so the job will act on it whether
+// or not a receiver heard about it.
+func (l *Loop) notifyChange(d policy.Decision, now time.Time) {
+	if l.cfg.Notify == nil {
+		return
+	}
+	err := l.cfg.Notify(notify.Event{
+		Unit:      l.cfg.UnitID,
+		Cluster:   l.cfg.Cluster,
+		At:        now,
+		Action:    string(d.Action),
+		Reason:    string(d.Reason),
+		Why:       d.Why,
+		RequestID: d.RequestID,
+		Version:   d.Version,
+	})
+	if err != nil {
+		_ = advise.Record(l.cfg.Dir, advise.Event{
+			At:     now,
+			Unit:   l.cfg.UnitID,
+			Kind:   advise.EventError,
+			Code:   "notify-failed",
+			Values: map[string]any{"error": err.Error()},
+		})
+	}
 }
 
 // shouldDecide says whether the policy's answer can have changed since the last decision.

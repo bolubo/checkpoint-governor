@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/bolubo/checkpoint-governor/internal/loop"
+	"github.com/bolubo/checkpoint-governor/internal/notify"
 	"github.com/bolubo/checkpoint-governor/internal/policy"
 	"github.com/bolubo/checkpoint-governor/internal/produce"
 	"github.com/bolubo/checkpoint-governor/internal/queue"
@@ -35,6 +36,11 @@ type Config struct {
 	// the single-cluster probes, which is the special case, not a separate code path.
 	ProbesFor func(unit.Unit) []produce.Probe
 
+	// PolicyFor builds the policy for one unit, for the same reason: a deployment may add conditions
+	// from disk (conditions.d, decision 0023), and those rows are per directory. Nil means Policy for
+	// every unit, which is a deployment with nothing added.
+	PolicyFor func(unit.Unit) policy.Policy
+
 	// Window is every unit's `with-us`: the longest a checkpoint may stay stale while we are alive.
 	// Zero means off (exceptions only). It is one number for the whole supervisor because it is the
 	// deployment's policy, not a per-directory accident.
@@ -43,6 +49,11 @@ type Config struct {
 	// Holder identifies this process for each directory's lease. Every unit gets its own directory,
 	// so one holder name is enough; the lease is per directory, never per supervisor.
 	Holder string
+
+	// Notify is told about every plan that changed, for every unit. The loop fills in the unit's own
+	// name and cluster, so one hook serves the whole supervisor; a failure is recorded per unit and
+	// never stops a tick.
+	Notify func(notify.Event) error
 
 	Queue  queue.Options
 	Resync time.Duration
@@ -99,7 +110,7 @@ func (s *Supervisor) Sync(members []unit.Member) error {
 				Dir:         u.Dir,
 				UnitID:      u.ID,
 				Bounds:      s.cfg.Bounds,
-				Policy:      s.cfg.Policy,
+				Policy:      policyFor(s.cfg, u),
 				Now:         s.cfg.Now,
 				Probes:      probesFor(s.cfg.ProbesFor, u),
 				BlindAfter:  s.cfg.BlindAfter,
@@ -109,6 +120,8 @@ func (s *Supervisor) Sync(members []unit.Member) error {
 				Fault:       s.cfg.Fault,
 				Volume:      volumeKey(u),
 				Volumes:     s.volumes,
+				Cluster:     u.Cluster,
+				Notify:      s.cfg.Notify,
 			})
 			if err != nil {
 				return err
@@ -142,6 +155,16 @@ func probesFor(build func(unit.Unit) []produce.Probe, u unit.Unit) []produce.Pro
 		return nil
 	}
 	return build(u)
+}
+
+// policyFor prefers the per-unit builder and falls back to the shared policy.
+func policyFor(cfg Config, u unit.Unit) policy.Policy {
+	if cfg.PolicyFor != nil {
+		if p := cfg.PolicyFor(u); p != nil {
+			return p
+		}
+	}
+	return cfg.Policy
 }
 
 // volumeKey is the slot a unit's write competes for. It carries the cluster name because two

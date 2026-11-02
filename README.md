@@ -75,7 +75,9 @@ Training end is written once, always. The contract is `docs/decisions/0017-two-n
 
 ## What it does not do
 
-- It is not monitoring software: no metrics, no progress tracking.
+- It is not monitoring software. `ckptctl serve` exports the numbers a scraper needs — staleness,
+  over-bound time, blind conditions, writes by kind — and it decides nothing; `--webhook` posts one
+  event per changed plan. Neither of them tracks progress.
 - It is not a scheduler: it does not choose jobs or preemptions.
 - It does not select the checkpoint a job resumes from.
 - It does not make training safe; it decides when to write and checks that the write is sound.
@@ -91,7 +93,8 @@ is a file read: no library, no API, no new permission, and no custom resource
 
 ```bash
 make check    # format, vet, build, tests
-make verify   # check, the contract pins and the recorded decisions
+make verify   # check, the contract pins, the recorded decisions, and parity
+make parity   # metrics, notification, conditions from disk: 3/3
 make exp      # the experiments: decisions in milliseconds, writes in seconds
 make dist     # linux archives and SHA256SUMS; make release for the image
 ```
@@ -107,6 +110,7 @@ use `python3`.
 - `docs/policy.md`, `docs/conditions.md`, `docs/glue.md` — the rule, the 14 conditions, the files.
 - `docs/probes.md` — what each probe reads, how often, and what the cadence costs.
 - `docs/experiments-matrix.md` — every claim and the experiment that checks it.
+- `docs/first-edition-parity.md` — what the last batch added, and why `make parity` exists.
 
 `RELEASE.md` says how a tag becomes a release.
 
