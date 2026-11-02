@@ -51,7 +51,21 @@ node's pending count. That is the same rule measured one layer down, not a secon
 
 ## What this does not promise
 
-That the three terms are complete. They are complete *on this grid*: one arrival, one queue, one
-strategy. Borrowing, cohorts, multiple simultaneous arrivals and `LowerOrNewerPriority` are untested, and
-each of them can make the conjunction true while nothing is taken. Until they are measured, this rule is
-the best available and the sweep is how it gets better.
+That the three terms are complete. They are complete *on the base grid*: one arrival, one queue, one
+strategy. The extended grid measured the three ways that could be wrong, and two of them are now known:
+
+| extension | predicted | observed | verdict |
+|---|---|---|---|
+| cohort, 2000m | 3 | 0 | **false positive** |
+| cohort, 3000m | 5 | 0 | **false positive** |
+| equal priority, `LowerOrNewerEqualPriority` | 0 | 0 | agreed |
+| two arrivals at once (1000m, 2000m) | 1, 5 | 1, 5 | agreed |
+
+**Borrowing breaks the rule, and it breaks it in the expensive direction.** A queue inside a cohort may
+lend and borrow, so a shortfall on paper is absorbed by a sibling without taking anybody. The fix is
+known and not yet made: the third term must be *the cohort's* headroom, not the queue's. Until then, a
+deployment that uses cohorts will get preemption warnings for preemptions that do not happen — writes
+nobody needed, which is the failure this rule exists to remove.
+
+The equal-priority row is reassuring but thin: one queue policy, one priority pair, one sample. It says
+the strict "higher" requirement did not miss a death here; it does not say it never will.

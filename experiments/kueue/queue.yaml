@@ -75,3 +75,89 @@ metadata:
   namespace: default
 spec:
   clusterQueue: lab-nopreempt
+---
+# Same priority, still preemptable: the newer or equal-priority workload wins. This is the case our rule says cannot
+# happen — the one that would make it unsafe if the scheduler disagrees.
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: ClusterQueue
+metadata:
+  name: lab-lower
+spec:
+  namespaceSelector: {}
+  resourceGroups:
+    - coveredResources: [cpu, memory]
+      flavors:
+        - name: lab
+          resources:
+            - name: cpu
+              nominalQuota: 4
+            - name: memory
+              nominalQuota: 4Gi
+  preemption:
+    withinClusterQueue: LowerOrNewerEqualPriority
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: LocalQueue
+metadata:
+  name: lab-lower
+  namespace: default
+spec:
+  clusterQueue: lab-lower
+---
+# A cohort: two queues whose unused quota is lent to each other. Quota stops being a hard boundary, so
+#  alone may stop predicting anything — the case our rule has never seen.
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: ClusterQueue
+metadata:
+  name: lab-cohort-a
+spec:
+  cohort: lab-cohort
+  namespaceSelector: {}
+  resourceGroups:
+    - coveredResources: [cpu, memory]
+      flavors:
+        - name: lab
+          resources:
+            - name: cpu
+              nominalQuota: 4
+              borrowingLimit: 4
+            - name: memory
+              nominalQuota: 4Gi
+  preemption:
+    withinClusterQueue: LowerPriority
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: ClusterQueue
+metadata:
+  name: lab-cohort-b
+spec:
+  cohort: lab-cohort
+  namespaceSelector: {}
+  resourceGroups:
+    - coveredResources: [cpu, memory]
+      flavors:
+        - name: lab
+          resources:
+            - name: cpu
+              nominalQuota: 500m
+              borrowingLimit: 4
+            - name: memory
+              nominalQuota: 1Gi
+  preemption:
+    withinClusterQueue: LowerPriority
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: LocalQueue
+metadata:
+  name: lab-cohort-a
+  namespace: default
+spec:
+  clusterQueue: lab-cohort-a
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: LocalQueue
+metadata:
+  name: lab-cohort-b
+  namespace: default
+spec:
+  clusterQueue: lab-cohort-b

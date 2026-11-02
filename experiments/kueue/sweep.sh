@@ -1,27 +1,25 @@
 #!/bin/sh
-# Sweep the things a preemption depends on and record what actually happens.
+# Sweep the things a preemption depends on, record what we predicted and what happened.
 #
-# Five holders at 500m occupy 2500m of a 4000m queue, so 1500m is free. The arrival's size against that
-# number is the only thing that should decide whether somebody dies:
+# Five holders at 500m occupy 2500m of a 4000m queue, so 1500m is free unless a case says otherwise.
+# Each row records two numbers that must agree:
+#   predicted  the rule's answer *before* anything happens — headroom, the arrival's declared size, and
+#              whether it outranks the holders; N = ceil(shortfall / unit)
+#   observed   what Kueue actually took
 #
-#   500m / 1500m  -> fits,      nobody may be taken
-#   2000m         -> 500m short, one unit
-#   3000m         -> 1500m short, three units
-#   4000m         -> 2500m short, five units
-#
-# Two priority gaps (equal, and one level up) and two queue policies (preemption allowed, Never). The
-# Never rows must all read zero; if they do not, the signal "a higher priority is waiting" is not the
-# one we think it is.
-#
-# Output is one CSV row per case on stdout, so the table is the artefact rather than a paragraph about
-# it. Each case resets the cluster: a preemption deletes pods, and a re-run on a dirty queue measures
-# the previous case.
+# The base grid is the measured one. The extra cases are the three ways it could be wrong:
+#   lower    same priority, queue policy LowerOrNewerEqualPriority — our rule says "cannot happen"
+#   double   two arrivals at once — N is no longer one arrival's size
+#   cohort   borrowing — quota stops being a hard boundary, so a shortfall stops being a prediction
 set -eu
 
 CLUSTER=${CLUSTER:-kueue-lab}
 HERE=$(cd "$(dirname "$0")" && pwd)
 export KUBECONFIG=${KUBECONFIG:-/tmp/kc-${CLUSTER}}
 OUT=${OUT:-$HERE/results.csv}
+OBSERVER=${OBSERVER:-/tmp/obs}
+WORLD=${WORLD:-/tmp/sweep-world}
+UNIT_MILLI=500
 
 admitted() {
 	n=0
@@ -50,13 +48,60 @@ who() {
 	echo "${out:-none}"
 }
 
+# free_read reads what the queue can still admit *before* the arrival is applied: reading demand after
+# the fact reports zero, because Kueue admits a preemptible arrival within about a second.
+free_read() {
+	q=$1
+	rm -rf "$WORLD"
+	"$OBSERVER" --world-dir="$WORLD" --cluster=lab --units=all --once >/dev/null 2>&1 || true
+	python3 - "$WORLD" "$q" <<'PY'
+import json, os, sys
+world, want = sys.argv[1], sys.argv[2]
+try:
+    s = json.load(open(os.path.join(world, "lab", "summary.json")))
+except Exception:
+    print("0,0")
+    sys.exit(0)
+for q in s.get("queues") or []:
+    if q.get("name") == want:
+        print(f"{q.get('freeMilli', 0)},{1 if q.get('allowed') else 0}")
+        sys.exit(0)
+# No fallback: a queue the summary does not name is a queue we cannot read, and guessing one is how a
+# Never queue once predicted five preemptions that could not happen.
+print("0,0")
+PY
+}
+
+# cq_of maps a LocalQueue name to the ClusterQueue the summary is keyed by. One line, because the lab
+# names them almost identically and the one exception is worth stating rather than deriving.
+cq_of() {
+	case $1 in
+	lab-np) echo lab-nopreempt ;;
+	*) echo "$1" ;;
+	esac
+}
+
+milli() {
+	case $1 in
+	*m) echo "${1%m}" ;;
+	*) echo $((${1} * 1000)) ;;
+	esac
+}
+
+# one_case policy queue prio cpu [holders_queue] [second_arrival]
 one_case() {
-	policy=$1; queue=$2; gap=$3; prio=$4; cpu=$5; short=$6
+	policy=$1; queue=$2; prio=$3; cpu=$4; hq=${5:-$2}; second=${6:-no}
 
-	kubectl delete jobs --all --ignore-not-found >/dev/null 2>&1 || true
-	kubectl delete pods --all --ignore-not-found >/dev/null 2>&1 || true
+	kubectl delete jobs --all --ignore-not-found --cascade=foreground --wait=false >/dev/null 2>&1 || true
+	kubectl delete pods --all --ignore-not-found --grace-period=0 --force --wait=false >/dev/null 2>&1 || true
+	j=0
+	while [ "$j" -lt 15 ]; do
+		[ -z "$(kubectl get jobs -o name 2>/dev/null)" ] && break
+		sleep 1
+		j=$((j + 1))
+	done
 
-	sed "s#kueue.x-k8s.io/queue-name: lab}#kueue.x-k8s.io/queue-name: ${queue}}#" \
+	sed "s#kueue.x-k8s.io/queue-name: lab}#kueue.x-k8s.io/queue-name: ${hq}}#" \
 		"$HERE/holders.yaml" | kubectl apply -f - >/dev/null
 	i=0
 	while [ "$i" -lt 25 ]; do
@@ -65,42 +110,70 @@ one_case() {
 		i=$((i + 1))
 	done
 	if [ "$(admitted)" -lt 5 ]; then
-		echo "$policy,$gap,$cpu,$short,ERROR,holders-not-admitted,na" >> "$OUT"
+		echo "$policy,$cpu,ERROR,na,na,na,na,na" >> "$OUT"
 		return
+	fi
+
+	# The verdict, taken before anything happens.
+	f=$(free_read "$(cq_of "$queue")")
+	free=$(echo "$f" | cut -d, -f1)
+	allowed=$(echo "$f" | cut -d, -f2)
+	want=$(milli "$cpu")
+	[ "$second" = yes ] && want=$((want * 2))
+	short=$((want - free))
+	[ "$short" -lt 0 ] && short=0
+	if [ "$prio" = lab-high ]; then waiting=1; else waiting=0; fi
+	if [ "$short" -gt 0 ] && [ "$waiting" = 1 ] && [ "$allowed" = 1 ]; then
+		pred=$(( (short + UNIT_MILLI - 1) / UNIT_MILLI ))
+	else
+		pred=0
 	fi
 
 	sed -e "s/__QUEUE__/$queue/" -e "s/__PRIORITY__/$prio/" -e "s/__CPU__/$cpu/" \
 		"$HERE/arrival.tpl.yaml" | kubectl apply -f - >/dev/null
+	if [ "$second" = yes ]; then
+		sed -e "s/__QUEUE__/$queue/" -e "s/__PRIORITY__/$prio/" -e "s/__CPU__/$cpu/" \
+			-e "s/name: arrival/name: arrival-b/" "$HERE/arrival.tpl.yaml" | kubectl apply -f - >/dev/null
+	fi
 
-	sleep 18
+	sleep 14
 
-	n=$(taken)
-	adm=$(kubectl get job arrival -o jsonpath='{.spec.suspend}' 2>/dev/null || echo "missing")
-	if [ "$adm" = "false" ]; then admitted_text=yes; else admitted_text=no; fi
-
-	echo "$policy,$gap,$cpu,$short,$n,$(who),$admitted_text" >> "$OUT"
-	echo "$policy gap=$gap cpu=$cpu short=$short -> taken=$n admitted=$admitted_text $(who)"
+	obs=$(taken)
+	took=$(who)
+	echo "$policy,$cpu,$short,$waiting,$allowed,$pred,$obs,$took" >> "$OUT"
+	echo "$policy cpu=$cpu: predicted=$pred observed=$obs"
 }
 
-printf 'policy,gap,cpu,shortfall_m,preempted,taken,arrival_admitted\n' > "$OUT"
+printf 'policy,cpu,shortfall_m,waiting,allowed,predicted,observed,taken\n' > "$OUT"
 
+# The measured base grid.
 for policy in allow never; do
 	if [ "$policy" = allow ]; then queue=lab; else queue=lab-np; fi
-	for gap in 0 100; do
-		if [ "$gap" = 0 ]; then prio=lab-low; else prio=lab-high; fi
-		# 1500m is the control that proves the sweep can read "fits"; 500m measures the same thing.
+	for prio in lab-low lab-high; do
+		# A fresh label each round: appending to `policy` accumulated until the names read
+		# `allow-gap0-gap0-gap0-gap100` and nothing could be matched by eye.
+		if [ "$prio" = lab-high ]; then label="$policy-gap100"; else label="$policy-gap0"; fi
 		for cpu in 1500m 2000m 4000m; do
-			case $cpu in
-			1500m) short=0 ;;
-			2000m) short=500 ;;
-			3000m) short=1500 ;;
-			4000m) short=2500 ;;
-			esac
-			one_case "$policy" "$queue" "$gap" "$prio" "$cpu" "$short"
+			one_case "$label" "$queue" "$prio" "$cpu"
 		done
 	done
 done
 
-kubectl delete jobs --all --ignore-not-found >/dev/null 2>&1 || true
+# Same priority on a queue that preempts newer-or-equal work. Our rule says this cannot happen.
+for cpu in 2000m 4000m; do
+	one_case lower-equal lab-lower lab-low "$cpu"
+done
+
+# Two arrivals in the same round: the demand is the sum, and N stops being one arrival's size.
+for cpu in 1000m 2000m; do
+	one_case double lab lab-high "$cpu" lab yes
+done
+
+# Borrowing: the arrival lands in a 500m queue inside a 4-core cohort and has to borrow from the other.
+for cpu in 2000m 3000m; do
+	one_case cohort lab-cohort-b lab-high "$cpu" lab-cohort-a
+done
+
+kubectl delete jobs --all --ignore-not-found --cascade=foreground --wait=false >/dev/null 2>&1 || true
 echo
 echo "results written to $OUT"
