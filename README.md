@@ -2,10 +2,12 @@
 
 [![ci](https://github.com/bolubo/checkpoint-governor/actions/workflows/ci.yml/badge.svg)](https://github.com/bolubo/checkpoint-governor/actions/workflows/ci.yml)
 
-One process watches a training job's checkpoint directory and decides when a checkpoint is written.
-It writes when a condition says the work is at risk, or when a window you set is about to close; it
-prints one line per decision and a receipt when the run ends. Prototype: every number below is printed
-by a test or an experiment in this repository (`make verify`, `make demo`).
+**A write policy for training runs.** It decides when a checkpoint is worth writing, and proves what a
+loss would cost. One Go binary, one plan file, no CRD, no API, no new permission: the job reads a file.
+
+A run with nothing configured writes once at the end, and once more if the platform announces the job
+is about to go. Every number below is printed by a test or an experiment in this repository
+(`make verify`, `make demo` — fifteen seconds, three acts).
 
 ## Quick start
 
@@ -14,8 +16,14 @@ docker build -t ckpt-governor:local .
 docker run --rm -v /ckpt:/ckpt ckpt-governor:local run --dir /ckpt
 ```
 
-With no configuration: one write when training ends, and one more if the platform announces the job
-is about to go.
+Or without Docker:
+
+```bash
+go install ./cmd/ckptctl && ckptctl run --dir=/ckpt/job-1 --once
+```
+
+The v0.2 target is a single static binary with one-line install, and one line in a training script
+(`docs/product-v0.2.md`). Today the binary and the container are the two shapes.
 
 ## On a cluster
 
@@ -104,10 +112,11 @@ use `python3`.
 
 ## Documentation
 
-Eight pages, and one directory of decisions. Start here, then read only what your question needs.
+Nine pages, and one directory of decisions. Start here, then read only what your question needs.
 
 - `docs/product-v1.md` — the surface: what is asked, shown and claimed; the second user and their
   price/certificate; why it did not write; what one write costs.
+- `docs/product-v0.2.md` — the next release: one-line install, the compatibility promise, the proof.
 - `docs/design.md` — one document in two parts: the argument (Appendix A) and the build (§1–§14).
 - `docs/policy.md` — the algorithm: the rule, the decision, the state file, what was deleted and why.
 - `docs/conditions.md` — the 14 condition cards, their probe cadences and the detection bound, and how
