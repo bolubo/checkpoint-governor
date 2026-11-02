@@ -63,3 +63,22 @@ func TestVerifyCommandNeedsADirectory(t *testing.T) {
 		t.Fatalf("exit %d with no --dir, want 2", code)
 	}
 }
+
+// Walking a root prints one line per generation and the numbers, and a broken generation fails the command
+// so a script notices without parsing prose.
+func TestVerifyAllWalksARoot(t *testing.T) {
+	dir := filepath.Join("..", "..", "internal", "verify", "testdata", "short-shard")
+
+	var out bytes.Buffer
+	code := runVerify([]string{"--dir", dir, "--all"}, &out)
+	if code != 1 {
+		t.Fatalf("exit %d for a root holding a short copy, want 1", code)
+	}
+	got := out.String()
+	if !strings.Contains(got, "generation 7") {
+		t.Fatalf("output = %q, want a line for generation 7", got)
+	}
+	if !strings.Contains(got, "invalid rate") {
+		t.Fatalf("output = %q, want the invalid rate", got)
+	}
+}

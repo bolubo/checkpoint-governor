@@ -26,6 +26,7 @@ func runVerify(args []string, out io.Writer) int {
 	deadline := fs.String("deadline", "", "RFC3339 deadline from the request; empty means none was announced")
 	content := fs.Bool("content", true, "hash the shards; without this the answer can only be sealed")
 	full := fs.Bool("full", false, "hash every byte instead of the declared tails")
+	all := fs.Bool("all", false, "walk every generation under --dir instead of checking one")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -42,6 +43,10 @@ func runVerify(args []string, out io.Writer) int {
 			return 2
 		}
 		opts.Deadline = t
+	}
+
+	if *all {
+		return runVerifyAll(*dir, *generation, opts, out)
 	}
 
 	v := verify.Classify(*dir, *generation, opts)
@@ -66,4 +71,36 @@ func runVerify(args []string, out io.Writer) int {
 	default:
 		return 0
 	}
+}
+
+// runVerifyAll is the "was it worth running" view: one line per generation, then the two numbers.
+//
+// It does not invent the scheduler's counter. "Taken" is a fact about units that were evicted, which a
+// directory cannot know, so the ratio is only printed when a caller supplies it — an invented denominator
+// would read as a measurement.
+func runVerifyAll(root string, generation int64, opts verify.Options, out io.Writer) int {
+	s, err := verify.Summarize(root, generation, opts)
+	if err != nil {
+		fmt.Fprintf(out, "verify: %v\n", err)
+		return 2
+	}
+	for _, r := range s.Receipts {
+		fmt.Fprintln(out, r.Line())
+	}
+
+	fmt.Fprintln(out)
+	fmt.Fprintf(out, "generations %d · verified %d · broken %d · unchecked %d\n",
+		len(s.Receipts), s.Tally.Verified, s.Tally.Invalid, s.Tally.Unchecked)
+	if s.Tally.Verified+s.Tally.Invalid > 0 {
+		fmt.Fprintf(out, "invalid rate %.2f%%  (must be zero: a copy recorded as good and later found broken)\n",
+			s.Tally.InvalidRate()*100)
+	}
+
+	// A walk that found broken generations fails the command, so a script notices.
+	for _, v := range s.Verdicts {
+		if v.State == policy.CopyBroken {
+			return 1
+		}
+	}
+	return 0
 }
