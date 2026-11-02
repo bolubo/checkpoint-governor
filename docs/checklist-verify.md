@@ -97,7 +97,9 @@ the manifest", and the receipt says so.
   is then judged `stale` against the new request, so it can never be mistaken for the answer. A second test
   keeps the failing writer failing and asserts the loop gives up exactly at the budget.
 
-- [ ] **4.2 The fault matrix, all against real files.**
+- [ ] **4.2 The fault matrix, all against real files.** Scheduled: [plan-4.2.md](plan-4.2.md) — four days,
+  real processes, a real filesystem. Day 1 starts by making `ckpttrainer` speak the 0025 contract at all: it
+  still writes `step-*` directories with no manifest, so today there is nothing for the classifier to judge.
 
   | fault | expected |
   |---|---|
