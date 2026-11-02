@@ -58,6 +58,9 @@ type Summary struct {
 	// cluster. It is a fact about the arrival, not about any unit and not about what the scheduler will
 	// do with it (0022): while the same work waits, the id is the same and one write answers it.
 	PendingEvent string `json:"pendingEvent,omitempty"`
+	// Arrivals is the same fact unaggregated: one entry per job waiting for room or just admitted. The
+	// observer publishes facts; the governor, which remembers its last write, decides what is new for it.
+	Arrivals []Arrival `json:"arrivals,omitempty"`
 	// Queues is what each queue can still admit, and whether it may take it from somebody. The
 	// measured rule needs both: `shortfall > 0 AND higher priority waiting AND preemption allowed`.
 	Queues []QueueState `json:"queues,omitempty"`
@@ -241,6 +244,7 @@ func FoldWithJobs(nodes []corev1.Node, pods []corev1.Pod, jobs []batchv1.Job, cl
 	summary := Summary{
 		Schema: 1, Cluster: opts.Cluster, At: now.UTC(), StaleAfterSeconds: stale,
 		PendingEvent: pendingEvent(jobs, now, opts.EventWindow),
+		Arrivals:     arrivals(jobs, now, opts.EventWindow, classes),
 		Nodes:        make([]NodeState, 0, len(nodes)),
 	}
 	for i := range nodes {
@@ -327,4 +331,11 @@ func writeJSON(path string, v any) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// Arrival is one job asking for room, or one that has just taken it.
+type Arrival struct {
+	Name      string    `json:"name"`
+	Priority  int32     `json:"priority"`
+	CreatedAt time.Time `json:"createdAt"`
 }
