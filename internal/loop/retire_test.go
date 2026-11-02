@@ -73,14 +73,14 @@ func TestRetirementKeepsTheCopiesThatMatter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	removed, err := sweepTrash(dir, 0)
+	removed, _, err := sweepTrash(dir, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if removed != 0 {
 		t.Fatalf("swept %d with no budget", removed)
 	}
-	removed, err = sweepTrash(dir, time.Second)
+	removed, _, err = sweepTrash(dir, 1<<30)
 	if err != nil {
 		t.Fatal(err)
 	}
