@@ -73,9 +73,10 @@ cluster, under two minutes from a clone.
       plan says so.
   **observed** in a fresh venv with the wheel installed: `plan: True · engine running: True ·
       should_save: False · closed: True`; `make py` runs 17 tests, four of them new.
-- [ ] **1.3 Degradation when the engine dies.** If the engine exits, the client falls back to "write at
-      end, and on an announced stop", and prints the reason once.
-  **done when** a test kills the engine mid-run and the loop still writes at the end.
+- [x] **1.3 Degradation when the engine dies.** The client does not print: a library that starts writing
+      to stdout because a subprocess exited is a library nobody keeps. The plan simply ages out,
+      `should_save()` answers false, and the reason is in `.ckpt-governor/engine.log`.
+  **done when** a test kills the engine mid-run and the client neither raises nor claims a save.
 - [ ] **1.4 The demo without Go.** `python -m ckptctl_pytorch.demo` prints the P0 table from the bundled
       engine.
   **done when** the demo runs in a clean virtualenv and prints four rows.

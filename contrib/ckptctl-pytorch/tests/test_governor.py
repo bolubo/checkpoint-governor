@@ -220,6 +220,26 @@ class TestEngine(unittest.TestCase):
                 g.close()
             self.assertFalse(g.engine_running())
 
+    def test_a_dead_engine_degrades_quietly(self):
+        if engine_path() is None:
+            self.skipTest("no ckptctl engine: build it with hack/build-wheel.sh, or set CKPTCTL_ENGINE")
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root, start_engine=True, engine_every="200ms")
+            try:
+                state = os.path.join(root, BASE_DIR, "state.json")
+                deadline = time.time() + 5
+                while time.time() < deadline and not os.path.exists(state):
+                    time.sleep(0.05)
+                self.assertTrue(os.path.exists(state))
+                g._engine.kill()
+                g._engine.wait()
+                self.assertFalse(g.engine_running())
+                # The plan ages out; the client reports "no write" instead of raising. The caller's
+                # fallback is the end-of-training write and the announced stop.
+                self.assertFalse(g.should_save())
+            finally:
+                g.close()
+
     def test_close_is_idempotent(self):
         with tempfile.TemporaryDirectory() as root:
             g = Governor(root)
