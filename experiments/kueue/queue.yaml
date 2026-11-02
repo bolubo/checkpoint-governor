@@ -1,0 +1,77 @@
+# The queue the cases run against.
+#
+# Two ClusterQueues with the same quota and one difference: `lab` may preempt within the queue,
+# `lab-nopreempt` may not. That difference is case c5 — it separates "a higher priority is waiting"
+# from "somebody will be taken", which is exactly the distinction our predictor gets wrong.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: lab-low
+value: 100
+globalDefault: false
+description: The holders in the experiment.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: lab-high
+value: 200
+globalDefault: false
+description: The arrival that asks for room.
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: ResourceFlavor
+metadata:
+  name: lab
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: ClusterQueue
+metadata:
+  name: lab
+spec:
+  namespaceSelector: {}
+  resourceGroups:
+    - coveredResources: ["cpu", "memory"]
+      flavors:
+        - name: lab
+          resources:
+            - name: cpu
+              nominalQuota: "4"
+            - name: memory
+              nominalQuota: 4Gi
+  preemption:
+    withinClusterQueue: LowerPriority
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: ClusterQueue
+metadata:
+  name: lab-nopreempt
+spec:
+  namespaceSelector: {}
+  resourceGroups:
+    - coveredResources: ["cpu", "memory"]
+      flavors:
+        - name: lab
+          resources:
+            - name: cpu
+              nominalQuota: "4"
+            - name: memory
+              nominalQuota: 4Gi
+  preemption:
+    withinClusterQueue: Never
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: LocalQueue
+metadata:
+  name: lab
+  namespace: default
+spec:
+  clusterQueue: lab
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: LocalQueue
+metadata:
+  name: lab-np
+  namespace: default
+spec:
+  clusterQueue: lab-nopreempt

@@ -116,6 +116,19 @@ func Victims(units []Unit, cause Cause, need int) []Unit {
 			out = append(out, u)
 			freed += u.Size
 		}
+		// A tie is never broken. If the cut falls inside a group of equal priority, the choice between
+		// those units is a coin flip — the Kueue experiment took the second of five identical holders —
+		// and holding the one that dies suppresses the only write that mattered. So the whole tied
+		// group writes, and the extra writes are the price of not guessing (0022).
+		if len(out) > 0 {
+			cut := out[len(out)-1].Priority
+			for _, u := range ordered[len(out):] {
+				if u.Priority != cut {
+					break
+				}
+				out = append(out, u)
+			}
+		}
 		return out
 	}
 

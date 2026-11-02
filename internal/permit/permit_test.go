@@ -50,12 +50,25 @@ func units() []Unit {
 
 // A reclaim takes the cheapest units that free enough room: lowest priority first, never the ones with
 // the most to lose. That is the scheduler's rule, and copying it is what makes the verdict arguable.
-func TestReclaimSelectsTheCheapestThatFits(t *testing.T) {
-	got := Victims(units(), CauseReclaim, 1) // room for one unit
-	if len(got) != 1 || got[0].Priority != 50 {
-		t.Fatalf("want one unit at the lowest priority, got %+v", got)
+//
+// It does not split a tie. Two units at priority 50 are interchangeable to us — the Kueue experiment
+// took the second of five identical holders — so holding one of them would suppress the write of the
+// unit that dies with probability close to a half (0022).
+func TestReclaimTakesTheCheapestAndNeverSplitsATie(t *testing.T) {
+	got := Victims(units(), CauseReclaim, 1) // room for one unit, and two units tied at 50
+	if len(got) != 2 {
+		t.Fatalf("want both tied units, got %+v", got)
 	}
-	// Two units of room: both low-priority ones, and not the priority-100 unit.
+	for _, u := range got {
+		if u.Priority != 50 {
+			t.Fatalf("the tie at 50 should be taken whole, got %+v", got)
+		}
+		if u.ID == "a" {
+			t.Fatalf("the highest-priority unit was selected: %+v", got)
+		}
+	}
+
+	// Two units of room, and exactly two units at the cheapest priority: no expansion beyond them.
 	got = Victims(units(), CauseReclaim, 2)
 	if len(got) != 2 {
 		t.Fatalf("want two units, got %+v", got)

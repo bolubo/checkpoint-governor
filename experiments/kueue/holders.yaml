@@ -1,0 +1,105 @@
+# Five holders: 5 x 500m = 2500m of a 4000m quota, so 1500m is free and a 2000m arrival cannot fit.
+#
+# The arrival in c1 asks for exactly that 2000m, which forces one holder out — one claim, one victim.
+# If it asked for 1500m nothing would be preempted, and the case would measure nothing.
+#
+# The same file serves c0 and c5; only the queue-name label differs, and run.sh sets it.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: holder-1
+  namespace: default
+  labels: {kueue.x-k8s.io/queue-name: lab}
+spec:
+  suspend: true
+  backoffLimit: 0
+  template:
+    spec:
+      priorityClassName: lab-low
+      restartPolicy: Never
+      containers:
+        - name: holder
+          image: busybox:1.36
+          command: ["sh", "-c", "sleep 3600"]
+          resources:
+            requests: {cpu: "500m", memory: "64Mi"}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: holder-2
+  namespace: default
+  labels: {kueue.x-k8s.io/queue-name: lab}
+spec:
+  suspend: true
+  backoffLimit: 0
+  template:
+    spec:
+      priorityClassName: lab-low
+      restartPolicy: Never
+      containers:
+        - name: holder
+          image: busybox:1.36
+          command: ["sh", "-c", "sleep 3600"]
+          resources:
+            requests: {cpu: "500m", memory: "64Mi"}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: holder-3
+  namespace: default
+  labels: {kueue.x-k8s.io/queue-name: lab}
+spec:
+  suspend: true
+  backoffLimit: 0
+  template:
+    spec:
+      priorityClassName: lab-low
+      restartPolicy: Never
+      containers:
+        - name: holder
+          image: busybox:1.36
+          command: ["sh", "-c", "sleep 3600"]
+          resources:
+            requests: {cpu: "500m", memory: "64Mi"}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: holder-4
+  namespace: default
+  labels: {kueue.x-k8s.io/queue-name: lab}
+spec:
+  suspend: true
+  backoffLimit: 0
+  template:
+    spec:
+      priorityClassName: lab-low
+      restartPolicy: Never
+      containers:
+        - name: holder
+          image: busybox:1.36
+          command: ["sh", "-c", "sleep 3600"]
+          resources:
+            requests: {cpu: "500m", memory: "64Mi"}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: holder-5
+  namespace: default
+  labels: {kueue.x-k8s.io/queue-name: lab}
+spec:
+  suspend: true
+  backoffLimit: 0
+  template:
+    spec:
+      priorityClassName: lab-low
+      restartPolicy: Never
+      containers:
+        - name: holder
+          image: busybox:1.36
+          command: ["sh", "-c", "sleep 3600"]
+          resources:
+            requests: {cpu: "500m", memory: "64Mi"}

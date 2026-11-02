@@ -75,6 +75,12 @@ type Env struct {
 	// PermitUntil bounds a Queued verdict. Zero means unbounded, which is read as granted rather than
 	// as a queue that never ends.
 	PermitUntil time.Time
+
+	// CauseID names the event endangering this unit: the set of higher-priority work waiting for room,
+	// as the observer read it (0022). Empty means it cannot be read, which must never suppress a write.
+	CauseID string
+	// CauseHandled says this unit has already written for that event.
+	CauseHandled bool
 }
 
 // TeardownMargin is how much of the announced window the job's own shutdown is assumed to need. A
@@ -115,6 +121,7 @@ func (e Env) Pressured() int {
 //	not-a-save   the decision does not ask for a write
 //	not-the-target  the fleet selected another unit for this cause (0021); a second write saves nothing
 //	in-flight    a write is already running; starting another cannot help
+//	already-written-for-this-risk  this unit already wrote for this event (0022)
 //	already-saved  the step the request names is already on disk
 //	no-time      the job's own deadline is shorter than one write; the write would be killed halfway
 //	headroom     free space cannot hold the new copies and the ones that stay
@@ -142,6 +149,19 @@ func Gate(d policy.Decision, recent []Attempt, env Env, now time.Time) Result {
 		if !a.Done() {
 			return Result{Verdict: Hold, Reason: "in-flight"}
 		}
+	}
+	// One decision, one write, per risk event. A preemption is an event — a set of higher-priority
+	// work waiting for room — and it is decided once: either nobody dies (nothing to write) or a
+	// chosen unit or batch writes once. While the same event is in force nothing new is written; the
+	// window is what keeps the checkpoint fresh afterwards (0017).
+	//
+	// The identity is the cause the observer read, not a timer. Two rounds of the same waiting
+	// workload are the same thing happening; a different waiting workload is a new event. An unreadable
+	// cause has no identity to compare, and refusing on that would suppress the write the risk exists
+	// to justify — so an empty id always writes.
+	if env.CauseHandled && env.CauseID != "" {
+		return Result{Verdict: Refuse, Reason: "already-written-for-this-risk",
+			Detail: fmt.Sprintf("this unit already wrote for risk %s; the window keeps it fresh from here", env.CauseID)}
 	}
 	// Already saved: the step the request names has a complete copy. This is the truth a stop request
 	// runs into most often — "save what I have" when what it has is already on disk.
