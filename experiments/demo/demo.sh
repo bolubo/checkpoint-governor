@@ -1,10 +1,9 @@
 #!/bin/sh
-# The demo, in four acts, in about twenty seconds.
+# The demo, in three acts, in about fifteen seconds.
 #
 #   1  nothing configured      the job writes nothing; nothing was at risk
 #   2  a fault                 the platform announces a preemption; we write, once, and say why
 #   3  a window you chose      writes every two seconds, and the receipt says what that bought
-#   4  the machine is taken    the job comes back, adopts the seal, and a drill proves it
 #
 # Act 1 is the one that matters: it looks exactly like a job that never configured checkpointing,
 # because that is what most jobs are. Act 2 is the promise. Act 3 is the price.
@@ -21,12 +20,12 @@ ROOT=$(cd "$RIG/../.." && pwd)
 BIN="$RIG/.bin"
 WORK=${WORK:-/tmp/ckpt-demo}
 
-if [ ! -x "$BIN/ckptctl" ] || [ -n "$(find "$ROOT/cmd" -name '*.go' -newer "$BIN/ckptctl" -print -quit)" ]; then
+# Rebuild when anything the binaries are made of changed. Watching only cmd/ meant a fix in internal/ ran
+# against a stale binary — the demo then shows the old behaviour and looks like the fix did not work.
+if [ ! -x "$BIN/ckptctl" ] || [ -n "$(find "$ROOT/cmd" "$ROOT/internal" -name '*.go' -newer "$BIN/ckptctl" -print -quit)" ]; then
 	mkdir -p "$BIN"
 	(cd "$ROOT" && go build -o "$BIN/ckptctl" ./cmd/ckptctl && go build -o "$BIN/ckpttrainer" ./cmd/ckpttrainer)
 fi
-# The synthetic loader: one step, no torch, so act 4 is seconds on any runner.
-(cd "$ROOT" && go build -o "$BIN/drill-loader" ./experiments/rig/tools/drill-loader/main.go)
 
 say() { printf '%s\n' "$*"; }
 rule() { printf '%s\n' "------------------------------------------------------------"; }
@@ -75,7 +74,9 @@ rm -rf "$dir"; mkdir -p "$dir"
 world "$dir" 0
 "$BIN/ckptctl" run --dir "$dir" --no-us none --every 1s >"$dir/log" 2>&1 &
 ctl=$!
-"$BIN/ckpttrainer" --dir "$dir" --steps 100000 --step-ms 20 --write-ms 60 >/dev/null 2>&1 &
+# --contract is the 0025 writer: gen-N with a manifest sealed last, so the thing left on disk can be
+# judged. Without it the demo shows a decision and never a verdict.
+"$BIN/ckpttrainer" --dir "$dir" --steps 100000 --step-ms 20 --write-ms 60 --contract >/dev/null 2>&1 &
 job=$!
 sleep 1
 say "  ... the platform announces the unit is going"
@@ -86,6 +87,11 @@ wait "$ctl" 2>/dev/null || true
 kill -9 "$job" 2>/dev/null || true
 wait "$job" 2>/dev/null || true
 show preempt
+
+# The join: the decision above, and then what the disk actually holds. A kill -9 leaves the last
+# generation in flight, so this is also the case where the answer is "waiting" rather than "verified".
+say "  what the preemption left on disk:"
+"$BIN/ckptctl" verify --dir "$dir" --all 2>&1 | sed 's/^/    /'
 say ""
 
 rule
@@ -93,27 +99,6 @@ say "act 3 - the same job, with a window the user chose"
 rule
 run_act window 6 --no-us 10m --window 2s --every 1s
 show window
-say ""
-
-# The other half: the platform took the machine, and the job came back. The checkpoint here is a real
-# writer's tree (the same fixture the classifier is tested against), the adoption is the three files a
-# resumed job writes, and the drill is the one thing that earns the word.
-rule
-say "act 4 - the machine was taken, and the job comes back"
-rule
-dir="$WORK/resume"
-rm -rf "$dir"
-cp -R "$ROOT/internal/resume/testdata/full" "$dir"
-say "  can this be resumed?"
-"$BIN/ckptctl" resumable --dir "$dir" | sed 's/^/    /'
-say "  the job comes back and says what it adopted:"
-mkdir -p "$dir/.ckpt-governor"
-printf 512 >"$dir/.ckpt-governor/resumed-generation"
-printf 512 >"$dir/.ckpt-governor/resumed-step"
-printf 9.1 >"$dir/.ckpt-governor/load-seconds"
-"$BIN/ckptctl" resumed --dir "$dir" | sed 's/^/    /'
-say "  and the only check that proves it:"
-"$BIN/ckptctl" drill --dir "$dir" --loader="$BIN/drill-loader" | sed 's/^/    /'
 say ""
 
 rule

@@ -80,6 +80,10 @@ release: dist
 
 # The experiment rig: paired arms, one fault, one claim. It fails when
 # the baseline also survives, because a fault that does not break the baseline proves nothing.
+# What this machine has spent on experiments. Fails when over budget, so it can go in CI.
+footprint:
+	sh hack/footprint.sh
+
 exp: exp-d exp-x exp-verify
 
 # D: does the system DECIDE to write when the fault arrives? Milliseconds, no write at all.

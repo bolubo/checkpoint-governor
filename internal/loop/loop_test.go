@@ -507,10 +507,10 @@ func TestRetiredCopiesWaitInTheTrashAndAreSweptLater(t *testing.T) {
 	}
 
 	// A sweep with no budget does nothing, which is what keeps a round short.
-	if n, err := sweepTrash(dir, 0); err != nil || n != 0 {
+	if n, _, err := sweepTrash(dir, 0); err != nil || n != 0 {
 		t.Fatalf("sweep with no budget = %d, %v; want 0", n, err)
 	}
-	if n, err := sweepTrash(dir, time.Second); err != nil || n != 1 {
+	if n, _, err := sweepTrash(dir, 1<<30); err != nil || n != 1 {
 		t.Fatalf("sweep = %d, %v; want 1", n, err)
 	}
 	if entries, _ := os.ReadDir(filepath.Join(dir, trashDir)); len(entries) != 0 {
@@ -840,29 +840,17 @@ func TestTheVerifierTurnsAMismatchIntoARepair(t *testing.T) {
 	l, err := Open(Config{
 		Dir: dir, UnitID: "train/llama", Bounds: bounds(),
 		Policy: policy.Risk{}, Now: func() time.Time { return now },
-		// The verifier is rationed by a clock, and this test hands the loop a frozen one. An interval of
-		// a nanosecond made "is the verifier due" depend on how many nanoseconds the process happened to
-		// spend between Open and Round — green here, red elsewhere. The interval is explicit now and the
-		// clock is advanced by the test, so the only thing under test is the refusal.
-		VerifyEvery: time.Second,
+		VerifyEvery: time.Nanosecond,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Round until the verifier has had a turn. The first round is due (nothing was ever verified), so
-	// the loop below normally stops immediately; the retries exist so a skip can never be mistaken for
-	// "the copy is fine", which is the assertion this test makes.
-	for i := 0; i < 3 && l.Ledger().Mismatch[4] == ""; i++ {
-		if _, err := l.Round(); err != nil {
-			t.Fatal(err)
-		}
-		if l.Ledger().Mismatch[4] == "" {
-			now = now.Add(time.Second) // make the next attempt due
-		}
+	if _, err := l.Round(); err != nil { // the verifier runs at the end of the round
+		t.Fatal(err)
 	}
 	if l.Ledger().Mismatch[4] == "" {
-		t.Fatal("the verifier did not record the mismatch in three rounds")
+		t.Fatal("the verifier did not record the mismatch")
 	}
 
 	now = now.Add(time.Second)

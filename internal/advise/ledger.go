@@ -139,6 +139,9 @@ func (l *Ledger) MismatchedSteps() map[int64]bool {
 
 // Save writes the ledger atomically.
 func (l *Ledger) Save(dir string) error {
+	// Capped here, where it goes to disk: the ledger is rewritten every round, so anything unbounded in it is
+	// paid for every round.
+	l.pruneFirstSeen()
 	raw, err := json.MarshalIndent(l, "", "  ")
 	if err != nil {
 		return err
