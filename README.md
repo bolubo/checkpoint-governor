@@ -102,19 +102,26 @@ is a file read: no library, no API, no new permission, and no custom resource
 ## Build and check
 
 ```bash
-make check    # format, vet, build, tests
-make verify   # check, the contract pins, the recorded decisions, and parity
-make parity   # metrics, notification, conditions from disk: 3/3
+make fast     # the 60-second loop CI runs for a code change: format, vet, build, tests, docs
+make docs     # the docs pins on their own (~15s): dead links, comment citations
+make ci       # the full gate: fast, e2e, exp, demo, install, spot, resume, py, drill
+make verify   # the release-grade gate: ci plus parity and the four pinned tests
 make exp      # the experiments: decisions in milliseconds, writes in seconds
 make dist     # linux archives and SHA256SUMS; make release for the image
 ```
+
+The gate classifies the diff and skips what it cannot justify: a Markdown change runs the docs pins
+only (~15s), a Go change runs `make fast` (~60s), a behaviour change runs everything (~3min), and a tag
+is `release.yml`'s job, not this one. What was red before, and why, is `docs/ci.md`.
 
 Requirements: Docker, or Go 1.26. The product and the demo need nothing else; the experiments also
 use `python3`.
 
 ## Documentation
 
-Seventeen pages, and one directory of decisions. Start here, then read only what your question needs.
+Eighteen pages, and one directory of decisions. Start here, then read only what your question needs.
+
+- `docs/ci.md` — the gate: what was red, what runs for which change, and the rules that keep it deterministic.
 
 - `docs/product-v1.md` — the surface: what is asked, shown and claimed; the second user and their
   price/certificate; why it did not write; what one write costs.

@@ -9,7 +9,7 @@ IMAGE ?= ghcr.io/bolubo/checkpoint-governor
 # How long the real-clock smoke runs (make smoke MINUTES=2 for a quick check).
 MINUTES ?= 10
 
-.PHONY: all check fmt vet build test verify parity ci e2e exp clean dist release install install-smoke release-notes spot prepush resume py drill
+.PHONY: all check fmt fmt-check vet build test docs fast flake verify parity ci e2e exp clean dist release install install-smoke release-notes spot prepush resume py drill
 
 all: check
 
@@ -123,7 +123,23 @@ drill:
 	sh hack/drill-claims.sh
 
 test:
-	$(GO) test ./...
+	$(GO) test -timeout 10m ./...
+
+# The docs pins, on their own: a change to a page pays their compile and nothing else.
+docs:
+	$(GO) test ./cmd/ckptctl -run 'TestDocsHaveNoDeadLinks|TestCommentsCiteDecisionsNotPagePaths'
+
+# The 60-second loop a person runs while working, and exactly what CI runs for any change that is not
+# documentation: format (checked, not written), vet, build, every unit test, the docs pins.
+fast: fmt-check vet build test docs
+
+# Formatting is checked rather than rewritten: a rewrite passes and a check does not (docs/ci.md).
+fmt-check:
+	@sh hack/fmt-check.sh
+
+# Manual flake hunting, never part of the gate: repeat and shuffle the timing-sensitive packages.
+flake:
+	$(GO) test -count=20 -shuffle=on -timeout 20m ./internal/loop ./cmd/ckptctl
 
 # The shipped binary, driven the way a user drives it: a real directory, a real world file, real
 # processes, and the plan the job would read. It builds the binary once and takes half a second.
@@ -138,7 +154,7 @@ e2e:
 prepush:
 	sh hack/prepush.sh
 
-ci: check e2e exp demo install-smoke spot resume py drill
+ci: fast e2e exp demo install-smoke spot resume py drill
 
 verify: check e2e parity spot resume py drill
 	$(GO) test ./internal/loop ./cmd/ckptctl

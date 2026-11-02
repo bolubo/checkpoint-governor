@@ -1,58 +1,134 @@
-# The whole claim, on every push: the tests, the experiments, the demo, and the image.
+# The gate. One required check, and it does only the work the diff justifies.
 #
-# There is no matrix and no caching theatre. The suite takes about a minute, and a controller that
-# says what it did should be able to show it did it.
+# Why it is shaped this way — the two failures that made "always red" and the three minutes per change —
+# is written down in docs/ci.md. The short version:
+#
+#   docs only        ~15s   the docs pins
+#   Go or tests     ~60s    format, vet, build, every unit test
+#   behaviour       ~3min   + e2e, exp, demo, install-smoke, spot, resume, py, drill
+#   Dockerfile      +40s    + docker build
+#   tag             release.yml, not here
+#   manual          everything
+#
+# The classification is a shell step, not a third-party path filter: the gate should not have a supply
+# chain we have not read. Every skipped step prints why, so "green because nothing ran" is visible.
 name: ci
 
 on:
-  push:
   pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  # The heavy gate is manual, never scheduled: this repository does not create cron jobs.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A second push to the same branch cancels the first: the older run would test a tree nobody will merge.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26"
+          cache: true
 
-      # build, vet, the whole test suite
-      - name: make check
-        run: make check
+      - name: what changed
+        id: scope
+        run: |
+          set -eu
+          code=false; docs=false; image=false
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            code=true; docs=true; image=true
+            echo "manual dispatch: running the whole gate"
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --depth=1 origin "${{ github.base_ref }}"
+            files=$(git diff --name-only "FETCH_HEAD...HEAD")
+          else
+            before="${{ github.event.before }}"
+            if [ -n "$before" ] && git cat-file -e "$before^{commit}" 2>/dev/null; then
+              files=$(git diff --name-only "$before...${{ github.sha }}")
+            else
+              # A new branch or a force push: treat the whole tree as changed rather than guess.
+              files=$(git ls-files)
+            fi
+          fi
+          for f in $files; do
+            case "$f" in
+              *.md|docs/*) docs=true ;;
+              Dockerfile|deploy/*) image=true; code=true ;;
+              *) code=true ;;
+            esac
+          done
+          if [ "$code" = "false" ] && [ "$docs" = "true" ]; then
+            echo "changing docs only; the integration steps are skipped"
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "docs=$docs" >> "$GITHUB_OUTPUT"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          printf 'changed: %s\n' "$(printf '%s' "$files" | tr '\n' ' ' | cut -c1-200)"
 
-      # the shipped binary, driven the way a user drives it — no cluster, half a second
+      # Format, vet, build, every unit test. ~60s, and it is the loop a person runs while working.
+      - name: make fast
+        run: make fast
+
+      # The docs pins are Go tests; a docs-only change still pays their compile, and nothing else.
+      - name: make docs
+        if: steps.scope.outputs.code == 'false'
+        run: make docs
+
+      # The shipped binary, driven the way a user drives it: no cluster, half a second.
       - name: make e2e
+        if: steps.scope.outputs.code == 'true'
         run: make e2e
 
-      # decisions in milliseconds, writes in seconds: the D and X layers
+      # Decisions in milliseconds, writes in seconds: the D and X layers.
       - name: make exp
+        if: steps.scope.outputs.code == 'true'
         run: make exp
 
-      # the three acts, and the receipts they print
+      # The three acts (now four) and the receipts they print.
       - name: make demo
+        if: steps.scope.outputs.code == 'true'
         run: make demo
 
-      # the install line a user runs, proven offline: dist, checksum, tarball, binary on PATH
+      # The install line a user runs, proven offline: dist, checksum, tarball, binary on PATH.
       - name: make install-smoke
+        if: steps.scope.outputs.code == 'true'
         run: make install-smoke
 
-      # the fault the product exists for, ending in a receipt: one write, then may-exit
+      # The fault the product exists for, ending in a receipt: one write, then may-exit.
       - name: make spot
+        if: steps.scope.outputs.code == 'true'
         run: make spot
 
-      # can a restore be judged, and did the job adopt one: six sentences and one tally
+      # Can a restore be judged, and did the job adopt one: six sentences and one tally.
       - name: make resume
+        if: steps.scope.outputs.code == 'true'
         run: make resume
 
-      # the training loop's half, with the standard library only (no torch on the runner)
+      # The training loop's half, standard library only (no torch on the runner).
       - name: make py
+        if: steps.scope.outputs.code == 'true'
         run: make py
 
-      # the only check that earns `restorable`, and the refusal when a drill changes the evidence
+      # The only check that earns `restorable`, and the refusal when a drill changes the evidence.
       - name: make drill
+        if: steps.scope.outputs.code == 'true'
         run: make drill
 
-      # the shortest path has to keep working, or the README is fiction
+      # The shortest path has to keep working, or the README is fiction. Only when the image can change.
       - name: docker build
+        if: steps.scope.outputs.image == 'true'
         run: docker build -t governor .

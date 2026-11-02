@@ -24,7 +24,7 @@ step() {
 	fi
 }
 
-step "make check" make check
+step "make fast" make fast
 step "make e2e" make e2e
 step "make exp" make exp
 step "make demo" make demo
