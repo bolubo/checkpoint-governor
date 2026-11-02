@@ -19,11 +19,13 @@ docker run --rm -v /ckpt:/ckpt ckpt-governor:local run --dir /ckpt
 Or without Docker:
 
 ```bash
-go install ./cmd/ckptctl && ckptctl run --dir=/ckpt/job-1 --once
+curl -fsSL https://raw.githubusercontent.com/bolubo/checkpoint-governor/main/install.sh | sh
+ckptctl run --dir=/ckpt/job-1 --once
 ```
 
-The v0.2 target is a single static binary with one-line install, and one line in a training script
-(`docs/product-v0.2.md`). Today the binary and the container are the two shapes.
+`install.sh` verifies the release's checksum before it installs anything. With Go, `make install` puts
+the same two binaries on your PATH. The three shapes — binary, container, cluster manifest — are
+`docs/install.md`.
 
 ## On a cluster
 
@@ -112,11 +114,11 @@ use `python3`.
 
 ## Documentation
 
-Nine pages, and one directory of decisions. Start here, then read only what your question needs.
+Eleven pages, and one directory of decisions. Start here, then read only what your question needs.
 
 - `docs/product-v1.md` — the surface: what is asked, shown and claimed; the second user and their
   price/certificate; why it did not write; what one write costs.
-- `docs/product-v0.2.md` — the next release: one-line install, the compatibility promise, the proof.
+- `docs/product-v0.15.md` — the next release: one-line install, the compatibility promise, the proof.
 - `docs/design.md` — one document in two parts: the argument (Appendix A) and the build (§1–§14).
 - `docs/policy.md` — the algorithm: the rule, the decision, the state file, what was deleted and why.
 - `docs/conditions.md` — the 14 condition cards, their probe cadences and the detection bound, and how

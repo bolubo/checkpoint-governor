@@ -3,14 +3,17 @@
 One entry per released tag. The prototype's history before this file is `git log`; this file starts at
 the first release that makes a compatibility promise.
 
-## v0.2 — planned
+## v0.15 — planned
 
-Not released. Scope and acceptance lines: `docs/product-v0.2.md`.
+Not released. Scope and acceptance lines: `docs/product-v0.15.md`.
 
-- [ ] one-line install: a static binary plus `SHA256SUMS` (`make dist`), and a `curl | sh` path
-- [ ] `contrib/ckptctl-pytorch/`: the callback a training script adds in one line
-- [ ] plan schema number, `doctor` reading range, and a checked-in previous-version fixture
-- [ ] one frozen-names page (metric names, event codes, exit codes, flags, conditions) pinned by a test
-- [ ] upgrade-across-a-crash test: old process writes, killed, new process takes over
-- [ ] spot simulator in the rig, ending in a receipt
-- [ ] `docs/install.md` (binary / container / callback) and a self-contained `deploy/`
+- [x] one-line install: a static binary plus `SHA256SUMS`, and a `curl | sh` path that
+  verifies the checksum before installing (`install.sh`, `make install-smoke`)
+- [x] plan schema in `doctor` (which version wrote it, which this build reads), a checked-in
+  previous-build fixture, and `docs/compatibility.md`
+- [x] the frozen lists (conditions, event kinds, metrics, exit codes, flags) pinned by
+  `TestFrozenNames`
+- [x] a run on a directory from the previous build continues its ledger instead of starting over
+- [x] spot simulator in the rig, ending in a receipt (`make spot`)
+- [x] `make release-notes` and a tag workflow that publishes the checksum-verified tarballs
+- [x] `docs/install.md` and a self-contained `deploy/` (manifest, example configs)

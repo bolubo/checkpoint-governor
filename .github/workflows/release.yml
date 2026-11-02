@@ -42,7 +42,19 @@ jobs:
             VERSION=${{ github.ref_name }}
           tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
 
+      # The notes are the CHANGELOG section for this tag, so the release and the repository say the
+      # same thing. A tag with no section falls back to generated notes rather than publishing an
+      # empty page.
+      - name: release notes from the changelog
+        run: |
+          sh hack/release-notes.sh "${GITHUB_REF_NAME}" > /tmp/notes.md || true
+
       - name: publish the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz dist/SHA256SUMS --generate-notes
+        run: |
+          if [ -s /tmp/notes.md ]; then
+            gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz dist/SHA256SUMS --notes-file /tmp/notes.md
+          else
+            gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz dist/SHA256SUMS --generate-notes
+          fi
