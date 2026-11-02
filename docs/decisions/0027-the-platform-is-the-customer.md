@@ -1,7 +1,12 @@
 # 0027 — The platform is the customer, the job is the beneficiary
 
-Date: 2026-11-02. Status: accepted. Extends 0019 (deployment without a custom resource) and 0020 (what
-this is not). Evidence: `docs/references.md`. Execution: `docs/plan-platform.md`.
+Date: 2026-11-02. Status: **superseded by 0028 (the direction is a library, not a platform)**. Extends
+0019 (deployment without a custom resource) and 0020 (what this is not). Evidence: `docs/references.md`.
+Execution: `docs/plan-platform.md` (also superseded).
+
+The installer/payer analysis below still holds and is worth keeping: the installer, the payer and the
+beneficiary are different parties, and a cloud vendor's ledger may point against fewer writes. What 0028
+replaces is the sequencing — a library in the training loop first, under a community goal.
 
 ## Context
 

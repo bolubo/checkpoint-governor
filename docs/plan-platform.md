@@ -1,5 +1,10 @@
 # Execution plan — the platform turn
 
+**Status: superseded 2026-11-02 by `docs/plan-library.md`.** Kept as history. The installer/payer analysis
+behind it still holds, and its withdrawn P0 threshold ("at least 30% fewer writes at the same bound") is
+recorded here so the next person does not reinvent it: the comparison was between two different promises,
+and the number was invented. See decision 0028.
+
 Companion to `docs/decisions/0027-the-platform-is-the-customer.md`. Every line is a task with a
 **done when** — a command and the string it must print. Numbers in the tables below are placeholders
 until P0 prints real ones; a placeholder that survives into a release note is a lie.

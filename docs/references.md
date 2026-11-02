@@ -54,7 +54,15 @@ the GitHub API on 2026-11-02; a `path:line` means the line was read, not inferre
    features made that happen.
 5. **Verification is sold as a costly, explicit act, not a default.** Every backup project ships a
    `check`/`verify` command whose documentation names its price in bandwidth and time. That is the shape
-   our drill already has, and it is the shape a certificate should have.
+   our drill already has, and it is the shape a receipt should have.
+6. **The default is an unrequested hedge.** A 500-step cadence is insurance against a *silent* death that
+   the user never asked for and never priced. For an individual run whose only real events are the end of
+   training and an announced stop, the correct write count is one. That is not a defect in the framework;
+   it is a promise mismatch — and it is where a component that asks for the promise, instead of guessing
+   it, earns its place.
+7. **The installer, the payer and the beneficiary are different parties.** A cloud vendor bills the write
+   and the longer job, so fewer writes can be *its* lost revenue; a cost-centre platform saves budget; a
+   tenant saves time. Any direction that assumes one "customer" is wrong for at least two of the three.
 
 ## What this page does not prove
 
@@ -62,10 +70,12 @@ the GitHub API on 2026-11-02; a `path:line` means the line was read, not inferre
   number we would want: how often a job loses work and how much.
 - "Nobody owns the decision" is a conclusion about **these fifteen projects**, not about the industry.
 - The last column is inference. Two rows are explicitly marked as not searched page by page.
-- It says nothing about whether our policy is *better*. That is the replacement experiment's job
-  (`docs/plan-platform.md`, P0), and it can fail.
+- It says nothing about whether our policy is *better*. That is the contrast's job
+  (`docs/plan-library.md`, P0), and it can fail.
 
 ## What follows
 
-`docs/decisions/0027-the-platform-is-the-customer.md` draws the product conclusion, and
-`docs/plan-platform.md` turns it into three pieces of evidence with a done-when for each.
+`docs/decisions/0028-the-direction-is-a-library.md` draws the product conclusion — the installer, the
+payer and the beneficiary are different parties, so the growth unit is an integration in the training
+loop, not an install on a platform. `docs/plan-library.md` turns that into phases with a done-when for
+each. `docs/plan-platform.md` is superseded and kept only as history.

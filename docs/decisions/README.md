@@ -33,7 +33,8 @@ answers "why is it this way", so a later change either follows it or replaces it
 | 0024 | [Conditions from disk](0024-conditions-from-disk.md) | the one extension point: a name, a file probe, and why a built-in wins a tie |
 | 0025 | [Verify and demand](0025-verify-and-demand.md) | we never write a checkpoint: we verify what landed and demand another, in a new generation |
 | 0026 | [Resumability is a verdict](0026-resume-is-a-verdict.md) | what a restore would get: a declaration we judge, an adoption the job reports, and a drill that is the only proof |
-| 0027 | [The platform is the customer](0027-the-platform-is-the-customer.md) | the installer is the buyer, the tenant configures nothing; the unit of sale is a bound plus a certificate, and evidence comes before integration |
+| 0027 | [The platform is the customer](0027-the-platform-is-the-customer.md) | **superseded by 0028** — kept for the installer/payer/beneficiary analysis, not for its sequencing |
+| 0028 | [The direction is a library](0028-the-direction-is-a-library.md) | the product is a policy library in the training loop, grown through integrations; the default is zero periodic writes |
 
 ## Folded records
 

@@ -137,7 +137,7 @@ use `python3`.
 
 ## Documentation
 
-Twenty-two pages, and one directory of decisions. Start here, then read only what your question needs.
+Twenty-four pages, and one directory of decisions. Start here, then read only what your question needs.
 
 - `docs/ci.md` — the gate: what was red, what runs for which change, and the rules that keep it deterministic.
 
@@ -148,6 +148,8 @@ Twenty-two pages, and one directory of decisions. Start here, then read only wha
 - `docs/product-v0.15.md` — the previous release: one-line install, the compatibility promise, the proof.
 - `docs/references.md` — what fifteen neighbouring projects actually do about "when to save", read from
   their source, and what that says about who the customer is.
+- `docs/plan-library.md` — the current plan: the contrast, the Python front door, and the three
+  framework integrations.
 - `docs/resume-contract.md` — the schema, the two verdicts, the receipt, and the drill that is the only
   proof of `restorable`.
 - `docs/verify-and-demand.md` — the other half of v0.2: the request file, the four check tiers, and why a
