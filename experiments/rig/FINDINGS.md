@@ -190,20 +190,37 @@ exits non-zero in both cases; `main` prints the error and calls `os.Exit(1)`, ex
 **Kept, not deleted:** two findings in one session came from instruments rather than from the system, and
 both were more specific and more alarming than the truth. That ratio is the argument for keeping this file.
 
-## F10 — the cluster runs, and the loop is not in it
+## F10 — retracted: the case preempted, and I read the wreckage as history
 
-**Seen:** `kueue-lab` started, the controller came up 1/1, and `experiments/kueue/run.sh c1` ran a case to
-completion. All five holders admitted, and the arrival **also admitted** — the case that exists to prove
-preemption did not preempt.
+**What I first reported:** the cluster ran, all five holders were admitted, the arrival was admitted too, and
+therefore "the case that exists to prove preemption did not preempt".
 
-**Means two things, and only one of them is about Kueue.**
+**What the case actually printed,** in the part of the output I had truncated away:
 
-1. That case no longer exercises what its name says. Either the priority shape changed under it or the lab's
-   quota now fits one more unit; a case that quietly stops testing its own claim is worse than a failing one,
-   because it stays green.
-2. **The loop is not in the cluster at all.** There is no `make deploy` here, no governor workload, no
-   `ckpttrainer` running under Kueue. The matrix proves the *classifier*; `run.sh` proves *preemption*; the
-   join — a request that reaches a writer, a write that verifies, under a real eviction — has never run.
+```
+holders admitted: 5
+== c1: one 2000m arrival, preemption allowed, same queue
+  taken: holder-4
+preempted: 1
+```
 
-**Not claimed:** that the cluster proves the loop. It does not, and the Day 4 write-up must say so in those
-words rather than implying it from two green halves.
+Kueue evicted `holder-4` to admit the 2000m arrival. The case worked.
+
+**How I got it wrong.** I ran `run.sh c1 2>&1 | tail -12`, which cut the two lines that decide the answer,
+and then read `kubectl get workloads` — a snapshot taken *after* the preemption — as if it were the history.
+`job-holder-5  ADMITTED=False` looked like "never got in"; it was "was taken", and `holder-4` was the one.
+
+**The same failure as F8, one layer up.** F8 was a lost exit code; this is a lost prefix of output. Both come
+from looking at a summary instead of the thing itself, and both produced a confident wrong claim.
+
+**Rule this leaves:** when a script reports a number (`preempted: 1`), read *that* number. A final-state
+listing answers "what is true now", never "what happened", and the difference here is the entire finding.
+
+## F10 (still true) — the loop is not in the cluster
+
+**The part of the original entry that survives:** there is no `make deploy` here, no governor workload, no
+`ckpttrainer` under Kueue. The matrix proves the *classifier*, `run.sh` proves *preemption*, and the join — a
+request that reaches a writer, a write that verifies, under a real eviction — has never run.
+
+**Not claimed:** that the cluster proves the loop. Two green halves do not make a joined whole, and the Day 4
+write-up must say so in those words rather than implying it.
