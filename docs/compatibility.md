@@ -58,3 +58,18 @@ on are `run --dir --unit --no-us --window --every --once --dry-run --webhook`, `
 No stability for `internal/` packages (they are not importable on purpose), no stability for the
 `debug` output of `--verbose`, and no cross-version readers: this build reads schema 2 only. The day it
 reads two schemas, `Reads()` becomes `2..3` and this table grows a row.
+
+## Added in v0.2, and additive by construction
+
+The resume contract adds files; it renames nothing and adds no frozen name (decision 0026).
+
+- **`resume.json`, schema 1**, beside a generation's manifest: `generation`, `step`, `format`,
+  `world{ranks,tp,pp,dp,reshardable}`, `state{model,optimizer,scheduler,rng,dataloader,scaler,ema}`,
+  `partial`, `loader`. Unknown fields are refused; 64 KiB bound; one JSON value per file.
+- **Three job glue files**: `resumed-generation`, `resumed-step`, `load-seconds`. Absent means the job
+  did not say, which is what a cold start looks like; a job that writes none is governed exactly as
+  before.
+- **Three commands**: `resumable`, `resumed`, `drill`, with the same three exit codes as everything else
+  (`0` yes, `1` checked and no, `2` cannot decide).
+- **Not added**: no condition, no event kind, no metric, no plan-schema move. `TestFrozenNames` is
+  unchanged and still prints `frozen: 14 conditions, 9 event kinds, 6 metrics, 2 exit codes`.

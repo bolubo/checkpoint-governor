@@ -114,11 +114,13 @@ use `python3`.
 
 ## Documentation
 
-Eleven pages, and one directory of decisions. Start here, then read only what your question needs.
+Seventeen pages, and one directory of decisions. Start here, then read only what your question needs.
 
 - `docs/product-v1.md` — the surface: what is asked, shown and claimed; the second user and their
   price/certificate; why it did not write; what one write costs.
-- `docs/product-v0.15.md` — the current release: one-line install, the compatibility promise, the proof.
+- `docs/product-v0.15.md` — the previous release: one-line install, the compatibility promise, the proof.
+- `docs/resume-contract.md` — the other half of v0.2: what a restore would get, whether the job adopted
+  it, and the drill that is the only proof.
 - `docs/design.md` — one document in two parts: the argument (Appendix A) and the build (§1–§14).
 - `docs/policy.md` — the algorithm: the rule, the decision, the state file, what was deleted and why.
 - `docs/conditions.md` — the 14 condition cards, their probe cadences and the detection bound, and how

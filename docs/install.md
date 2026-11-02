@@ -16,6 +16,22 @@ ckptctl version
 With Go, the same two binaries come from a checkout: `make install`, or
 `go install ./cmd/ckptctl ./cmd/ckpttrainer`.
 
+## 1b. The training script (v0.2)
+
+If the job is Python, one package tells the governor where the loop is:
+
+```bash
+pip install ./contrib/ckptctl-pytorch     # zero runtime dependencies
+```
+
+```python
+from ckptctl_pytorch import Governor, World, Saves
+g = Governor("/ckpt/job-1", world=World(ranks=8), saves=Saves())
+```
+
+It writes a few small files and reads the plan; the checkpoint bytes stay with your library
+(`docs/resume-contract.md`).
+
 ## 2. The container
 
 ```bash

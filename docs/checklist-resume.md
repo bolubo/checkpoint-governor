@@ -98,13 +98,16 @@ demand another. This half answers the other question: what a restore would get, 
 
 ## P4 — release (2h)
 
-- [ ] **4.1** The third act of the demo: preempt → one write → restart → resumed → receipt.
-  **done when** the demo ends with `resumed: adopted gen 512 (step 512)`.
-- [ ] **4.2** `docs/product-v0.2.md`, `docs/install.md` (pip line), `docs/compatibility.md` (declaration
+- [x] **4.1** The fourth act of the demo: preempt → one write → restart → resumed → receipt.
+  **done when** the demo prints `resumable (gen 512, step 512, world 8/8, full state)`,
+  `adopted gen 512 (step 512), load 9.1s` and `resume: ok — step 512 → 513`.
+- [x] **4.2** `docs/product-v0.2.md`, `docs/install.md` (pip line), `docs/compatibility.md` (declaration
   schema 1, three new glue files, zero new frozen names), README, CHANGELOG.
-- [ ] **4.3** Compatibility, mechanically: `TestFrozenNames` unchanged and still printing
+  **done when** the docs test reports no dead links and the compatibility section names the additions.
+- [x] **4.3** Compatibility, mechanically: `TestFrozenNames` unchanged and still printing
   `frozen: 14 conditions, 9 event kinds, 6 metrics, 2 exit codes`.
 - [ ] **4.4** `v0.2.0`: assets, `sha256sum -c`, and an install whose `ckptctl version` says `v0.2.0`.
+  **done when** the release page's notes are the `## v0.2.0` section of `CHANGELOG.md`.
 
 ## The eight acceptance lines
 
