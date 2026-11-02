@@ -33,6 +33,14 @@ jobs:
       - name: make demo
         run: make demo
 
+      # the install line a user runs, proven offline: dist, checksum, tarball, binary on PATH
+      - name: make install-smoke
+        run: make install-smoke
+
+      # the fault the product exists for, ending in a receipt: one write, then may-exit
+      - name: make spot
+        run: make spot
+
       # the shortest path has to keep working, or the README is fiction
       - name: docker build
         run: docker build -t governor .

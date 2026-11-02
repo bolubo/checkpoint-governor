@@ -1,0 +1,7 @@
+{
+  "freeSpaceFactor": 2,
+  "storeEvery": "5s",
+  "memoryLine": 0.95,
+  "cpuThrottleLine": 0.2,
+  "slowFactor": 2
+}

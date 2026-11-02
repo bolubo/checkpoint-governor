@@ -9,7 +9,7 @@ IMAGE ?= ghcr.io/bolubo/checkpoint-governor
 # How long the real-clock smoke runs (make smoke MINUTES=2 for a quick check).
 MINUTES ?= 10
 
-.PHONY: all check fmt vet build test verify parity ci e2e exp clean dist release
+.PHONY: all check fmt vet build test verify parity ci e2e exp clean dist release install install-smoke release-notes spot
 
 all: check
 
@@ -44,6 +44,20 @@ scenarios:
 # The shortest path for someone who already has Go: the two binaries on their PATH.
 install:
 	$(GO) install -ldflags "$(LDFLAGS)" ./cmd/ckptctl ./cmd/ckpttrainer
+
+# The shortest path for someone who does not: install.sh fetches a release tarball, verifies its
+# checksum and installs the two binaries. This target proves the whole path offline by pointing the
+# script at a locally built dist/ — the only way this line can be "verified" before a tag exists.
+install-smoke: dist
+	PREFIX=/tmp/ckptctl-smoke CKPTCTL_RELEASE_BASE=file://$(CURDIR)/dist VERSION=$(VERSION) \
+	  sh install.sh
+	/tmp/ckptctl-smoke/ckptctl version
+	@echo "install-smoke: ok"
+
+# The release notes a tag publishes: the CHANGELOG section for that version, so the notes and the
+# repository say the same thing.
+release-notes:
+	@sh hack/release-notes.sh $(VERSION)
 
 # The binaries a user downloads, with a checksum they can check. No Docker, so it runs on a laptop
 # and on a runner: two architectures, four files, one SHA256SUMS.
@@ -85,6 +99,11 @@ exp-x:
 smoke:
 	MINUTES=$(MINUTES) sh experiments/rig/smoke.sh
 
+# The one fault the product exists for: the platform takes the machine away. One write, then
+# may-exit, printed as a receipt.
+spot:
+	sh experiments/rig/spot.sh
+
 test:
 	$(GO) test ./...
 
@@ -97,9 +116,9 @@ e2e:
 # field set, and the golden decisions that catch an unintended behaviour change.
 # ci is exactly what .github/workflows/ci.yml runs, in the same order. verify stays the fast gate a
 # person runs while working; this is the promise that a push will not go red, so run it before pushing.
-ci: check e2e parity exp demo
+ci: check e2e parity exp demo install-smoke spot
 
-verify: check e2e parity
+verify: check e2e parity spot
 	$(GO) test ./internal/loop ./cmd/ckptctl
 	$(GO) test ./internal/simulate -run TestGoldenDecisions
 	$(GO) test ./internal/policy -run TestEveryContractFieldHasAnOwner

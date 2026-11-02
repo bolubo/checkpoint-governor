@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "world": {
+    "dir": "/ckpt/world"
+  },
+  "capabilities": {
+    "preemption": {
+      "exists": true,
+      "why": "this cluster preempts lower-priority jobs"
+    },
+    "eviction": {
+      "exists": true,
+      "why": "node-pressure eviction is enabled"
+    }
+  }
+}

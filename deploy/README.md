@@ -3,6 +3,18 @@
 One manifest, one volume, one directory root. The process watches every job under the root and
 publishes a plan into each job's own `.ckpt-governor/`.
 
+## What is in this directory
+
+| File | What it is |
+|---|---|
+| `governor.yaml` | the manifest: one process over `/ckpt`, no CRD, no RBAC beyond the pod |
+| `example-conditions.json` | thresholds an operator may override; copy it into a job as `.ckpt-governor/conditions.json` |
+| `example-deployment.json` | which upstreams exist on this cluster and where the world lives; copy it as `.ckpt-governor/deployment.json` |
+| `README.md` | this page |
+
+`docs/install.md` describes the other two install shapes (the single binary and the container), and
+the full list of files a job and the controller write.
+
 ## The three surfaces
 
 | Where | Command | What it is for |
