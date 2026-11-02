@@ -7,7 +7,7 @@ loss would cost. One Go binary, one plan file, no CRD, no API, no new permission
 
 A run with nothing configured writes once at the end, and once more if the platform announces the job
 is about to go. Every number below is printed by a test or an experiment in this repository
-(`make verify`, `make demo` — fifteen seconds, three acts).
+(`make verify`, `make demo` — twenty seconds, four acts).
 
 ## Quick start
 
@@ -64,6 +64,23 @@ run 3s · no writes
   a silent death costs everything: no window was set
 ```
 
+## What the checkpoint can tell you
+
+Writing is half the job. The other half is whether the newest copy can continue the run:
+
+```bash
+ckptctl resumable --dir=/ckpt/job-1    # resumable (gen 512, step 512, world 8/8, full state)
+ckptctl resumable --dir=/ckpt/job-2    # not resumable: optimizer state absent
+ckptctl resumed   --dir=/ckpt/job-1    # what the job came back from, against the seal it saw at boot
+ckptctl drill     --dir=/ckpt/job-1 --loader="./load.py"   # resume: ok — step 512 → 513; 0.4s
+```
+
+Exit codes are the contract: `0` yes, `1` checked and no, `2` cannot tell or refused. A drill is the only
+proof of `restorable`: it fingerprints the tree, runs the loader for exactly one step, and refuses if the
+checkpoint changed. The declaration is `resume.json` (schema 1) beside the manifest, and
+`contrib/ckptctl-pytorch` writes it in three lines with no runtime dependency. The whole contract is
+`docs/resume-contract.md`.
+
 ## The two inputs
 
 | Input | Meaning | Required |
@@ -89,7 +106,8 @@ Training end is written once, always. The contract is `docs/decisions/0017-two-n
   over-bound time, blind conditions, writes by kind — and it decides nothing; `--webhook` posts one
   event per changed plan. Neither of them tracks progress.
 - It is not a scheduler: it does not choose jobs or preemptions.
-- It does not select the checkpoint a job resumes from.
+- It does not select the checkpoint a job resumes from; it says whether the newest one can continue,
+  whether the job adopted it, and proves one step of it.
 - It does not make training safe; it decides when to write and checks that the write is sound.
 
 ## How it works
@@ -119,15 +137,19 @@ use `python3`.
 
 ## Documentation
 
-Eighteen pages, and one directory of decisions. Start here, then read only what your question needs.
+Twenty pages, and one directory of decisions. Start here, then read only what your question needs.
 
 - `docs/ci.md` — the gate: what was red, what runs for which change, and the rules that keep it deterministic.
 
 - `docs/product-v1.md` — the surface: what is asked, shown and claimed; the second user and their
   price/certificate; why it did not write; what one write costs.
+- `docs/product-v0.2.md` — the current release: the three verbs, the declaration, the drill, and what it
+  refuses.
 - `docs/product-v0.15.md` — the previous release: one-line install, the compatibility promise, the proof.
-- `docs/resume-contract.md` — the other half of v0.2: what a restore would get, whether the job adopted
-  it, and the drill that is the only proof.
+- `docs/resume-contract.md` — the schema, the two verdicts, the receipt, and the drill that is the only
+  proof of `restorable`.
+- `docs/verify-and-demand.md` — the other half of v0.2: the request file, the four check tiers, and why a
+  copy is never called durable without a proof.
 - `docs/design.md` — one document in two parts: the argument (Appendix A) and the build (§1–§14).
 - `docs/policy.md` — the algorithm: the rule, the decision, the state file, what was deleted and why.
 - `docs/conditions.md` — the 14 condition cards, their probe cadences and the detection bound, and how
