@@ -39,6 +39,11 @@ type Config struct {
 	// of the channel must read as permission.
 	Permit func(now time.Time) (permit.Verdict, time.Time)
 
+	// CauseID names the event endangering this unit — the waiting higher-priority work, as the
+	// observer read it (0022). Nil or empty means the deployment cannot read it, and the gate then
+	// writes as it always did: an unreadable event must never suppress a save.
+	CauseID func(now time.Time) string
+
 	// VerifyEvery is how often one checkpoint may be read back. Zero means ten minutes; a negative
 	// value turns verification off. Reading a checkpoint costs more than writing it, so the default
 	// is deliberately rare.
@@ -961,6 +966,12 @@ func (l *Loop) Reconcile() (Step, error) {
 	gate := exec.Result{Verdict: exec.Start}
 	held := false
 	kept := false // the volume slot was handed to an attempt instead of returned
+	// The event this round is looking at (0022). Read once, before the gate, so that the gate which may
+	// refuse and the record which says the event was paid for cannot disagree about which event it is.
+	seenCause := ""
+	if l.cfg.CauseID != nil {
+		seenCause = l.cfg.CauseID(now)
+	}
 	// The last chance is not a condition: once the job says it is done, whichever condition named this
 	// write, this is the write nobody gets a second chance at. It is read once, before the gate, so the
 	// whole round agrees about which write it is looking at.
@@ -1000,6 +1011,12 @@ func (l *Loop) Reconcile() (Step, error) {
 		// refusal rather than a plan that asks for a write nobody needs (0021).
 		if l.cfg.Permit != nil {
 			env.Permit, env.PermitUntil = l.cfg.Permit(now)
+		}
+		// One decision per event: the gate needs to know which event this is, and whether this unit
+		// already answered it (0022). No id means nothing to compare, and an unreadable event writes.
+		if seenCause != "" {
+			env.CauseID = seenCause
+			env.CauseHandled = l.ledger.CauseWrittenID == seenCause
 		}
 		if estimated {
 			// A size we were told, not one we measured: the space rule applies, and the status says so.
@@ -1204,6 +1221,13 @@ func (l *Loop) Reconcile() (Step, error) {
 	if pending != nil && published {
 		a := *pending
 		l.attempts.Record(a)
+		// The event is paid for. Recording it here — where the request becomes a real attempt, not
+		// where it was merely considered — is what makes the next round of the same event refuse
+		// instead of writing the same progress again (0022).
+		if seenCause != "" {
+			l.ledger.CauseWrittenID = seenCause
+			l.ledger.CauseWrittenAt = now.Unix()
+		}
 		if final || kindOf(a.Trigger, a.Reason) == "final" {
 			// The question is on its way; the answer is settled from the directory like every other
 			// write, so a crash between the two cannot turn "asked" into "made".

@@ -41,6 +41,12 @@ type Ledger struct {
 	// HasSeal separates "no seal yet" from "a seal at step zero": a job that starts at step 0 is
 	// normal, and treating its first checkpoint as "already recorded" loses it.
 	HasSeal bool `json:"hasSeal,omitempty"`
+	// CauseWrittenID is the event this unit last wrote for, and CauseWrittenAt when it did (0022). It
+	// is what makes a preemption cost one write instead of one per round: the same waiting workload
+	// carries the same id, so the next round knows the event has already been paid for.
+	CauseWrittenID string `json:"causeWrittenId,omitempty"`
+	CauseWrittenAt int64  `json:"causeWrittenAt,omitempty"`
+
 	// Reconciled counts restarts that found a published plan the ledger had not recorded yet. It is
 	// a diagnostic: a persistent non-zero value means saves are being lost.
 	Reconciled int `json:"reconciled,omitempty"`

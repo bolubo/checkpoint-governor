@@ -16,7 +16,7 @@ func fleet() []UnitRecord {
 // always did, which is the property that makes this field safe to add.
 func TestNothingWaitingWritesNoVerdicts(t *testing.T) {
 	units := fleet()
-	assignPermits(units, 0)
+	assignPermits(units, 0, "reclaim:test")
 	for _, u := range units {
 		if u.Permit != nil {
 			t.Fatalf("%s got a verdict with nothing waiting: %+v", u.UnitID, u.Permit)
@@ -28,7 +28,7 @@ func TestNothingWaitingWritesNoVerdicts(t *testing.T) {
 // held. This is the difference between one write and five for a single death.
 func TestOneClaimHoldsEveryUnitButTheCheapest(t *testing.T) {
 	units := fleet()
-	assignPermits(units, 1)
+	assignPermits(units, 1, "reclaim:test")
 
 	granted := []string{}
 	for _, u := range units {
@@ -58,7 +58,7 @@ func TestOneClaimHoldsEveryUnitButTheCheapest(t *testing.T) {
 // Two claims take two units, cheapest first.
 func TestTwoClaimsTakeTwo(t *testing.T) {
 	units := fleet()
-	assignPermits(units, 2)
+	assignPermits(units, 2, "reclaim:test")
 	granted := 0
 	for _, u := range units {
 		if u.Permit.Verdict == "granted" {
@@ -74,7 +74,7 @@ func TestTwoClaimsTakeTwo(t *testing.T) {
 // single-job deployment untouched.
 func TestALonelyUnitGetsNoVerdict(t *testing.T) {
 	units := []UnitRecord{{UnitID: "solo", Node: "n1", Priority: 10}}
-	assignPermits(units, 1)
+	assignPermits(units, 1, "reclaim:test")
 	if units[0].Permit != nil {
 		t.Fatalf("a single unit on a node got %+v, want nothing", units[0].Permit)
 	}
@@ -88,7 +88,7 @@ func TestNodesDoNotCompete(t *testing.T) {
 		{UnitID: "b1", Node: "n2", Priority: 10},
 		{UnitID: "b2", Node: "n2", Priority: 20},
 	}
-	assignPermits(units, 1)
+	assignPermits(units, 1, "reclaim:test")
 	for _, u := range units {
 		if u.Permit == nil {
 			t.Fatalf("%s got no verdict", u.UnitID)
@@ -97,5 +97,31 @@ func TestNodesDoNotCompete(t *testing.T) {
 	// Each node grants its own cheapest unit: a1 and b1.
 	if units[0].Permit.Verdict != "granted" || units[2].Permit.Verdict != "granted" {
 		t.Fatalf("each node should grant its cheapest: %+v %+v", units[0].Permit, units[2].Permit)
+	}
+}
+
+// The event id is what the governor compares across rounds; a verdict without one cannot be deduped.
+func TestTheEventTravelsWithTheVerdict(t *testing.T) {
+	units := fleet()
+	assignPermits(units, 1, "reclaim:abc123")
+
+	for _, u := range units {
+		if u.Permit == nil {
+			t.Fatalf("%s got no verdict", u.UnitID)
+		}
+		if u.Permit.Event != "reclaim:abc123" {
+			t.Fatalf("%s carries event %q, want reclaim:abc123", u.UnitID, u.Permit.Event)
+		}
+	}
+}
+
+// Nothing waiting means no event, and therefore no verdicts at all.
+func TestNoWaitingWorkMeansNoEvent(t *testing.T) {
+	units := fleet()
+	assignPermits(units, 0, pendingEvent(nil))
+	for _, u := range units {
+		if u.Permit != nil {
+			t.Fatalf("%s got %+v with nothing waiting", u.UnitID, u.Permit)
+		}
 	}
 }

@@ -11,7 +11,7 @@ import "sort"
 // Only the reclaim case is inferred from the cluster today. A drain and shared damage are not
 // detected here yet, and units therefore keep the permission they already had — which, absent a
 // verdict, is permission.
-func assignPermits(units []UnitRecord, need int) {
+func assignPermits(units []UnitRecord, need int, event string) {
 	if need <= 0 {
 		return // nothing is waiting: there is no cause, so there is nothing to coordinate
 	}
@@ -48,7 +48,7 @@ func assignPermits(units []UnitRecord, need int) {
 			if rank < victims {
 				verdict = "granted"
 			}
-			units[k].Permit = &Permit{Verdict: verdict, Cause: "reclaim", Rank: rank + 1}
+			units[k].Permit = &Permit{Verdict: verdict, Cause: "reclaim", Event: event, Rank: rank + 1}
 		}
 	}
 }

@@ -85,10 +85,15 @@ type UnitRecord struct {
 // UnitPermit is the observer's answer to a question one unit cannot answer: when a cause endangers
 // several units, may this one spend a write?
 type UnitPermit struct {
-	Verdict string     `json:"verdict"`
-	Cause   string     `json:"cause,omitempty"`
-	Rank    int        `json:"rank,omitempty"`
-	Until   *time.Time `json:"until,omitempty"`
+	Verdict string `json:"verdict"`
+	// Cause is the kind of pressure: reclaim, drain, serialized.
+	Cause string `json:"cause,omitempty"`
+	// Event identifies this occurrence of the cause — the waiting work, ordered and hashed. The same
+	// waiting workload keeps the same id across rounds, which is what makes one preemption cost one
+	// write instead of one per round (0022).
+	Event string     `json:"event,omitempty"`
+	Rank  int        `json:"rank,omitempty"`
+	Until *time.Time `json:"until,omitempty"`
 }
 
 // Age is how old the reading is. It is shown next to every number the world contributes.

@@ -74,10 +74,15 @@ type UnitRecord struct {
 // Permit is the verdict. Absent means permission: a governor reads a missing field as granted, so a
 // cluster whose observer predates this field behaves exactly as it did before.
 type Permit struct {
-	Verdict string     `json:"verdict"`
-	Cause   string     `json:"cause,omitempty"`
-	Rank    int        `json:"rank,omitempty"`
-	Until   *time.Time `json:"until,omitempty"`
+	Verdict string `json:"verdict"`
+	// Cause is the kind of pressure: reclaim.
+	Cause string `json:"cause,omitempty"`
+	// Event identifies this occurrence of the cause: the waiting work, ordered and hashed. The same
+	// waiting workload keeps the same id across rounds, which is what makes one preemption cost one
+	// write instead of one per round (0022).
+	Event string     `json:"event,omitempty"`
+	Rank  int        `json:"rank,omitempty"`
+	Until *time.Time `json:"until,omitempty"`
 }
 
 // Snapshot is one read of the cluster.
@@ -182,7 +187,7 @@ func Fold(nodes []corev1.Node, pods []corev1.Pod, opts Options, now time.Time) S
 		units = append(units, u)
 	}
 	sort.Slice(units, func(i, j int) bool { return units[i].UnitID < units[j].UnitID })
-	assignPermits(units, int(pendingPriority))
+	assignPermits(units, int(pendingPriority), pendingEvent(pods))
 
 	summary := Summary{
 		Schema: 1, Cluster: opts.Cluster, At: now.UTC(), StaleAfterSeconds: stale,

@@ -177,10 +177,11 @@ func runRun(args []string, out io.Writer) int {
 	host, _ := os.Hostname()
 	probeCfg = probeCfg.WithWorld(*dir)
 	l, err := loop.Open(loop.Config{
-		Dir:    *dir,
-		UnitID: name,
-		Permit: permitFor(probeCfg),
-		Holder: fmt.Sprintf("%s-%d", host, os.Getpid()),
+		Dir:     *dir,
+		UnitID:  name,
+		Permit:  permitFor(probeCfg),
+		CauseID: causeFor(probeCfg),
+		Holder:  fmt.Sprintf("%s-%d", host, os.Getpid()),
 		Bounds: policy.Bounds{
 			MinCopies: *copies,
 			NoUs:      noUsMode,
@@ -374,5 +375,19 @@ func permitFor(cfg adapters.Config) func(time.Time) (permit.Verdict, time.Time) 
 			until = *u.Permit.Until
 		}
 		return permit.Parse(u.Permit.Verdict, until, now), until
+	}
+}
+
+// causeFor names the event endangering this unit, for the one-decision-per-event rule (0022).
+//
+// Empty means the observer did not name one, and the gate then writes as it always did: an event that
+// cannot be identified must never be the reason a save does not happen.
+func causeFor(cfg adapters.Config) func(time.Time) string {
+	return func(time.Time) string {
+		u, err := adapters.ReadUnit(cfg.WorldDir, cfg.Cluster, cfg.UnitID)
+		if err != nil || u.Permit == nil {
+			return ""
+		}
+		return u.Permit.Event
 	}
 }
