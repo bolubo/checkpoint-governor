@@ -108,7 +108,11 @@ test pins it.
 
 - **what 1 means**: the node is likely to need this job's room soon
 - **source**: the world projection — `<worldDir>/<cluster>/summary.json` plus this unit's record, both written by a platform observer
-- **definition**: CPU or memory requests ≥ 90% of allocatable, or ≥ 1 pending high-priority pod, or a cordon; the line is deployment config
+- **definition**: a **conjunction** (0023): a held-back job outranks this unit **and** the queue has a
+  shortfall **and** the queue may preempt. Without a queue, the fallback is the node: a higher-priority
+  pod is pending **and** requests are at the line (90% by default, deployment config). Measured on
+  twelve cases in `experiments/kueue`; the old form was an *or* of four signals and fired on pressure
+  alone, which took nobody in any of them
 - **cadence**: 15s
 - **cost**: cheap (one summary + one unit record)
 - **absent means**: no observer, an observer that does not track units, `eviction.exists=false`, or `--infer-eviction=off`

@@ -78,12 +78,22 @@ func writeWorldAt(t *testing.T, opts worldOpts, now time.Time) Config {
 	return cfg
 }
 
-func TestEvictionFiresWhenTheNodeIsFillingUp(t *testing.T) {
+// A nearly full node with nobody waiting above this unit is not a preemption risk.
+//
+// This test used to assert the opposite. The sweep (experiments/kueue, 12 cases) showed that an arrival
+// takes somebody only when a strictly higher priority is waiting **and** the queue is short; pressure
+// on its own took nobody in any of the twelve. The old rule fired on "anything looks tight", which is
+// how a fleet of ten units each decided it was about to die.
+func TestANearlyFullNodeAloneDoesNotFire(t *testing.T) {
 	cfg := writeWorldFor(t, worldOpts{cpuPct: 92, memPct: 40, tracking: true})
 	r := (evictionLikely{}).with(cfg).Read(produce.Env{Dir: cfg.WorldDir, Now: nowFn()})
-	if r.State != produce.Fresh || !r.Value {
-		t.Fatalf("92%% = %+v, want the inference to fire", r)
+	if r.State != produce.Fresh {
+		t.Fatalf("92%% = %+v, want a fresh reading", r)
 	}
+	if r.Value {
+		t.Fatalf("92%% with nothing waiting above the unit fired: %+v", r)
+	}
+	// The display still says what it saw: a 0 has to be explicable too.
 	sig, err := EvictionSignals(cfg.WorldDir, "a", cfg.UnitID, Deployment{}, 0.9, nowFn())
 	if err != nil || len(sig) != 1 || sig[0] != "allocatable 92%" {
 		t.Fatalf("signals = %v/%v", sig, err)
@@ -99,10 +109,38 @@ func TestEvictionIsUnknownWhenRequestsWereNeverDeclared(t *testing.T) {
 	}
 }
 
-func TestEvictionFiresOnPendingPriorityPodsAndCordon(t *testing.T) {
+// Pending higher-priority work on a cordoned node is a drain, not a pick: on a cordon everybody goes,
+// and `risk.evicted` is the condition for that. This inference is about being chosen out of several,
+// so it needs the shortfall as well — a cordon with room to spare takes nobody by itself.
+func TestPendingWorkOnACordonedNodeIsNotAPick(t *testing.T) {
 	cfg := writeWorldFor(t, worldOpts{cpuPct: 10, memPct: 10, pending: 2, cordoned: true, tracking: true})
-	if r := (evictionLikely{}).with(cfg).Read(produce.Env{Dir: cfg.WorldDir, Now: nowFn()}); !r.Value {
-		t.Fatalf("pending+cordon = %+v, want 1", r)
+	if r := (evictionLikely{}).with(cfg).Read(produce.Env{Dir: cfg.WorldDir, Now: nowFn()}); r.Value {
+		t.Fatalf("pending+cordon without a shortfall fired: %+v", r)
+	}
+}
+
+// The conjunction, and each term on its own. This table is the sweep from experiments/kueue written as
+// a test: only the row where all three hold takes a unit.
+func TestLikelyNeedsAllThreeTerms(t *testing.T) {
+	base := UnitView{SummaryPresent: true, Tracking: true, UnitPresent: true, QueueKnown: true,
+		ShortfallMilli: 500, PreemptionAllowed: true, HigherPriorityWaiting: 1}
+
+	cases := []struct {
+		name string
+		edit func(*UnitView)
+		want bool
+	}{
+		{"all three", func(v *UnitView) {}, true},
+		{"nobody higher waiting", func(v *UnitView) { v.HigherPriorityWaiting = 0 }, false},
+		{"the queue has room", func(v *UnitView) { v.ShortfallMilli = 0 }, false},
+		{"the queue may not preempt", func(v *UnitView) { v.PreemptionAllowed = false }, false},
+	}
+	for _, c := range cases {
+		v := base
+		c.edit(&v)
+		if got := likely(v, 0.9); got != c.want {
+			t.Errorf("%s: likely = %v, want %v", c.name, got, c.want)
+		}
 	}
 }
 
