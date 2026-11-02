@@ -1,0 +1,18 @@
+{
+  "generation": 7,
+  "step": 48210,
+  "sealedAt": "2026-11-02T03:20:07Z",
+  "writer": "torch-dcp/2.5",
+  "shards": [
+    {
+      "name": "short-shard/gen-0007/rank-00.bin",
+      "size": 50,
+      "sha256": "3164596df4fdd018b2c567ec8c03e79bd76f4e4ca2a3fd020b577300ff9d2aca"
+    },
+    {
+      "name": "short-shard/gen-0007/rank-01.bin",
+      "size": 50,
+      "sha256": "7a0faf6a966a47424c4cde922a4f6be014846daac696540d9df149ae91a93516"
+    }
+  ]
+}
