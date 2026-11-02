@@ -46,7 +46,7 @@ One required check, `verify`, and it does not always do the same work:
 
 | what changed | what runs | wall time (measured on the runner) |
 |---|---|---|
-| only Markdown / `docs/` | `make docs`: compile one package, two pins | one step; ~35s targeted |
+| only Markdown / `docs/` | `make docs`: compile one package, two pins | one step; 35s measured |
 | Go, shell, tests | `make fast`: format check, vet, build, every unit test | 110–115s |
 | behaviour (Go, `experiments/`, `cmd/`) | also `e2e`, `exp`, `demo`, `install-smoke`, `spot`, `resume`, `py`, `drill` | 184s |
 | `Dockerfile`, `deploy/` | also `docker build` | +40s |
