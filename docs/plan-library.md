@@ -44,11 +44,15 @@ cluster, under two minutes from a clone.
       `Install`, `In a training loop`, then `On a cluster`; the `docker build` line is the second shape
       inside `Install`. The table leads because the value is silence, which is P0's own premise, and
       the title already says what the product is.
-- [ ] **0.3 A one-liner for people without Go or Python.** The same command inside a container.
+- [x] **0.3 A one-liner for people without Go or Python.** The same command inside a container.
   **done when** `docker run …` prints the same four rows.
-  **status** the Dockerfile builds the contrast binary and copies it into the image
-      (`docker run --rm --entrypoint /contrast <image>`); the daemon is not running in this environment,
-      so the four rows were not observed here.
+  **observed** `make contrast-image` on docker 29.1.3 prints the same four rows — 28/0/1/2 writes,
+      1120s/0s/40s/80s io, the same coverage — in 2.6s. Two things were needed. The image now carries
+      `/tmp` (`WORKDIR /tmp`), because the contrast makes its scratch directory there and a scratch
+      image has none. And the scratch runs on `--tmpfs /tmp`: on overlay2 one round costs about 12 ms
+      of fsync (`internal/advise/publish.go`), which turns a two-second table into minutes (1000 steps:
+      0.6s on tmpfs, 12.3s on overlay2). At the controller's own cadence that 12 ms is 0.2% of a 5s
+      round, which is why it is a note here and not a change to the loop.
 - [x] **0.4 What the framework defaults cost, per scale.** `internal/waste` + `experiments/waste`:
       the waste fraction is `T_write / (interval × t_step)`, and the interval is **the framework's
       actual default, not a round number**: Hugging Face `save_steps=500` with `save_total_limit=None`
@@ -194,7 +198,7 @@ anyway, and each one is checked by a link test rather than by memory.
 | `docs/plan-4.2.md`, `docs/checklist-*.md` | moved to `/root/cg-internal-notes` (process, not product) | `docs/*.md` count drops by three and `make docs` passes | done — 31 → 28, plus `index.md` |
 | `deploy/` | frozen; no new work, still documented | README's deploy section is one screen | done |
 | Certificate product, platform injection, adapter zoo, conformance | refused | no page or target appears for them | holding |
-| CLI's 19 verbs | first screen names three (`run`, `init`, `price`); the rest move to the install page | `ckptctl` with no arguments prints three groups | open — it still prints 21 |
+| CLI's 21 verbs | the help is three groups; the first is `init`, `price`, `run`, and every verb gets one line | `ckptctl` with no arguments prints three groups, and a test holds the list | done — three groups; `cmd/ckptctl/main_test.go` |
 
 ## Order and why
 

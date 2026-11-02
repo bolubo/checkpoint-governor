@@ -1,84 +1,101 @@
-# 磁盘与内存的账：它为什么会堆满，以及怎么不堆满
+# The disk and memory account: why it fills, and how it stops
 
-一个检查点产品如果自己把客户的卷吃满，它比不做还糟。这份文件只回答一个问题：**增长的东西有几样，
-各自被什么夹住**。
+A checkpoint product that fills the customer's volume is worse than doing nothing. This page answers
+one question: **what grows, and what holds each of those down.**
 
-## 一、会长的东西，只有三样
+## 1. Three things grow
 
-| 东西 | 单位 | 谁在增长 | 今天的上界 |
+| thing | unit | grows on | bound today |
 |---|---|---|---|
-| 代次目录 `gen-N` | 一份检查点 S | 每次真要写 | 保留策略（keep 份 + 最老步） |
-| `.trash` | 一份 S / 次 | 每次**退役** | **没有硬上界**，只有时间预算 |
-| 小文件（请求/计划/账本） | KB | 每次事件 | 无上限（账本按事件追加） |
+| the generation directory `gen-N` | one checkpoint S | every real write | the retention rule (keep, plus the oldest step) |
+| `.trash` | one S per retirement | every **retirement** | **no hard bound**, only a time budget |
+| small files (requests, plan, ledger) | KB | every event | none (the ledger appends per event) |
 
-**内存不在这个表里**，因为它是 O(1)：全量哈希走 `io.Copy` 流式喂进 `sha256`，尾部检查只读固定的
-1 MiB。这条要写死进设计里——**唯一的回归方式是有人哪天写一句"把两个文件读进来比一比"**。
+**Memory is not in this table**, because it is O(1): the full hash streams into `sha256` through
+`io.Copy`, and the tail check reads a fixed 1 MiB. This has to stay in the design — **the only way
+back is somebody writing "read both files into memory and compare them" one day.**
 
-## 二、稳态磁盘是多少
+## 2. What the steady state is
 
 ```
-稳态 ≈ (keep + 1) × S   +   trash 高水位
-       └ 保留的份数 ┘        └ 已退役、还没扫掉的 ┘
+steady ≈ (keep + 1) × S   +   the trash high-water mark
+          └ the kept copies ┘   └ retired, not yet swept ┘
 ```
 
-`keep+1` 里的 `+1` 是正在写的那一份：**它必须同时存在，否则写的瞬间没有可回退的**。
+The `+1` in `keep+1` is the copy being written: **it must exist at the same time, or a failed write
+has nothing to fall back on.**
 
-举个数：S = 8 GiB、keep = 2 → 稳态 24 GiB，加上 trash 峰值。一个 100 GiB 的卷能容下，但这要求
-trash 有上界。
+One example: S = 8 GiB, keep = 2 → 24 GiB steady, plus the trash peak. A 100 GiB volume holds that,
+but only if trash has a bound.
 
-## 三、三个已经存在、但没被夹住的地方
+## 3. Three things that exist and are not held down
 
-1. **`.trash` 只有时间预算**（`sweepTrash(dir, budget time.Duration)`）。时间预算对删除是错的度量：
-   慢盘上同样的字节删不完，快盘上删过头；而且 `os.RemoveAll` 一个目录**中途不可打断**，一个 8 GiB
-   目录可能吃掉整个预算还继续。
-   → 改成**按字节记账**：每轮最多回收 X MiB，删到点就停，剩下的下轮继续。
+1. **`.trash` has a time budget only** (`sweepTrash(dir, budget time.Duration)`). Time is the wrong
+   measure for deletion: a slow disk does not finish the same bytes, a fast disk deletes too much;
+   and `os.RemoveAll` on a directory **cannot be interrupted half-way**, so one 8 GiB directory can
+   eat the whole budget and keep going.
+   → count bytes instead: reclaim at most X MiB per round, stop at the budget, continue next round.
 
-2. **清扫只在写的时候发生**（退役发生在写、扫描在轮次里）。一个**停下来不再写**的作业，trash 永远
-   不会被扫。这正是最坏情形：被抢占 → 退役 → 作业结束 → 空间永久占着。
-   → 清扫必须挂在**每一轮**，而不是"有写才扫"。
+2. **Sweeping happens only on a write** (retirement happens in a write, the sweep in a round). A job
+   that **stops writing** never sweeps its trash. That is exactly the worst case: preempted →
+   retired → job ends → the space is held forever.
+   → sweep on **every round**, not only when there was a write.
 
-3. **账本按事件追加，没有截断**。一份长跑作业能把它撑到几十万行。
-   → 保留最近 N 条 + 一条聚合行（"另有 M 条早于本次运行"），而不是全量。
+3. **The ledger appends per event, with no truncation.** One long job can push it to hundreds of
+   thousands of lines.
+   → keep the newest N entries plus one aggregate line ("M more entries before this run"), not all of
+   them.
 
-## 四、快满的时候做什么
+## 4. What happens when it is nearly full
 
-顺序是固定的，不能省：
+The order is fixed and none of the steps can be skipped:
 
-1. **写之前先算**：`空闲 ≥ 1.2 × S`？不满足就先退役最老的、扫一轮 trash，再算一次；
-2. **还不够就拒写**，并且**明确报 `cannot-fit`**——不重试、不部分写、不把最后一份挤掉；
-3. **报的时候给数字**：需要 S、可用 X、退役能腾出 Y。人可以据此加卷或改 keep。
+1. **count before writing:** is free space ≥ 1.2 × S? If not, retire the oldest copy, sweep one round
+   of trash, and count again;
+2. **if it still does not fit, refuse the write** and say **`cannot-fit`** — no retry, no partial
+   write, and never by pushing out the last copy;
+3. **report the numbers:** S is needed, X is available, retiring would free Y. A person can add a
+   volume or change keep from those three.
 
-**"挤掉别人的最后一份来腾地方"是禁止的**：一个检查点产品的失败模式，不能是"我写了，但删了你原来那份"。
+**"Free space by pushing out somebody's last copy" is forbidden**: the failure mode of a checkpoint
+product cannot be "I wrote, but deleted the copy you already had".
 
-## 五、要在真机上记下三个数
+## 5. Three numbers to record on a real machine
 
-矩阵和集群跑都要记，缺一个就不算测过：
+Record them for the matrix and for a cluster run; with one missing, the case is untested:
 
-- **每次抢占的字节代价**：写了几份、每份多大 → 稳态是否被 keep 夹住；
-- **trash 高水位**：退役到扫掉之间的峰值，必须 < 1 份 S；
-- **峰值目录占用**：跑完 24 小时之后看，不是跑完 5 分钟。
+- **bytes per preemption:** how many copies were written, and how large → is the steady state held by
+  keep;
+- **the trash high-water mark:** the peak between retirement and sweep, which must be below one S;
+- **peak directory usage:** read after the 24-hour mark, not five minutes after the run.
 
-## 六、落地情况
+## 6. What landed
 
-**已实现**
+**Implemented**
 
-- 清扫**按字节**（每轮 256 MiB），逐文件删，半删的目录留下轮继续；
-- 清扫**每轮都跑**，不再只在有写时跑；
-- 空盘压力下 `keep` 降到 1（`keepUnderPressure`）；
-- 矩阵新增 `space` 行：24 MiB 的 tmpfs 写到满 → **三份好的仍 verified，第四份 ENOSPC，写入方 exit 1**。
+- sweep **by byte**, 256 MiB per round, one file at a time; a half-deleted directory continues next
+  round;
+- the sweep runs **every round**, not only when there was a write;
+- `keep` drops to 1 under disk pressure (`keepUnderPressure`);
+- a matrix `space` row: a 24 MiB tmpfs written until full → **three good copies still verify, the
+  fourth gets ENOSPC, and the writer exits 1**.
 
 ```
 space  generation 3  sealed 07:10:57  verified 07:10:58  sample  steps 3  (verified 3, writer exit 1)
 ```
 
-- 长跑 trash 峰值：四十轮持续写，峰值 < 3 份，停写后归零。**这条测试第一次跑就失败了**——固定预算
-  每轮都在失地，trash 涨到 31 份；修法是"一轮的预算必须 ≥ 这一轮退役的量"；
-- 账本截断：`FirstSeen`（每个写过的目录一条）保留最新 256 条——它是账本里唯一无界的集合，而账本
-  **每一轮都要重写**，所以无界的部分每一轮都在付费。
+- the long-run trash peak: forty rounds of continuous writing, peak below three copies, zero after
+  writing stops. **This test failed the first time it ran** — a fixed budget lost ground every round
+  and trash grew to 31 copies; the fix is "one round's budget must be ≥ what that round retires";
+- ledger truncation: `FirstSeen` (one entry per written directory) keeps the newest 256. It is the
+  only unbounded set in the ledger, and the ledger is **rewritten every round**, so the unbounded
+  part is paid for every round.
 
-**仍然没有的**
+**Still missing**
 
-- 真机长跑（小时级）的三个数：每次抢占的字节代价、trash 高水位、24 小时后的目录占用。矩阵和单测都
-  在秒级，抓不到"跑了三天之后"的样子。
+- the three numbers from an hours-long run on a real machine: bytes per preemption, the trash peak,
+  and directory usage after 24 hours. The matrix and the unit tests run in seconds, so they cannot
+  catch what it looks like after three days.
 
-在补上之前，实话是：**机制和不变量都有了，长时间下的界只有推断，没有观测。**
+Until those exist, the honest sentence is: **the mechanism and the invariants exist; the bound over
+a long run is inferred, not observed.**

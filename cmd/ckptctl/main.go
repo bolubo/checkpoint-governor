@@ -7,6 +7,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 )
 
@@ -15,102 +16,87 @@ import (
 // should report rather than a version nobody tagged.
 var version = "dev"
 
+// The three groups of the help screen. They name what the person is doing, not how the code is
+// organised: a verb that fits none of them does not belong on this screen yet.
+const (
+	groupLoop  = "the loop — it decides"
+	groupRead  = "what happened — it reads what the controller wrote"
+	groupOther = "everything else"
+)
+
+// command is one verb. main dispatches from this table and the help prints from it, so a verb cannot
+// exist without a line that names it: a command nobody can find is a command nobody uses.
+type command struct {
+	name  string
+	group string
+	one   string
+	run   func(args []string, out io.Writer) int
+}
+
+// commands is the whole surface, alphabetical inside each group. The first group is the three verbs a
+// new user needs, which is why the groups are not ordered by size.
+var commands = []command{
+	// The loop: the controller, the file it writes, and the price of that file.
+	{"init", groupLoop, "answer the two questions and write them down, without running the controller", runInit},
+	{"price", groupLoop, "what one bound costs on this directory", runPrice},
+	{"run", groupLoop, "govern one directory until interrupted", runRun},
+
+	// Reading back what the controller wrote, on a stopped controller if needed.
+	{"audit", groupRead, "the bound certificate; non-zero when the bound was broken", runAudit},
+	{"config", groupRead, "every threshold in force, and where it came from", runConfig},
+	{"doctor", groupRead, "what each probe sees on this machine", runDoctor},
+	{"drill", groupRead, "prove a checkpoint resumes: one loader step, compared", runDrill},
+	{"events", groupRead, "the controller's own record: decisions, requests, changes", runEvents},
+	{"explain", groupRead, "why the last decision was what it was, from the state file", runExplain},
+	{"glue", groupRead, "what the job told us about its size and its stop", runGlue},
+	{"resumable", groupRead, "can this be resumed: 0 yes, 1 no, 2 cannot decide", runResumable},
+	{"resumed", groupRead, "did it resume, from the job's own report", runResumed},
+	{"stats", groupRead, "what this deployment wrote, what it cost, what failed", runStats},
+	{"status", groupRead, "what the controller knows about one directory", runStatus},
+	{"verify", groupRead, "is what landed sound: one generation, or all of them", runVerify},
+
+	// Beyond one directory: several directories, a cluster, or a trace that stands in for both.
+	{"serve", groupOther, "the same facts as Prometheus text, read-only", runServe},
+	{"simulate", groupOther, "the policy against fixed timers, on one trace", runSimulate},
+	{"supervise", groupOther, "several directories, one rollup", runSupervise},
+	{"table", groupOther, "the evidence table: every family under the controllers worth comparing", runTable},
+	{"trace", groupOther, "generate a trace, seeded so the same run replays", runTrace},
+	{"version", groupOther, "print the version this binary was built from", func(_ []string, out io.Writer) int {
+		fmt.Fprintln(out, "ckptctl "+version)
+		return 0
+	}},
+	{"world", groupOther, "what the implementation knows about the cluster; can fabricate one", runWorld},
+}
+
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: ckptctl <command>")
-		fmt.Fprintln(os.Stderr, "commands: init, version, simulate, table, status, price, audit, serve, run, trace, doctor, events, explain, glue, config, supervise, world, stats, resumable, resumed, drill")
+		usage(os.Stderr)
 		os.Exit(2)
 	}
+	for _, c := range commands {
+		if c.name == os.Args[1] {
+			if code := c.run(os.Args[2:], os.Stdout); code != 0 {
+				os.Exit(code)
+			}
+			return
+		}
+	}
+	fmt.Fprintf(os.Stderr, "unknown command %q\n", os.Args[1])
+	fmt.Fprintln(os.Stderr, "run ckptctl with no arguments for the three groups")
+	os.Exit(2)
+}
 
-	switch os.Args[1] {
-	case "init":
-		if code := runInit(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
+// usage prints one line per verb, grouped by what the person is doing. It is deliberately short: the
+// flags are in `ckptctl <verb>`. The three group headings are checked by a test, because this screen
+// is the first thing a user sees and a verb missing from it has to be a compile-time intention.
+func usage(w io.Writer) {
+	fmt.Fprintln(w, "usage: ckptctl <command>")
+	for _, g := range []string{groupLoop, groupRead, groupOther} {
+		fmt.Fprintf(w, "\n%s\n", g)
+		for _, c := range commands {
+			if c.group == g {
+				fmt.Fprintf(w, "  %-11s %s\n", c.name, c.one)
+			}
 		}
-	case "version":
-		fmt.Println("ckptctl " + version)
-	case "simulate":
-		if code := runSimulate(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	case "table":
-		if code := runTable(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	case "status":
-		if code := runStatus(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	case "price":
-		if code := runPrice(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	case "audit":
-		if code := runAudit(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	case "serve":
-		if code := runServe(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	case "supervise":
-		if code := runSupervise(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	case "stats":
-		if code := runStats(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	case "world":
-		if code := runWorld(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	case "config":
-		if code := runConfig(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	case "glue":
-		if code := runGlue(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	case "verify":
-		if code := runVerify(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	case "explain":
-		if code := runExplain(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	case "events":
-		if code := runEvents(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	case "doctor":
-		if code := runDoctor(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	case "run":
-		if code := runRun(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	case "trace":
-		if code := runTrace(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	case "resumable":
-		if code := runResumable(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	case "resumed":
-		if code := runResumed(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	case "drill":
-		if code := runDrill(os.Args[2:], os.Stdout); code != 0 {
-			os.Exit(code)
-		}
-	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\n", os.Args[1])
-		os.Exit(2)
 	}
 }

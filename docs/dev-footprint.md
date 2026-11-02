@@ -1,99 +1,114 @@
-# 开发机与实验的足迹预算
+# Footprint: the development machine, and what an experiment may leave behind
 
-这份文件和 `docs/retention-budget.md` 是**两个不同的设计**，别混：
+This page and `docs/retention-budget.md` are **two different designs**. Do not mix them.
 
-| | 客户卷上的保留 | 这台机器上的实验 |
+| | what is kept on the customer's volume | what an experiment keeps on this machine |
 |---|---|---|
-| 谁在增长 | 客户写出的检查点 | 我建的集群、镜像、卷、缓存 |
-| 谁承担后果 | 客户的磁盘 | 我的 1007 GiB 根盘 |
-| 上界由谁设 | 保留策略（keep + 最老步） | **实验必须自己归还资源** |
+| what grows | the checkpoints the customer writes | the clusters, images, volumes and caches I create |
+| who pays | the customer's disk | my 1007 GiB root disk |
+| who sets the bound | the retention rule (keep, plus the oldest step) | **the experiment must give the resources back** |
 
-两条不冲突，但必须分开写，因为收敛手段完全不同：客户那边是"少留几份"，这边是"用完就拆"。
+The two do not conflict. They are written down separately because they converge in opposite ways:
+the customer's side by keeping fewer copies, this machine by tearing things down.
 
-## 一、这台机器的现状（量过的）
-
-```
-Local Volumes   26 个   39.61 GB   ← 最大的一笔，22 个仍被占用
-Images          23 个   14.83 GB   ← 11.25 GB 可回收（75% 是死的）
-kind 集群        7 个              ← 一个仓库七个集群
-Go 构建缓存             12 GB
-/tmp                    64 MB      ← 这个反而是健康的
-根盘          318G / 1007G 已用
-```
-
-**结论：`du` 看不见的两个东西才是大头。** 逐个 `du -sh` 目录只能找到 60 MB 级别的浪费，而卷和镜像是
-50 GB 级别，藏在 docker 自己的存储里。所以**先量 `docker system df`，再量目录**。
-
-## 二、三条规则，按生命周期分
-
-**1. 单次运行（秒级）**：所有临时目录走 `mktemp -d` + `trap` 回收，已经做到了。矩阵和 demo 都这样。
-
-**2. 单次实验（分钟级）：集群的生命周期必须在同一个脚本里闭合。**
+## 1. What this machine held (measured)
 
 ```
-create → load image → run → delete
+local volumes   26      39.61 GB   <- the largest item; 22 still in use
+images          23      14.83 GB   <- 11.25 GB reclaimable (75% is dead)
+kind clusters    7                 <- seven clusters from one repository
+Go build cache          12 GB
+/tmp                    64 MB      <- this one was healthy
+root disk       318G of 1007G used
 ```
 
-**中途退出也必须删**（trap 里挂 `kind delete cluster`）。一条铁律：
+**The two things `du` cannot see are the larger half.** Walking directories with `du -sh` finds waste
+in the 60 MB range; volumes and images are in the 50 GB range, inside docker's own storage. So
+**measure `docker system df` first, and the directories second.**
 
-> **一个留下集群不管的实验，是一次失败的实验**——不管它测出了什么。
+## 2. Three rules, one per lifetime
 
-理由不是洁癖：留下 7 个集群之后，我不知道哪个是现在的、哪个是三天前的，**下一次实验的第一件事变成了
-考古**，而考古的错误率高过我写代码的错误率（今天的 F7/F10 都是这么来的）。
+**1. One run (seconds).** Every temporary directory comes from `mktemp -d` with a `trap` that removes
+it. This was already true: the matrix and the demo both do it.
 
-**3. 每周（分钟级）**：`hack/footprint` 报一次账，超过阈值就回收：
+**2. One experiment (minutes). The cluster's life must close inside the same script.**
 
-| 项 | 上界 | 超了怎么办 |
+```
+create -> load image -> run -> delete
+```
+
+An interrupted exit must delete too (`kind delete cluster` in the trap). One rule:
+
+> **An experiment that leaves a cluster behind is a failed experiment**, whatever it measured.
+
+The reason is not tidiness. With seven clusters left, I could not tell which one was current and which
+was three days old, so **the next experiment started with archaeology** — and archaeology was wrong
+more often than my code was (today's F7 and F10 came out of it).
+
+**3. Once a week (minutes).** `hack/footprint` reports the account, and anything over its bound is
+reclaimed:
+
+| item | bound | when it is over |
 |---|---|---|
-| docker 卷 | 60 GB | `docker volume prune`（只清无主的） |
-| docker 镜像 | 20 GB | `docker image prune -a` 保留基础镜像 |
-| kind 集群 | 2 个 | 删掉不在用的，名字带日期 |
-| Go 缓存 | 15 GB | `go clean -cache` |
-| /tmp | 2 GB | 清掉超过一天的 |
+| docker volumes | 60 GB | `docker volume prune` (unowned only) |
+| docker images | 20 GB | `docker image prune -a`, keep the base image |
+| kind clusters | 2 | delete the unused ones; names carry a date |
+| Go cache | 15 GB | `go clean -cache` |
+| /tmp | 2 GB | delete anything older than a day |
 
-## 三、WSL 的磁盘：已经是稀疏的，里面删就够
+## 3. The WSL disk: it is already sparse, deleting inside is enough
 
-这台机器的 vhdx 是**稀疏（sparse）**模式，删掉的块会还给 Windows，不需要再跑 `Optimize-VHD`。
+This machine's vhdx runs in **sparse** mode: deleted blocks go back to Windows, so `Optimize-VHD` is
+not needed.
 
-所以清理只有一步：**在里面删**。这一点要写下来，因为它省掉了一整类"清理完还得关机压缩"的操作——而
-那种操作会让人干脆不清理。
+Cleaning is therefore one step: **delete inside**. This is written down because it removes a whole
+class of "clean up, then shut down and compact" work, and that class is what makes people stop
+cleaning at all.
 
-（如果哪天换了非稀疏的盘，这里就要补回压缩那一步；判断方法是在 Windows 侧看 vhdx 大小是否随删除变小。）
+If the disk is ever replaced with a non-sparse one, the compaction step comes back. The test on the
+Windows side is whether the vhdx shrinks when files are deleted.
 
-## 四、内存
+## 4. Memory
 
-kind 的每个 control-plane 是一个容器，一个大概 1–2 GiB。七个集群就是最多 14 GiB——但其中几个是
-`Exited` 状态，**不占内存，只占磁盘**。
+Each kind control plane is one container, roughly 1–2 GiB. Seven clusters are up to 14 GiB — but
+several of them are `Exited`, which **holds no memory, only disk**.
 
-所以内存这条比磁盘好办：**停掉就还了**。规则只有一条：
+Memory is therefore easier than disk: **stopping is the same as giving it back.** One rule:
 
-> 一个不再使用的集群，要么 `docker stop`，要么 `kind delete`，**不要留着 Running**。
+> A cluster nobody uses is either `docker stop` or `kind delete`. It is never left `Running`.
 
-## 五、这份设计要落地成什么
+## 5. What this design becomes
 
-- `hack/footprint`：一行一条的账（卷、镜像、集群、缓存、vhdx），超阈值时**退出码非零**，能进 `make`；
-- `kind delete` 进 trap：集群脚本自己负责拆除，不依赖我记得；
-- 集群命名带日期（`kueue-1102`），并在创建前先删掉同名的旧集群。
+- `hack/footprint`: one line per item (volumes, images, clusters, cache, vhdx), **non-zero exit** when
+  over a bound, so it can go in `make`;
+- `kind delete` in the trap: the cluster script removes what it created, without depending on anyone
+  remembering;
+- cluster names carry a date (`kueue-1102`), and the same name is deleted before it is created.
 
-## 六、第一次跑的结果（已落地）
+## 6. The first run (landed)
 
-`hack/footprint.sh` 跑出来：
+`hack/footprint.sh` printed:
 
 ```
 kind clusters          8  <-- over budget (max 2)
        - ckpt-exp  k17921  kueue-lab  ra-prod  ra-t67  ra-user  resume-admission ...
 docker volumes         39.6 GB
-docker images          14.8 GB（其中 11.25 GB 标为可回收）
+docker images          14.8 GB (11.25 GB of it marked reclaimable)
 go cache + mod         12.2 GB
 /tmp                   66 MiB
 ```
 
-**这一跑就证明了设计的前提**：超标的是集群数量和 docker 存储，不是目录里的文件。
+**That one run proved the premise of the design:** what was over budget was the number of clusters
+and docker's storage, not files in directories.
 
-`docker image prune -f`（只清悬挂层）回收 **0 B**——11.25 GB 的"可回收"要 `-a` 才能拿到，而那会删掉
-其他仓库正在用的基础镜像。所以这件事**留给人决定**，脚本只报告、不动手：一个会删别人镜像的
-footprint 工具，第二次就没人敢跑了。
+`docker image prune -f` (dangling layers only) reclaimed **0 B**. The 11.25 GB marked reclaimable
+needs `-a`, and `-a` also removes the base images other repositories are still using. So this stays a
+human decision: the script reports and does not act. A footprint tool that deletes other people's
+images is a tool nobody runs twice.
 
-**集群没删**：`ra-prod`、`ra-t67`、`resume-admission` 是别的仓库的，属于它们的作者。脚本只标红。
+**The clusters were left alone.** `ra-prod`, `ra-t67` and `resume-admission` belong to other
+repositories and their authors. The script marks them in red and stops there.
 
-**还没做的**：矩阵里那条"写满 32 MiB 卷"的用例（3.1）、长跑 trash 峰值（3.2）、账本截断（2.4）。
+**The three cases this page listed** — filling a 32 MiB volume (3.1), the long-run trash peak (3.2),
+and ledger truncation (2.4) — landed afterwards; `docs/retention-budget.md` §6 records what they
+showed. What is still missing, on both pages, is one hours-long run on a real machine.

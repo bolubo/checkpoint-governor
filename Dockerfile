@@ -16,7 +16,11 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}"
 
 FROM scratch
 COPY --from=build /out/ckptctl /ckptctl
-# The contrast table runs in the image too: `docker run --rm --entrypoint /contrast <image>`.
+# The contrast table runs in the image too: `docker run --rm --tmpfs /tmp --entrypoint /contrast <image>`.
+# It writes scratch directories under TMPDIR, and a scratch image has no /tmp, so the image carries
+# one. Run it with `--tmpfs /tmp`: on overlay2 the loop's per-round publish costs ~12 ms of fsync.
+# The controller itself still needs nothing but the directory you mount.
+WORKDIR /tmp
 COPY --from=build /out/contrast /contrast
 # The demo job is in the image too, so a second container can write checkpoints for the first one to
 # govern without pulling anything else.

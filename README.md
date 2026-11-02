@@ -34,6 +34,7 @@ the two binaries on your PATH. In a container:
 ```bash
 docker build -t ckpt-governor:local .
 docker run --rm -v /ckpt:/ckpt ckpt-governor:local run --dir /ckpt
+docker run --rm --tmpfs /tmp --entrypoint /contrast ckpt-governor:local    # the four rows above
 ```
 
 In Python, `make wheel` builds `ckpt-policy` with the engine inside:
