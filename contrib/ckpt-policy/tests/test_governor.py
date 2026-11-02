@@ -270,5 +270,84 @@ class TestDemo(unittest.TestCase):
         self.assertEqual(rows[1].note, "", "the engine should have published a plan")
 
 
+class _Control:
+    def __init__(self):
+        self.should_save = False
+
+
+class _State:
+    global_step = 0
+
+
+class _FakeTrainer:
+    """The two Trainer behaviours that matter: its cadence, and `should_save` consumed at log steps.
+
+    HF has no torch on the runner, so the test drives this instead of transformers. The contract is the
+    same one the callback relies on: a request is honoured at the next logging step, and only once,
+    because the generation it served is recorded by `sealed`.
+    """
+
+    def __init__(self, save_every=None, logging_steps=50):
+        self.save_every, self.logging_steps = save_every, logging_steps
+        self.control, self.state = _Control(), _State()
+        self.saves = []
+
+    def train(self, steps, callbacks=(), governor=None):
+        for step in range(1, steps + 1):
+            self.state.global_step = step
+            self.control.should_save = bool(self.save_every) and step % self.save_every == 0
+            for cb in callbacks:
+                cb.on_step_end(None, self.state, self.control)
+            if step % self.logging_steps == 0 and self.control.should_save:
+                self.saves.append(step)
+                self.control.should_save = False
+                if governor is not None:
+                    governor.sealed(governor.generation(), step, [])
+        for cb in callbacks:
+            cb.on_train_end(None, self.state, self.control)
+
+
+class TestHuggingFaceCallback(unittest.TestCase):
+    def test_the_framework_default_writes_twice(self):
+        trainer = _FakeTrainer(save_every=500, logging_steps=50)
+        trainer.train(1000)
+        self.assertEqual(trainer.saves, [500, 1000])
+
+    def test_the_callback_writes_nothing_when_the_plan_is_silent(self):
+        from ckpt_policy.hf import GovernorCallback
+
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            cb = GovernorCallback(g)
+            trainer = _FakeTrainer(logging_steps=10)
+            trainer.train(1000, callbacks=[cb], governor=g)
+            self.assertEqual(trainer.saves, [], "nothing is at risk, so nothing is written")
+            self.assertEqual(cb.requests, 0)
+            self.assertEqual(glue(root, "ending"), "1", "the callback records the end of training")
+
+    def test_a_request_is_honoured_at_the_next_logging_step_and_once(self):
+        from ckpt_policy.hf import GovernorCallback
+
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            plan(root, generation=7)
+            cb = GovernorCallback(g)
+            trainer = _FakeTrainer(logging_steps=10)
+            trainer.train(100, callbacks=[cb], governor=g)
+            self.assertEqual(trainer.saves, [10],
+                             "the request waits for the next logging step, then is written once")
+            self.assertFalse(g.should_save(), "the served generation is not asked for twice")
+
+    def test_the_callback_returns_the_control_it_was_given(self):
+        from ckpt_policy.hf import GovernorCallback
+
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            cb = GovernorCallback(g)
+            control = _Control()
+            self.assertIs(cb.on_step_end(None, _State(), control), control)
+            self.assertIs(cb.on_train_end(None, _State(), control), control)
+
+
 if __name__ == "__main__":
     unittest.main()

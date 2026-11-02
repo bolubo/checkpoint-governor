@@ -91,18 +91,25 @@ cluster, under two minutes from a clone.
 
 ## P2 — the audience: Hugging Face Trainer
 
-The integration is `save_strategy="no"` plus a callback that calls `trainer.save_checkpoint()` when
-`should_save()` says so. Two lines, not a patch to `Trainer`.
+The integration is `save_strategy="no"` plus a callback that sets `control.should_save` when
+`should_save()` says so. Two lines, not a patch to `Trainer`; the latency is `logging_steps`, and the
+announced stop is HF's own `enable_jit_checkpoint`.
 
-- [ ] **2.1 The callback, against a fake trainer.** CI has no torch, so the contract test drives a
-      minimal object with `save_checkpoint()` and asserts the call sequence.
-  **done when** `make py` prints `hf: 2/2 — default 2 saves, governor 1 save`.
+- [x] **2.1 The callback, against a fake trainer.** CI has no torch, so the contract test drives a minimal
+      object that models the Trainer's two relevant behaviours: its cadence, and `should_save` consumed
+      at the logging boundary.
+  **done when** a test asserts the default cadence writes twice over 1000 steps, the callback writes
+      nothing while the plan is silent, and a request is honoured at the next logging step and only once.
+  **observed** `make py` runs 23 tests; the four HF cases pass (`[500, 1000]` for the default, `[]` for
+      silence, `[10]` for a request), and `on_train_end` records `ending`.
 - [ ] **2.2 The real run (manual, torch only).** `make hf` runs a 1000-step CPU loop with `save_steps=500`
       and then with the callback.
   **done when** it prints `hf: 40 writes → 1` with real numbers (or the scaled equivalent for the steps
       used), and `trainer.state` is unchanged.
-- [ ] **2.3 The supported-integration page.** The exact diff, the receipt to expect, and the exclusions.
+- [x] **2.3 The supported-integration page.** The exact diff, the receipt to expect, and the exclusions.
   **done when** `make docs` passes and the page is linked from the README.
+  **observed** `docs/huggingface.md` carries the diff, the four events table, and the two caveats
+      (`logging_steps` latency; no public full-checkpoint API).
 
 ## P3 — the second and third integrations
 

@@ -154,7 +154,7 @@ use `python3`.
 
 ## Documentation
 
-Twenty-seven pages, and one directory of decisions. Start here, then read only what your question needs.
+Twenty-eight pages, and one directory of decisions. Start here, then read only what your question needs.
 
 - `docs/ci.md` — the gate: what was red, what runs for which change, and the rules that keep it deterministic.
 
@@ -165,6 +165,8 @@ Twenty-seven pages, and one directory of decisions. Start here, then read only w
 - `docs/product-v0.15.md` — the previous release: one-line install, the compatibility promise, the proof.
 - `docs/install-python.md` — the wheel, the three lines, what should appear, and what to do when the
   engine is missing.
+- `docs/huggingface.md` — the Trainer integration: the diff, the four events, and the two caveats it
+  states rather than hides.
 - `docs/references.md` — what fifteen neighbouring projects actually do about "when to save", read from
   their source, and what that says about who the customer is.
 - `docs/plan-library.md` — the current plan: the contrast, the Python front door, and the three
