@@ -1,0 +1,4 @@
+fault,verdict,detail
+clean,generation 1  verified 12:43:55  sample  steps 1,
+torn-tail,generation 1  steps 1  hash (shard rank-01.bin tail hashes to ac2c64b4c803, sealed as 916b144867c3),
+slow-fsync,generation 1  verified 12:43:55  sample  steps 1,

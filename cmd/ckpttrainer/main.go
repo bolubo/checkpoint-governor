@@ -19,6 +19,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/bolubo/checkpoint-governor/internal/verify"
 )
 
 type config struct {
@@ -35,6 +37,15 @@ type config struct {
 	// It is the job's own habit, and it is what the baseline arm of an experiment runs on — a
 	// baseline that never writes compares nothing.
 	saveEvery time.Duration
+	// contract writes gen-N directories with a manifest sealed last (0025), instead of step-N with the
+	// older shape. The fault matrix runs against this: a writer that does not seal cannot be judged.
+	contract bool
+	// tear corrupts the last block of the final shard while keeping the size, so the declared hashes
+	// describe a file that is not on disk. That is a kill landing between two syscalls.
+	tear bool
+	// fsyncMS forces a Sync after every 64 KiB, so a shard pays many real fsyncs rather than one. The time
+	// comes from syscalls, not from a sleep: a sleep would test the timer, not the deadline.
+	fsyncMS int
 }
 
 func main() {
@@ -49,6 +60,9 @@ func main() {
 	flag.DurationVar(&c.grace, "grace", 30*time.Second, "how long to keep training after SIGTERM")
 	flag.DurationVar(&c.saveEvery, "save-every", 0, "save on a timer this often (the job's own habit; 0 = never)")
 	flag.StringVar(&c.tracePath, "trace", "", "write a replayable trace here")
+	flag.BoolVar(&c.contract, "contract", false, "write gen-N with a manifest sealed last (0025)")
+	flag.BoolVar(&c.tear, "tear", false, "corrupt the last block of the final shard, keeping its size")
+	flag.IntVar(&c.fsyncMS, "fsync-ms", 0, "fsync after every 64 KiB, so a write pays many real syncs")
 	flag.Parse()
 
 	if c.dir == "" {
@@ -329,7 +343,111 @@ func (p planView) ownTimer(now, lastWriteAt time.Time, lead time.Duration) bool 
 	return now.Sub(lastWriteAt) >= p.baseline-lead
 }
 
+// writeContractCheckpoint writes one generation the way 0025 asks: shards, then a manifest, sealed by a
+// rename. It is the only writer shape the fault matrix can judge — a directory with no manifest is a write
+// in flight, and seven faults would all come back as "still writing".
+func writeContractCheckpoint(c config, base string, step int64, tr *trace) error {
+	gen := step
+	dir := filepath.Join(c.dir, fmt.Sprintf("gen-%04d", gen))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	// A generation being rewritten takes its manifest away first: a reader must never see a manifest that
+	// lists shards which are being rewritten under it.
+	_ = os.Remove(filepath.Join(dir, "manifest.json"))
+
+	tr.Event("save_start", step, 0, false)
+
+	shards := make([]verify.Shard, 0, c.ranks)
+	perShard := time.Duration(c.writeMS) * time.Millisecond / time.Duration(c.ranks)
+	for rank := 0; rank < c.ranks; rank++ {
+		data := make([]byte, c.shardBytes)
+		for i := range data {
+			data[i] = byte(rank)
+		}
+		name := fmt.Sprintf("rank-%02d.bin", rank)
+		path := filepath.Join(dir, name)
+		from := float64(rank) / float64(c.ranks)
+		to := float64(rank+1) / float64(c.ranks)
+		if err := writeSlowly(path, data, perShard, base, from, to); err != nil {
+			return err
+		}
+		if c.fsyncMS > 0 {
+			if err := syncFor(path, time.Duration(c.fsyncMS)*time.Millisecond); err != nil {
+				return err
+			}
+		}
+
+		sum := sha256.Sum256(data)
+		tail := data
+		if len(tail) > verify.TailBytes {
+			tail = tail[len(tail)-verify.TailBytes:]
+		}
+		tailSum := sha256.Sum256(tail)
+		shards = append(shards, verify.Shard{
+			Name: name, Size: int64(len(data)),
+			SHA256: hex.EncodeToString(sum[:]), TailSHA256: hex.EncodeToString(tailSum[:]),
+		})
+	}
+
+	// The tear happens after the hashes are computed: the manifest describes the file the writer meant to
+	// leave, and the disk holds something else. That is exactly what a kill between two syscalls produces.
+	if c.tear && len(shards) > 0 {
+		last := filepath.Join(dir, shards[len(shards)-1].Name)
+		f, err := os.OpenFile(last, os.O_RDWR, 0o644)
+		if err != nil {
+			return err
+		}
+		if _, err := f.WriteAt([]byte{0xDE, 0xAD, 0xBE, 0xEF}, shards[len(shards)-1].Size-4); err != nil {
+			f.Close()
+			return err
+		}
+		if err := f.Close(); err != nil {
+			return err
+		}
+	}
+
+	m := verify.Manifest{
+		Generation: gen, Step: step, SealedAt: time.Now().UTC().Truncate(time.Second),
+		Writer: "ckpttrainer", Shards: shards,
+	}
+	raw, err := m.Marshal()
+	if err != nil {
+		return err
+	}
+	tmp := filepath.Join(dir, "manifest.json.tmp")
+	if err := os.WriteFile(tmp, raw, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, filepath.Join(dir, "manifest.json")); err != nil {
+		return err
+	}
+
+	tr.Event("save_end", step, int64(c.ranks*c.shardBytes), true)
+	return writeFile(base, "progress", "0")
+}
+
+// syncFor keeps calling fsync on a real file until the time is spent. The duration comes from syscalls, not
+// from a sleep: a sleep would test the timer and leave the deadline untested.
+func syncFor(path string, want time.Duration) error {
+	f, err := os.OpenFile(path, os.O_RDWR, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	deadline := time.Now().Add(want)
+	for time.Now().Before(deadline) {
+		if err := f.Sync(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func writeCheckpoint(c config, base string, step int64, tr *trace) error {
+	if c.contract {
+		return writeContractCheckpoint(c, base, step, tr)
+	}
 	dir := filepath.Join(c.dir, "step-"+strconv.FormatInt(step, 10))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
