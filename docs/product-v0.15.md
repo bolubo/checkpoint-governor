@@ -1,6 +1,6 @@
 # Product v0.15 — the release that can be installed, and proved
 
-Status: scope, 2026-11-02. Not released. v0.15 is a **compatibility release**: the decision core does
+Status: released as `v0.15.0`, 2026-11-02. v0.15 is a **compatibility release**: the decision core does
 not change; what changes is how a stranger gets the thing, and what the thing promises to keep working.
 The ML-facing work — the training-script callback, the resume contract, time-to-resume — is v0.2, and is
 named at the end of this page so it does not leak into this one.

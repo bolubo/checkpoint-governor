@@ -118,7 +118,7 @@ Eleven pages, and one directory of decisions. Start here, then read only what yo
 
 - `docs/product-v1.md` — the surface: what is asked, shown and claimed; the second user and their
   price/certificate; why it did not write; what one write costs.
-- `docs/product-v0.15.md` — the next release: one-line install, the compatibility promise, the proof.
+- `docs/product-v0.15.md` — the current release: one-line install, the compatibility promise, the proof.
 - `docs/design.md` — one document in two parts: the argument (Appendix A) and the build (§1–§14).
 - `docs/policy.md` — the algorithm: the rule, the decision, the state file, what was deleted and why.
 - `docs/conditions.md` — the 14 condition cards, their probe cadences and the detection bound, and how
