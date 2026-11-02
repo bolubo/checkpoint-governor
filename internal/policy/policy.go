@@ -224,7 +224,8 @@ type Decision struct {
 	// every copy is older than OldestStepToKeep, this many newest copies stay.
 	KeepCopies int
 	// OldestStepToKeep is the oldest checkpoint step that should remain. Zero means keep all.
-	// The implementation deletes sealed copies older than this step.
+	// This is a **recommendation**: we say which copies may go, and whoever owns the volume executes it.
+	// Deleting a checkpoint is a data-path operation, and this product does not touch the data path (0025).
 	OldestStepToKeep int64
 
 	// Missing lists the measurements that were unknown and changed the decision.
