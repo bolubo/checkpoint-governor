@@ -30,9 +30,15 @@ verifier is due depends on the nanoseconds the process happened to spend — a t
 locally and fails on a different machine. It is a test-design defect, not a product defect, and it is the
 one failure class that turns a green suite red at random.
 
-The other half of "always red" is not red at all: with branch protection requiring **up to date**, every
-push to `main` by another session made our PR `BEHIND`, which GitHub shows next to a green check. That
-was fixed on the repository (strict off), not in the workflow.
+Two honesty notes, because the claim should be falsifiable:
+
+- **It did not reproduce here.** `go test ./internal/loop -run TestTheVerifierTurnsAMismatchIntoARepair
+  -count=50` was green, and every run after the merge that carried the fix was green. The failure was
+  observed on a merge of an intermediate `main`; the most likely reading is "a broken intermediate state",
+  not "random". The rule below stands either way, and the test is the named suspect.
+- **The other half of "always red" is not red at all.** With branch protection requiring **up to date**,
+  every push to `main` by another session made our PR `BEHIND`, which GitHub shows next to a green check.
+  That was fixed on the repository (strict off), not in the workflow.
 
 ## What the gate is now
 
