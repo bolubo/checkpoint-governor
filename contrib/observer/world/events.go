@@ -72,6 +72,32 @@ func jobPriority(j batchv1.Job, classes map[string]int32) int32 {
 	return 0
 }
 
+// arrivals publishes the same fact the event id is built from, but unaggregated.
+//
+// The governor compares this list against the write it last made; the observer cannot, because that
+// comparison is memory and the observer keeps none (0022).
+func arrivals(jobs []batchv1.Job, now time.Time, window time.Duration, classes map[string]int32) []Arrival {
+	out := make([]Arrival, 0, len(jobs))
+	for _, j := range jobs {
+		if !waitingOrArrived(j, now, window) {
+			continue
+		}
+		out = append(out, Arrival{
+			Name:      j.Namespace + "/" + j.Name,
+			Priority:  jobPriority(j, classes),
+			CreatedAt: j.CreationTimestamp.Time,
+		})
+	}
+	sort.Slice(out, func(i, k int) bool { return out[i].Name < out[k].Name })
+	// A cluster with hundreds of pending jobs should not make every summary enormous; the highest
+	// priorities are what a unit cares about, and they sort first.
+	if len(out) > 200 {
+		sort.Slice(out, func(i, k int) bool { return out[i].Priority > out[k].Priority })
+		out = out[:200]
+	}
+	return out
+}
+
 func demandNames(jobs []batchv1.Job, now time.Time, window time.Duration) []string {
 	var names []string
 	for _, j := range jobs {

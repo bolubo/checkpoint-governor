@@ -119,6 +119,69 @@ func TestPendingWorkOnACordonedNodeIsNotAPick(t *testing.T) {
 	}
 }
 
+// A queue inside a cohort lends and borrows, so its own headroom is not the shortfall it faces.
+//
+// Measured: a 500m queue sharing a four-core cohort absorbed a 3000m arrival without taking anybody,
+// while the queue's own arithmetic said 2.5 cores were missing. Two rows of the sweep, both false
+// positives, both paid for in writes nobody needed.
+func TestACohortsRoomIsTheShortfallThatMatters(t *testing.T) {
+	alone := QueueWire{Name: "a", FreeMilli: 500, DemandMilli: 3000}
+	if got := alone.ShortfallMilli(); got != 2500 {
+		t.Fatalf("standing alone, shortfall = %d, want 2500", got)
+	}
+
+	inCohort := QueueWire{Name: "a", FreeMilli: 500, DemandMilli: 3000, Cohort: "c", CohortFreeMilli: 5500}
+	if got := inCohort.ShortfallMilli(); got != 0 {
+		t.Fatalf("with the cohort's room, shortfall = %d, want 0", got)
+	}
+}
+
+// The event is the arrivals that outrank this unit, and nothing else.
+//
+// Two things this pins down. A lower-priority arrival is not this unit's event — it cannot be taken to
+// make room for work that ranks below it. And the id is stable while the same arrivals are listed: it
+// is built from names, not from a moment, which is what lets a unit recognise "already paid for".
+func TestTheEventIsTheArrivalsThatOutrank(t *testing.T) {
+	arrivals := []ArrivalWire{
+		{Name: "default/arrival", Priority: 200},
+		{Name: "default/small", Priority: 50},
+	}
+
+	mine := CauseID(arrivals, 100)
+	if mine == "" {
+		t.Fatal("an arrival above this unit produced no event")
+	}
+	if again := CauseID(arrivals, 100); again != mine {
+		t.Fatalf("the same arrivals produced two ids: %q then %q", mine, again)
+	}
+	if other := CauseID(arrivals, 300); other != "" {
+		t.Fatalf("an arrival below this unit still made an event: %q", other)
+	}
+	if low := CauseID([]ArrivalWire{{Name: "default/small", Priority: 50}}, 100); low != "" {
+		t.Fatalf("a lower-priority arrival made an event: %q", low)
+	}
+}
+
+// Work past the queue's capacity is never admitted, so it never displaces anybody.
+//
+// Measured: `cohort 3000m` predicted 2 preemptions and took none, because a 500m queue inside a cohort
+// whose policy prohibits borrowing can never admit 3000m — the arrival stayed `suspend=true` and the
+// holders were left alone. A shortfall that cannot be satisfied by taking is a wait, not a death.
+func TestWorkPastCapacityTakesNobody(t *testing.T) {
+	// Fits after taking: 4000m queue, 1500m free, a 3000m arrival.
+	fits := QueueWire{Name: "a", FreeMilli: 1500, DemandMilli: 3000, CapacityMilli: 4000}
+	if got := fits.ShortfallMilli(); got != 1500 {
+		t.Fatalf("a fitting arrival: shortfall = %d, want 1500", got)
+	}
+
+	// Cannot fit at all: a 500m queue whose policy prohibits borrowing, and a 3000m arrival.
+	never := QueueWire{Name: "b", FreeMilli: 500, DemandMilli: 3000, CapacityMilli: 500,
+		Cohort: "c", CohortFreeMilli: 2000}
+	if got := never.ShortfallMilli(); got != 0 {
+		t.Fatalf("an unfittable arrival: shortfall = %d, want 0", got)
+	}
+}
+
 // The conjunction, and each term on its own. This table is the sweep from experiments/kueue written as
 // a test: only the row where all three hold takes a unit.
 func TestLikelyNeedsAllThreeTerms(t *testing.T) {

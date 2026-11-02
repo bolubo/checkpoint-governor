@@ -410,6 +410,12 @@ func causeFor(cfg adapters.Config) func(time.Time) string {
 		if err != nil {
 			return ""
 		}
-		return s.PendingEvent
+		var mine int32
+		if u, err := adapters.ReadUnit(cfg.WorldDir, cfg.Cluster, cfg.UnitID); err == nil {
+			mine = u.Priority
+		}
+		// The identity is the arrivals that outrank *this* unit: a unit cannot be taken to make room for
+		// work that ranks below it, so those arrivals are not its event (0022).
+		return adapters.CauseID(s.Arrivals, mine)
 	}
 }
