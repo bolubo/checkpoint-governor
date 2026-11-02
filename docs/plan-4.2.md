@@ -66,8 +66,24 @@ half did not go as planned, and the reason is worth more than the run would have
   workload, no `ckpttrainer` under Kueue. Two green halves (classifier, preemption) do not make a joined
   whole, and Day 4 must not write as if they did.
 
-So Day 3 is "the matrix is a gate" plus "a negative result about the lab", and the joined run becomes the
-first item of Day 4 — or, if it cannot be built in the time left, the thing the write-up says is missing.
+**Later: the join ran.** `experiments/cluster/join/` fills the queue with four holders, starts a writer under
+the contract, and sends an intruder above it. Kueue takes the writer, and the volume afterwards holds what the
+writer had sealed:
+
+```
+holders admitted: 4 (of 4)
+taken after 3s: job-writer-c3df0     False
+generations 18 · verified 18 · broken 0 · unchecked 0
+invalid rate 0.00%
+the loop closed under a real eviction
+```
+
+Three things had to be true for that to be possible, and each was wrong first: the namespace needs its own
+`LocalQueue` (a `queue-name` names a local queue, not the ClusterQueue); the writer must not be applied before
+the holders (it takes the quota and leaves nothing to preempt); and the **holders must not be preemptible**,
+because Kueue picks the cheapest victims and took four holders instead of the one writer. A check that greps for
+`verified` also passes on `verified 0` — the first version of this experiment reported success on an empty
+volume.
 
 ## Day 4 — the write-up
 

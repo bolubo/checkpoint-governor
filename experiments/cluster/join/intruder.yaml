@@ -1,0 +1,27 @@
+# The intruder: higher priority, no work of its own.
+#
+# It exists to make Kueue take the writer. Its only job is to be more important than something that is worth
+# keeping — which is the cheapest way to produce a real eviction on demand.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: intruder
+  namespace: join
+  labels:
+    kueue.x-k8s.io/queue-name: lab
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        kueue.x-k8s.io/queue-name: lab
+    spec:
+      priorityClassName: lab-top
+      restartPolicy: Never
+      containers:
+        - name: intruder
+          image: registry.k8s.io/pause:3.9
+          resources:
+            requests:
+              cpu: 2000m
+              memory: 64Mi

@@ -1,0 +1,63 @@
+# The join, in one namespace.
+#
+# Two containers in one pod because the image is `scratch`: there is no shell to start a programme with, so the
+# governor and the writer are two containers sharing the checkpoint directory — which is also how they would run
+# in production, one side deciding and one side writing.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: join
+---
+# A LocalQueue is namespaced: `queue-name: lab` on a workload names a LocalQueue in its own namespace, not the
+# ClusterQueue. Without this every workload sat unadmitted with no error, which is Kueue's quietest failure.
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: LocalQueue
+metadata:
+  name: lab
+  namespace: join
+spec:
+  clusterQueue: lab
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: lab-top
+value: 300
+description: The intruder. It must be able to take the writer, not just any holder.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ckpt
+  namespace: join
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 1Gi
+---
+# What the eviction left behind. Runs after the arrival is gone, because the claim is ReadWriteOnce: the point
+# is to look at the volume afterwards, which requires the writer to have let go of it.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: verify
+  namespace: join
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: verify
+          image: ckpt-governor:local
+          imagePullPolicy: IfNotPresent
+          command: ["/ckptctl", "verify", "--dir", "/ckpt", "--all"]
+          volumeMounts:
+            - name: ckpt
+              mountPath: /ckpt
+      volumes:
+        - name: ckpt
+          persistentVolumeClaim:
+            claimName: ckpt

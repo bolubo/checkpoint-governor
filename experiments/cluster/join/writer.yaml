@@ -1,0 +1,45 @@
+# The writer: it takes quota and keeps writing. It is the job that must survive being taken, so it is the one
+# an intruder with a higher priority will come for.
+#
+# One container, and the job's own habit (`--save-every`) rather than a governor beside it: `ckptctl run` exits
+# when it has no world directory to watch, and a pod whose second container exits never becomes ready. What this
+# experiment is for is the write and the eviction — the decision path is proven by the demo and the matrix, on
+# this machine, in seconds.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: writer
+  namespace: join
+  labels:
+    kueue.x-k8s.io/queue-name: lab
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        kueue.x-k8s.io/queue-name: lab
+    spec:
+      priorityClassName: lab-high
+      restartPolicy: Never
+      # Kueue preempts by suspending the workload, which sends SIGTERM. The grace period is the writer's whole
+      # budget for its last checkpoint, so it is set by the writer's contract, not by a platform default.
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: trainer
+          image: ckpt-governor:local
+          imagePullPolicy: IfNotPresent
+          command:
+            ["/ckpttrainer", "--dir", "/ckpt", "--contract",
+             "--steps", "100000", "--step-ms", "20", "--write-ms", "120",
+             "--shard-bytes", "1048576", "--ranks", "2", "--save-every", "1s"]
+          resources:
+            requests:
+              cpu: 2000m
+              memory: 64Mi
+          volumeMounts:
+            - name: ckpt
+              mountPath: /ckpt
+      volumes:
+        - name: ckpt
+          persistentVolumeClaim:
+            claimName: ckpt

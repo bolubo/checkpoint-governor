@@ -1,0 +1,30 @@
+# A holder: one unit of the quota the arrival has to take from.
+#
+# Holders sit at the intruder level on purpose: Kueue picks the cheapest victims, and with the holders
+# preemptible it took four of them instead of the writer. Equal-to-the-intruder leaves the writer as the only
+# thing below it, which is the eviction this experiment is about.
+# name and priority are filled in by run.sh so that five of them are five separate workloads — preemption takes
+# one, not a gang.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: HOLDER_NAME
+  namespace: join
+  labels:
+    kueue.x-k8s.io/queue-name: lab
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        kueue.x-k8s.io/queue-name: lab
+    spec:
+      priorityClassName: lab-top
+      restartPolicy: Never
+      containers:
+        - name: holder
+          image: registry.k8s.io/pause:3.9
+          resources:
+            requests:
+              cpu: 500m
+              memory: 64Mi
