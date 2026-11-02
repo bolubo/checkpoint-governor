@@ -64,7 +64,10 @@ except Exception:
     sys.exit(0)
 for q in s.get("queues") or []:
     if q.get("name") == want:
-        print(f"{q.get('freeMilli', 0)},{1 if q.get('allowed') else 0}")
+        # A cohort lends its members' unused room, so the headroom an arrival sees is the group's —
+        # but only where the policy permits borrowing, so the capacity comes along too.
+        free = q.get("cohortFreeMilli") or q.get("freeMilli", 0)
+        print(f"{free},{1 if q.get('allowed') else 0},{q.get('capacityMilli', 0)}")
         sys.exit(0)
 # No fallback: a queue the summary does not name is a queue we cannot read, and guessing one is how a
 # Never queue once predicted five preemptions that could not happen.
@@ -118,10 +121,13 @@ one_case() {
 	f=$(free_read "$(cq_of "$queue")")
 	free=$(echo "$f" | cut -d, -f1)
 	allowed=$(echo "$f" | cut -d, -f2)
+	cap=$(echo "$f" | cut -d, -f3)
 	want=$(milli "$cpu")
 	[ "$second" = yes ] && want=$((want * 2))
 	short=$((want - free))
 	[ "$short" -lt 0 ] && short=0
+	# Past the queue's capacity the arrival is never admitted, so nobody is taken for it.
+	if [ "${cap:-0}" -gt 0 ] && [ "$want" -gt "$cap" ]; then short=0; fi
 	if [ "$prio" = lab-high ]; then waiting=1; else waiting=0; fi
 	if [ "$short" -gt 0 ] && [ "$waiting" = 1 ] && [ "$allowed" = 1 ]; then
 		pred=$(( (short + UNIT_MILLI - 1) / UNIT_MILLI ))

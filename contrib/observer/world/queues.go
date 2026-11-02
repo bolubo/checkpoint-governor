@@ -32,12 +32,25 @@ type QueueState struct {
 	// with only the queue's own headroom, a cohort case predicted 3 and 5 preemptions where Kueue took
 	// none (experiments/kueue, rows `cohort`).
 	CohortFreeMilli int64 `json:"cohortFreeMilli,omitempty"`
+	// NominalMilli is this queue's own quota, and CapacityMilli is the most it could ever admit: its own
+	// quota plus the borrowing its policy permits. An arrival bigger than that waits forever, and Kueue
+	// does not preempt for work that cannot fit however much is taken — measured, `cohort 3000m`:
+	// predicted 2, taken 0, arrival still `suspend=true`.
+	NominalMilli  int64 `json:"nominalMilli,omitempty"`
+	CapacityMilli int64 `json:"capacityMilli,omitempty"`
+	// Borrows is whether the policy lets this queue take its cohort's spare quota at all.
+	Borrows bool `json:"borrows,omitempty"`
 }
 
 // ShortfallMilli is how much more the waiting work needs than can be given, counting what the queue's
 // cohort would lend it. The cohort number is what the measurement asked for: without it a lending queue
 // reports a shortfall that nobody has to die for.
 func (q QueueState) ShortfallMilli() int64 {
+	// Nothing to take for: an arrival past the queue's capacity is never admitted, so it never displaces
+	// anybody. This is the difference between "does not fit now" and "cannot fit at all".
+	if q.CapacityMilli > 0 && q.DemandMilli > q.CapacityMilli {
+		return 0
+	}
 	room := q.FreeMilli
 	if q.Cohort != "" {
 		room = q.CohortFreeMilli
@@ -77,10 +90,12 @@ func QueueUsage(dyn dynamic.Interface, jobs []batchv1.Job, now time.Time, window
 			Name:    cq.GetName(),
 			Allowed: preemptionAllowed(cq),
 		}
-		q.FreeMilli = nominalMilli(cq) - usedMilli(cq)
+		q.NominalMilli = nominalMilli(cq)
+		q.FreeMilli = q.NominalMilli - usedMilli(cq)
 		if q.FreeMilli < 0 {
 			q.FreeMilli = 0
 		}
+		q.Borrows = borrowAllowed(cq)
 		q.DemandMilli = demand[cq.GetName()]
 		q.Cohort = cohortOf(cq)
 		out = append(out, q)
@@ -91,17 +106,37 @@ func QueueUsage(dyn dynamic.Interface, jobs []batchv1.Job, now time.Time, window
 	// member may take, and ignoring it over-states the room, which is the safe direction for a rule whose
 	// job is to stop warning about preemptions that will not happen.
 	byCohort := map[string]int64{}
+	byCohortNominal := map[string]int64{}
 	for _, q := range out {
 		if q.Cohort != "" {
 			byCohort[q.Cohort] += q.FreeMilli
+			byCohortNominal[q.Cohort] += q.NominalMilli
 		}
 	}
 	for i := range out {
-		if out[i].Cohort != "" {
-			out[i].CohortFreeMilli = byCohort[out[i].Cohort]
+		q := &out[i]
+		q.CapacityMilli = q.NominalMilli
+		if q.Cohort == "" {
+			continue
+		}
+		q.CohortFreeMilli = byCohort[q.Cohort]
+		// Borrowing is a policy, not a property of the numbers: with the default "prohibit" this queue
+		// can never admit more than its own quota, whatever its siblings have spare.
+		if q.Borrows {
+			if spare := byCohortNominal[q.Cohort] - q.NominalMilli; spare > 0 {
+				q.CapacityMilli += spare
+			}
 		}
 	}
 	return out
+}
+
+// borrowAllowed reads whether this queue may borrow from its cohort at all. Absent means the default,
+// which prohibits it: Kueue will not lend quota just because a sibling has some spare.
+func borrowAllowed(cq *unstructured.Unstructured) bool {
+	policy, found, _ := unstructured.NestedString(cq.Object,
+		"spec", "preemption", "borrowWithinCohort", "policy")
+	return found && policy != "Never"
 }
 
 // countsAsDemand says whether this job is asking for room, or asked for it recently enough that its
