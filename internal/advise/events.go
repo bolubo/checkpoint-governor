@@ -35,6 +35,13 @@ const (
 	EventConfig EventKind = "config"
 )
 
+// Kinds is the frozen list of event kinds, in the order they were introduced. A reader that keys on
+// `kind` (a log shipper, a dashboard, a script) is reading a promise, not an implementation detail.
+func Kinds() []EventKind {
+	return []EventKind{EventDecision, EventPublish, EventAttemptStart, EventAttemptEnd,
+		EventCondition, EventLease, EventBackoff, EventError, EventConfig}
+}
+
 // Event is one line of events.jsonl. Values holds only numbers and short strings: a log line that
 // needs a nested object is a decision that should have been recorded as data instead.
 type Event struct {

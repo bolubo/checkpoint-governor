@@ -1,0 +1,28 @@
+{
+  "schema": 2,
+  "epoch": 1,
+  "expiresAt": 1793589223,
+  "unitId": "job-1",
+  "generation": 1,
+  "action": "skip",
+  "reason": "calm",
+  "requestId": "",
+  "baselineSeconds": 0,
+  "baselineNone": true,
+  "windowSeconds": 0,
+  "copiesToWrite": 1,
+  "kind": "full",
+  "keepCopies": 1,
+  "oldestStepToKeep": 0,
+  "why": "not starting a write: already-saved",
+  "version": "risk-v1",
+  "missing": [],
+  "reasons": [
+    {
+      "code": "job.ending",
+      "evidence": [
+        "Evidence[job.ending]"
+      ]
+    }
+  ]
+}

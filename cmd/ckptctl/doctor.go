@@ -6,6 +6,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/bolubo/checkpoint-governor/internal/advise"
 	"github.com/bolubo/checkpoint-governor/internal/observe"
 	"github.com/bolubo/checkpoint-governor/internal/produce"
 	"github.com/bolubo/checkpoint-governor/internal/produce/adapters"
@@ -31,6 +32,19 @@ func runDoctor(args []string, out io.Writer) int {
 	}
 
 	now := time.Now()
+
+	// The plan's schema comes first, because it is the one fact that decides whether the rest of this
+	// page describes the directory the binary can actually govern. A plan from another version is
+	// refused with its number named — the same sentence `status` and `explain` print — and the exit
+	// code says so, so a script cannot mistake a table for an answer.
+	problem := ""
+	if schema, ok := advise.PlanSchema(*dir); ok {
+		fmt.Fprintf(out, "plan schema %d, this binary reads %s\n", schema, advise.Reads())
+	} else {
+		fmt.Fprintf(out, "plan schema: none (this binary reads %s)\n", advise.Reads())
+	}
+	problem = advise.SchemaProblem(*dir)
+
 	// The checkpoint size is what the storage rule is measured against, so the doctor reads it the
 	// same way the loop does rather than guessing.
 	s, _, err := observe.Scan(observe.Request{Dir: *dir, UnitID: *dir, Now: now})
@@ -87,6 +101,12 @@ func runDoctor(args []string, out io.Writer) int {
 	fmt.Fprintf(out, "\ndoctor: %d probes · %d reading, %d absent, %d unknown\n", len(probes), ok, absent, unknown)
 	if s.CheckpointBytes <= 0 {
 		fmt.Fprintln(out, "note: no complete checkpoint yet, so the storage rule has no scale to measure against")
+	}
+	// The environment table above is still true, so it is printed; the refusal is the last line because
+	// it is the one a person has to act on.
+	if problem != "" {
+		fmt.Fprintf(out, "\ndoctor: refused — %s\n", problem)
+		return 2
 	}
 	return 0
 }

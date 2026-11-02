@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "attempts": [
+    {
+      "ID": "3efc2bf389010f4d",
+      "UnitID": "job-1",
+      "Generation": 1,
+      "Trigger": "condition",
+      "Reason": "job.ending",
+      "Step": 3,
+      "StartedAt": "2026-11-02T11:13:28.21224295+08:00",
+      "Deadline": "2026-11-02T11:23:28.21224295+08:00",
+      "Bytes": 0,
+      "Outcome": "refused",
+      "EndedAt": "2026-11-02T11:13:28.21224295+08:00"
+    }
+  ]
+}

@@ -1,0 +1,194 @@
+{
+  "schema": 2,
+  "epoch": 1,
+  "unitStartedAt": 1793589208,
+  "writeSecondsTotal": 0,
+  "firstSeen": {
+    "step-3": 1793589208212242950,
+    "step-3/manifest.json": 1793589208212242950
+  },
+  "bootId": "dmkeb79ni3bo",
+  "generation": 1,
+  "failures": 0,
+  "writeCosts": null,
+  "stepTimes": null,
+  "lastSealStep": 3,
+  "hasSeal": true,
+  "verifyWindowStart": 1793589208,
+  "verifyBytesWindow": 256,
+  "publishTimes": [
+    1793589208
+  ],
+  "nextDecisionAt": 1793589209212242950,
+  "decidedSealStep": 3,
+  "lastDecision": {
+    "UnitID": "job-1",
+    "Generation": 1,
+    "Action": "save",
+    "Reason": "risk",
+    "SaveNow": true,
+    "RequestID": "",
+    "BaselineSeconds": 0,
+    "BaselineNone": true,
+    "WindowSeconds": 0,
+    "CopiesToWrite": 1,
+    "Kind": "full",
+    "KeepCopies": 1,
+    "OldestStepToKeep": 0,
+    "Missing": null,
+    "Reasons": [
+      {
+        "Code": "job.ending",
+        "Values": {},
+        "Evidence": [
+          "Evidence[job.ending]"
+        ]
+      }
+    ],
+    "Sensitivity": null,
+    "Why": "job.ending: training is finishing or a stop was requested",
+    "Version": "risk-v1"
+  },
+  "verified": {
+    "3": 1793589208
+  },
+  "lastVerifyAt": 1793589208,
+  "status": {
+    "unitId": "job-1",
+    "generation": 1,
+    "phase": "sealed",
+    "conditions": {
+      "host.cpu-throttled": {
+        "value": "0",
+        "since": 1793589208
+      },
+      "host.gpu-fault": {
+        "value": "absent",
+        "since": 1793589208
+      },
+      "host.gpu-hot": {
+        "value": "absent",
+        "since": 1793589208
+      },
+      "host.memory-pressure": {
+        "value": "absent",
+        "since": 1793589208
+      },
+      "job.ending": {
+        "value": "1",
+        "since": 1793589208
+      },
+      "job.step-slow": {
+        "value": "0",
+        "since": 1793589208
+      },
+      "net.long-outage": {
+        "value": "absent",
+        "since": 1793589208
+      },
+      "risk.eviction-likely": {
+        "value": "absent",
+        "since": 1793589208
+      },
+      "risk.preempt": {
+        "value": "absent",
+        "since": 1793589208
+      },
+      "risk.shutdown": {
+        "value": "0",
+        "since": 1793589208
+      },
+      "store.blocked": {
+        "value": "0",
+        "since": 1793589208
+      },
+      "store.low-space": {
+        "value": "0",
+        "since": 1793589208
+      },
+      "store.slow": {
+        "value": "0",
+        "since": 1793589208
+      },
+      "watch.broken": {
+        "value": "0",
+        "since": 1793589208
+      }
+    },
+    "attempts": [
+      {
+        "id": "3efc2bf389010f4d",
+        "trigger": "condition",
+        "outcome": "refused",
+        "startedAt": "2026-11-02T11:13:28.21224295+08:00"
+      }
+    ],
+    "lastGate": "already-saved",
+    "sealStep": 3,
+    "sealAt": 1793589208,
+    "writeStep": 0,
+    "writeStartedAt": 0,
+    "writeProgress": -1,
+    "writeExpected": 0,
+    "estimateSeconds": 1.1802974700927733e-7,
+    "estimateSource": "probe",
+    "adviceAt": 0,
+    "seenAt": 0,
+    "adviceAction": "skip",
+    "adviceReason": "calm",
+    "writes": [
+      {
+        "step": 3,
+        "bytes": 256,
+        "state": "sealed",
+        "startedAt": 1793589208,
+        "endedAt": 1793589208,
+        "seconds": 0
+      }
+    ],
+    "failures": 0,
+    "overhead": {
+      "scanNs": 233858,
+      "publishNs": 113268,
+      "verifyNs": 24136,
+      "deleteNs": 1726,
+      "statCalls": 3,
+      "manifestReads": 1,
+      "fsyncs": 2,
+      "verifyBytes": 256,
+      "rounds": 1,
+      "decisions": 1,
+      "signals": {
+        "host.cpu-throttled": 1,
+        "host.gpu-fault": 1,
+        "host.gpu-hot": 1,
+        "host.memory-pressure": 1,
+        "job.ending": 1,
+        "job.step-slow": 1,
+        "net.long-outage": 1,
+        "risk.eviction-likely": 1,
+        "risk.preempt": 1,
+        "risk.shutdown": 1,
+        "store.blocked": 1,
+        "store.low-space": 1,
+        "store.slow": 1
+      }
+    },
+    "verifyBudgetBytes": 2147483648,
+    "verifyUsedBytes": 256,
+    "baselineNone": true,
+    "startedAt": 1793589208,
+    "lastRoundAt": 1793589208,
+    "writeKinds": {
+      "exception": 1
+    },
+    "lastReceipt": {
+      "kind": "exception",
+      "staleAtRequest": 1793589208.2122428,
+      "staleAtSeal": 0,
+      "cost": 0
+    },
+    "finalAskedAt": 1793589208,
+    "finalOutcome": "already on disk at the current step"
+  }
+}

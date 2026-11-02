@@ -1,0 +1,8 @@
+{
+  "cpuThrottleLine": "0.2",
+  "freeSpaceFactor": "2",
+  "memoryLine": "0.95",
+  "probeTimeout": "1s",
+  "slowFactor": "2",
+  "storeEvery": "5s"
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/bolubo/checkpoint-governor/internal/policy"
@@ -114,10 +115,35 @@ func readState(path string) (stateFile, bool) {
 	// a period rather than a liveness stamp (see SchemaVersion), so reading it here would answer a
 	// different question than the file asked — and Renew would re-stamp it into a file that is
 	// neither version.
-	if s.Schema != SchemaVersion {
+	if s.Schema < MinSchema || s.Schema > MaxSchema {
 		return stateFile{}, false
 	}
 	return s, true
+}
+
+// Reads is the human form of the range: "2..2" today, "2..3" when a build can read a newer plan.
+func Reads() string {
+	if MinSchema == MaxSchema {
+		return strconv.Itoa(MinSchema)
+	}
+	return strconv.Itoa(MinSchema) + ".." + strconv.Itoa(MaxSchema)
+}
+
+// PlanSchema returns the schema number in the published plan, and false when there is no plan or the
+// file is not JSON. It reads only that field: a plan from another version may not decode into
+// today's structure, and the number is the part a reader can trust.
+func PlanSchema(dir string) (int, bool) {
+	raw, err := os.ReadFile(filepath.Join(dir, BaseDir, stateName))
+	if err != nil {
+		return 0, false
+	}
+	var head struct {
+		Schema int `json:"schema"`
+	}
+	if err := json.Unmarshal(raw, &head); err != nil {
+		return 0, false
+	}
+	return head.Schema, true
 }
 
 // SchemaProblem explains why the plan file cannot be used: it was written by a governor that speaks a
@@ -127,20 +153,18 @@ func readState(path string) (stateFile, bool) {
 // version" and "there is no file" lead to the same safe behaviour — the job falls back to its own
 // timer — but only one of them is something a person can act on.
 func SchemaProblem(dir string) string {
-	raw, err := os.ReadFile(filepath.Join(dir, BaseDir, stateName))
-	if err != nil {
+	schema, ok := PlanSchema(dir)
+	if !ok {
+		if raw, err := os.ReadFile(filepath.Join(dir, BaseDir, stateName)); err == nil && len(raw) > 0 {
+			return "the plan file is not valid JSON"
+		}
 		return ""
 	}
-	var head struct {
-		Schema int `json:"schema"`
-	}
-	if err := json.Unmarshal(raw, &head); err != nil {
-		return "the plan file is not valid JSON"
-	}
-	if head.Schema == SchemaVersion {
+	if schema >= MinSchema && schema <= MaxSchema {
 		return ""
 	}
-	return fmt.Sprintf("the plan file says schema %d; this governor writes %d", head.Schema, SchemaVersion)
+	return fmt.Sprintf("the plan file says schema %d; this build reads %s and writes %d",
+		schema, Reads(), SchemaVersion)
 }
 
 // sameButExpiry compares two plans ignoring the stamp, which is the field a renewal changes.

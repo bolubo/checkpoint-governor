@@ -84,6 +84,15 @@ type stateSensitivity struct {
 // (design §5).
 const SchemaVersion = 2
 
+// The range of plan schemas this build reads. Today it is one number, and the range is written down
+// anyway: the day a build can read an older schema, the promise moves here, not in every caller. A
+// plan outside the range is refused with its number named, because a file that means something else
+// must not be read as if it meant this.
+const (
+	MinSchema = SchemaVersion
+	MaxSchema = SchemaVersion
+)
+
 // stateOf builds the published structure. It takes expiresAt rather than a clock so that the bytes
 // are a function of its arguments, which is what makes the idempotence check exact.
 func stateOf(d policy.Decision, epoch int64, expiresAt time.Time) stateFile {

@@ -30,6 +30,23 @@ type Sample struct {
 	Writes map[string]int
 }
 
+// The metric names are a promise to every scraper and dashboard built on them: a rename is a
+// compatibility change, not a cleanup. They are constants, and Names lists them in the documented
+// order so a test can pin the set the way the condition catalogue is pinned.
+const (
+	Staleness   = "checkpoint_staleness_seconds"
+	OverBound   = "checkpoint_over_bound_seconds"
+	Blind       = "checkpoint_blind_conditions"
+	WritesTotal = "checkpoint_writes_total"
+	Units       = "checkpoint_units"
+	Clusters    = "checkpoint_clusters"
+)
+
+// Names is the frozen list of metric names.
+func Names() []string {
+	return []string{Staleness, OverBound, Blind, WritesTotal, Units, Clusters}
+}
+
 // Render writes the exposition format for the samples, plus unit and cluster counts.
 func Render(samples []Sample) string {
 	sort.Slice(samples, func(i, j int) bool {
@@ -44,29 +61,29 @@ func Render(samples []Sample) string {
 		fmt.Fprintf(&b, "# HELP %s %s\n# TYPE %s %s\n", name, help, name, kind)
 	}
 
-	head("checkpoint_staleness_seconds", "gauge",
+	head(Staleness, "gauge",
 		"Age of the newest complete checkpoint; +Inf when the run has none.")
 	for _, s := range samples {
 		value := "+Inf"
 		if s.Covered {
 			value = seconds(s.Staleness)
 		}
-		line(&b, "checkpoint_staleness_seconds", s, value)
+		line(&b, Staleness, s, value)
 	}
 
-	head("checkpoint_over_bound_seconds", "gauge",
+	head(OverBound, "gauge",
 		"Seconds the newest checkpoint was older than the certified bound.")
 	for _, s := range samples {
-		line(&b, "checkpoint_over_bound_seconds", s, seconds(s.OverBound))
+		line(&b, OverBound, s, seconds(s.OverBound))
 	}
 
-	head("checkpoint_blind_conditions", "gauge",
+	head(Blind, "gauge",
 		"Urgent conditions that were unreadable in the last published decision.")
 	for _, s := range samples {
-		line(&b, "checkpoint_blind_conditions", s, strconv.Itoa(s.Blind))
+		line(&b, Blind, s, strconv.Itoa(s.Blind))
 	}
 
-	head("checkpoint_writes_total", "counter",
+	head(WritesTotal, "counter",
 		"Completed writes by kind (window, exception, final, repair).")
 	for _, s := range samples {
 		kinds := make([]string, 0, len(s.Writes))
@@ -75,7 +92,7 @@ func Render(samples []Sample) string {
 		}
 		sort.Strings(kinds)
 		for _, k := range kinds {
-			fmt.Fprintf(&b, "checkpoint_writes_total{unit=%q,cluster=%q,kind=%q} %d\n",
+			fmt.Fprintf(&b, WritesTotal+"{unit=%q,cluster=%q,kind=%q} %d\n",
 				s.Unit, s.Cluster, k, s.Writes[k])
 		}
 	}
@@ -86,10 +103,10 @@ func Render(samples []Sample) string {
 			clusters[s.Cluster] = true
 		}
 	}
-	head("checkpoint_units", "gauge", "Checkpoint directories this governor holds.")
-	fmt.Fprintf(&b, "checkpoint_units %d\n", len(samples))
-	head("checkpoint_clusters", "gauge", "Distinct clusters among the held units.")
-	fmt.Fprintf(&b, "checkpoint_clusters %d\n", len(clusters))
+	head(Units, "gauge", "Checkpoint directories this governor holds.")
+	fmt.Fprintf(&b, Units+" %d\n", len(samples))
+	head(Clusters, "gauge", "Distinct clusters among the held units.")
+	fmt.Fprintf(&b, Clusters+" %d\n", len(clusters))
 	return b.String()
 }
 
