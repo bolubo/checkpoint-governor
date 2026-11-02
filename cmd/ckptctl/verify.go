@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/bolubo/checkpoint-governor/internal/policy"
@@ -61,6 +62,11 @@ func runVerify(args []string, out io.Writer) int {
 		if v.Step > 0 {
 			fmt.Fprintf(out, "  steps %d\n", v.Step)
 		}
+	}
+	// Files the manifest does not name: not a failure, but the only trace of a second writer in the same
+	// directory, and silence about them is how a verified generation hides debris.
+	if len(v.Extras) > 0 {
+		fmt.Fprintf(out, "  %d unlisted: %s\n", len(v.Extras), strings.Join(v.Extras, " "))
 	}
 
 	// Exit codes are for the loop that runs this, not for a person reading it: a copy that is not good

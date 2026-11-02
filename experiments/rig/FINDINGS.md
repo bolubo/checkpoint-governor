@@ -42,10 +42,25 @@ That is a real limit, not a bug in the code as written. Two consequences:
 2. an operator cleaning up cannot tell which files belong to the generation and which are a dead writer's
    leftovers.
 
-**Not yet changed.** The candidate rule is to list the directory and treat any file the manifest does not
-name as `unsealed` (or at least as a warning in the receipt). It is deliberately not implemented in the same
-breath as the finding: the rule needs to say what to do about `.ckpt/` and the request file, which are
-legitimately unlisted.
+**Changed — reported, not judged.** `Classify` now lists what the generation directory holds that the
+manifest does not name, and the verdict carries it:
+
+```
+$ ckptctl verify --dir=/ckpt/gen-0007
+verified ok
+  content matches the manifest
+  steps 48210
+  1 unlisted: rank-99.bin
+```
+
+**Why a warning rather than a failure.** A writer may legitimately keep sidecars next to its shards, and a
+verifier that fails on an unlisted file would reject correct work. What it must not do is stay silent: an
+unlisted file is the only visible trace of a second writer, and `verified` is otherwise a statement about a
+manifest rather than about a directory.
+
+**What is still not solved.** Nothing enforces "one write per volume". The verdict now shows the debris but
+does not prevent it — that is a scheduling constraint (Kueue has no such primitive either), and the honest
+answer is a contract requirement plus this warning, not a lock invented here.
 
 **Also worth noting:** the contract's "one write per volume at a time" is currently advice. Nothing enforces
 it, and the experiment that ignores it does not look wrong from the outside — which is exactly why it needs a
