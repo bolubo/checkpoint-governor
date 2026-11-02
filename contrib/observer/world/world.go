@@ -20,6 +20,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -56,8 +57,11 @@ type Summary struct {
 	// PendingEvent names the fact "higher-priority work is waiting for room", as one id for the whole
 	// cluster. It is a fact about the arrival, not about any unit and not about what the scheduler will
 	// do with it (0022): while the same work waits, the id is the same and one write answers it.
-	PendingEvent string      `json:"pendingEvent,omitempty"`
-	Nodes        []NodeState `json:"nodes"`
+	PendingEvent string `json:"pendingEvent,omitempty"`
+	// Queues is what each queue can still admit, and whether it may take it from somebody. The
+	// measured rule needs both: `shortfall > 0 AND higher priority waiting AND preemption allowed`.
+	Queues []QueueState `json:"queues,omitempty"`
+	Nodes  []NodeState  `json:"nodes"`
 }
 
 type UnitRecord struct {
@@ -70,6 +74,9 @@ type UnitRecord struct {
 	QoS               string     `json:"qos"`
 	DeletionTimestamp *time.Time `json:"deletionTimestamp"`
 	Evicted           bool       `json:"evicted"`
+	// HigherPriorityWaiting counts the jobs the queue is holding back that outrank this unit. Zero means
+	// this unit cannot be the one taken to make room, whatever else is true.
+	HigherPriorityWaiting int `json:"higherPriorityWaiting,omitempty"`
 	// Permit is this unit's permission to spend a write when one cause endangers several units
 	// (docs/decisions/0021). It is written here, and only here, because the answer needs the set: a
 	// governor that sees one unit cannot tell "I am the victim" from "my neighbour is".
@@ -99,6 +106,9 @@ type Options struct {
 	// "none" for a summary-only observer.
 	Units     string
 	UnitLabel string
+	// Dynamic reads the queue's own numbers. Nil means the cluster has no queue API (or the caller did
+	// not build one), and the summary then simply has no queue section.
+	Dynamic dynamic.Interface
 }
 
 // Read lists nodes and pods once and folds them into a snapshot.
@@ -124,18 +134,27 @@ func Read(client kubernetes.Interface, opts Options, now time.Time) (Snapshot, e
 		// A cluster with no job API is not a failure: the observer falls back to what it can see.
 		return Fold(nodes.Items, pods.Items, opts, now), nil
 	}
-	return FoldWithJobs(nodes.Items, pods.Items, jobs.Items, opts, now), nil
+	classes := map[string]int32{}
+	if list, err := client.SchedulingV1().PriorityClasses().List(ctx, metav1.ListOptions{}); err == nil {
+		for _, pc := range list.Items {
+			classes[pc.Name] = pc.Value
+		}
+	}
+
+	snap := FoldWithJobs(nodes.Items, pods.Items, jobs.Items, classes, opts, now)
+	snap.Summary.Queues = QueueUsage(opts.Dynamic, jobs.Items, now)
+	return snap, nil
 }
 
 // Fold is the whole observer minus the API call, so it can be tested with plain objects. Without jobs
 // it can only see what is already running, which is enough for a plain Kubernetes cluster and blind to
 // a queue that holds work back — a suspended Job has no pod at all.
 func Fold(nodes []corev1.Node, pods []corev1.Pod, opts Options, now time.Time) Snapshot {
-	return FoldWithJobs(nodes, pods, nil, opts, now)
+	return FoldWithJobs(nodes, pods, nil, nil, opts, now)
 }
 
 // FoldWithJobs folds one read of the cluster, including the jobs the queue has not admitted yet.
-func FoldWithJobs(nodes []corev1.Node, pods []corev1.Pod, jobs []batchv1.Job, opts Options, now time.Time) Snapshot {
+func FoldWithJobs(nodes []corev1.Node, pods []corev1.Pod, jobs []batchv1.Job, classes map[string]int32, opts Options, now time.Time) Snapshot {
 	stale := int(opts.StaleAfter.Seconds())
 	if stale <= 0 {
 		stale = 30
@@ -200,6 +219,9 @@ func FoldWithJobs(nodes []corev1.Node, pods []corev1.Pod, jobs []batchv1.Job, op
 			u.DeletionTimestamp = &t
 		}
 		units = append(units, u)
+	}
+	for i := range units {
+		units[i].HigherPriorityWaiting = higherPriorityWaiting(units[i].Priority, jobs, classes)
 	}
 	sort.Slice(units, func(i, j int) bool { return units[i].UnitID < units[j].UnitID })
 

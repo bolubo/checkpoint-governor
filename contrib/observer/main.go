@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -50,9 +51,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	dyn, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		dyn = nil
+	}
+
 	opts := world.Options{
 		Cluster: name, StaleAfter: time.Duration(*staleAfter) * time.Second,
-		Units: *units, UnitLabel: *unitLabel,
+		Units: *units, UnitLabel: *unitLabel, Dynamic: dyn,
 	}
 
 	for {

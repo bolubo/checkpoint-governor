@@ -42,6 +42,35 @@ func suspendedCount(jobs []batchv1.Job) int {
 	return len(suspendedNames(jobs))
 }
 
+// higherPriorityWaiting counts the jobs the queue holds back that outrank this unit.
+//
+// It is the second term of the measured rule. A unit with nothing above it cannot be the one taken to
+// make room, which is why equal priorities do not preempt — measured, not assumed.
+func higherPriorityWaiting(mine int32, jobs []batchv1.Job, classes map[string]int32) int {
+	n := 0
+	for _, j := range jobs {
+		if suspended(j) && jobPriority(j, classes) > mine {
+			n++
+		}
+	}
+	return n
+}
+
+// jobPriority reads the number the scheduler compares, wherever it actually is.
+//
+// A job waiting for quota has no pods yet, and its template's `priority` is filled in by the admission
+// plugin when the pod is created — so on a suspended job that field is nil. The only place the number
+// exists is the PriorityClass the template names, which is why the class table is passed in.
+func jobPriority(j batchv1.Job, classes map[string]int32) int32 {
+	if j.Spec.Template.Spec.Priority != nil {
+		return *j.Spec.Template.Spec.Priority
+	}
+	if v, ok := classes[j.Spec.Template.Spec.PriorityClassName]; ok {
+		return v
+	}
+	return 0
+}
+
 func suspendedNames(jobs []batchv1.Job) []string {
 	var names []string
 	for _, j := range jobs {

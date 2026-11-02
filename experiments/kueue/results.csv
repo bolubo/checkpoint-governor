@@ -1,0 +1,13 @@
+policy,gap,cpu,shortfall_m,preempted,taken,arrival_admitted
+allow,0,1500m,0,0,none,yes
+allow,0,2000m,500,0,none,no
+allow,0,4000m,2500,0,none,no
+allow,100,1500m,0,0,none,yes
+allow,100,2000m,500,1,holder-5;,yes
+allow,100,4000m,2500,5,holder-1;holder-2;holder-3;holder-4;holder-5;,yes
+never,0,1500m,0,0,none,yes
+never,0,2000m,500,0,none,no
+never,0,4000m,2500,0,none,no
+never,100,1500m,0,0,none,yes
+never,100,2000m,500,0,none,no
+never,100,4000m,2500,0,none,no
