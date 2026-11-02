@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/bolubo/checkpoint-governor/internal/policy"
@@ -47,6 +49,10 @@ type Verdict struct {
 	// SealedAt is the manifest's own claim about when it sealed, carried through so a receipt can show the
 	// middle of the three claims. It is never used to decide lateness (see the Options comment).
 	SealedAt time.Time
+	// Extras are entries in the generation directory that the manifest does not name. They are not a
+	// failure — a writer may keep sidecars — but they are the only trace of a second writer in the same
+	// directory, and a `verified` verdict is otherwise silent about them (F2 in the rig's findings).
+	Extras []string
 }
 
 // Options are the two facts from the environment a verdict needs, plus what to spend on content.
@@ -138,7 +144,7 @@ func Classify(genDir string, want int64, opts Options) Verdict {
 	}
 
 	return Verdict{State: policy.CopyVerified, Reason: ReasonOK, Generation: m.Generation, Step: m.Step, SealedAt: m.SealedAt,
-		Detail: "content matches the manifest"}
+		Extras: unlisted(genDir, m), Detail: "content matches the manifest"}
 }
 
 // checkContent compares a shard with what the manifest claims about it.
@@ -182,4 +188,33 @@ func checkContent(path string, s Shard, full bool) (bool, string, error) {
 		return false, fmt.Sprintf("tail hashes to %s, sealed as %s", got[:12], s.TailSHA256[:12]), nil
 	}
 	return true, "", nil
+}
+
+// unlisted lists what the generation directory holds that the manifest does not name.
+//
+// It is reported, not judged. A writer may legitimately keep sidecars; but the manifest is the only index
+// this package has, so a second writer's debris is otherwise invisible — and a verified generation can sit
+// among files another process is still producing.
+func unlisted(genDir string, m Manifest) []string {
+	named := make(map[string]bool, len(m.Shards)+2)
+	for _, s := range m.Shards {
+		named[s.Name] = true
+	}
+	named["manifest.json"] = true
+
+	entries, err := os.ReadDir(genDir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		name := e.Name()
+		if named[name] || strings.HasSuffix(name, ".tmp") {
+			// A temporary file is a write about to be renamed, not content.
+			continue
+		}
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }

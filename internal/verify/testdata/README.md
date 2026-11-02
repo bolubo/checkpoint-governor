@@ -20,3 +20,5 @@ is the contract, and a parser that reshapes it would make "the file says X" untr
 
 Shard names are **relative to the generation directory** — a manifest that named its own parent would break
 the moment the directory was renamed.
+
+| `extra-file` | `verified`, plus one unlisted file reported — the only visible trace of a second writer |

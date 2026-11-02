@@ -112,3 +112,26 @@ func versionDirOrSelf(t *testing.T, fixture string) string {
 	}
 	return versionDir(t, fixture)
 }
+
+// What the manifest does not name is reported, not judged: a second writer's debris is the only thing a
+// verified generation can hide (F2 in the rig's findings).
+func TestUnlistedFilesAreReportedNotJudged(t *testing.T) {
+	dir := filepath.Join("testdata", "extra-file", "gen-0007")
+	v := Classify(dir, 7, Options{Now: fixedTime(), CheckContent: true})
+
+	if v.State != policy.CopyVerified {
+		t.Fatalf("state = %s (%s), want verified: a sidecar is not a failure", v.State, v.Detail)
+	}
+	if len(v.Extras) != 1 || v.Extras[0] != "rank-99.bin" {
+		t.Fatalf("extras = %v, want [rank-99.bin]", v.Extras)
+	}
+}
+
+// The manifest itself is not an extra, and neither is a temporary about to be renamed.
+func TestTheManifestIsNotAnExtra(t *testing.T) {
+	dir := filepath.Join("testdata", "sealed-ok", "gen-0007")
+	v := Classify(dir, 7, Options{Now: fixedTime(), CheckContent: true})
+	if len(v.Extras) != 0 {
+		t.Fatalf("a clean generation reported extras: %v", v.Extras)
+	}
+}
