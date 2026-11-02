@@ -9,8 +9,12 @@ not re-implement it. Decision 0028, "two delivery shapes, one core".
 
 ## Preconditions (owner decisions, before P1.4)
 
-- [ ] **PyPI**: the package name, and whether publishing uses trusted publishing. Without a name, the
+- [x] **PyPI**: the package name, and whether publishing uses trusted publishing. Without a name, the
       wheel is built and tested locally; `pip install` from a URL stays documented but unverified.
+  **observed** the name `ckpt-policy` is free (`https://pypi.org/pypi/ckpt-policy/json` answers 404),
+      and publishing is **trusted publishing** from `.github/workflows/publish-pypi.yml`: PyPI verifies
+      the workflow through `id-token`, so no token sits on a machine. The first upload is the
+      pending-publisher form on PyPI and one `gh workflow run`; `RELEASE.md` carries both.
 - [ ] **Wheels**: which platforms ship first. Linux x86_64 is the one CI can build and test; macOS and
       Windows are optional until a user asks.
 

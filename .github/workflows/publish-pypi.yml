@@ -1,0 +1,76 @@
+# `pip install ckpt-policy` is the whole Python install, so the package leaves from a workflow, where
+# the engine is already built, rather than from a laptop. PyPI verifies this file through trusted
+# publishing (`id-token`), so no long-lived token sits on any machine.
+#
+# `pypi-v*` is a separate tag from the binary's `v*`: the package version and the release version are
+# different numbers, and a tag that matched both would publish two different things from one name.
+name: publish-pypi
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["pypi-v*"]
+
+permissions:
+  contents: read
+  id-token: write   # trusted publishing: this is the credential
+
+jobs:
+  wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The same script a laptop runs. It fails when the wheel does not contain the engine, so a
+      # client that would download a binary at first use cannot be published by accident.
+      - name: build the wheel
+        run: sh hack/build-wheel.sh
+
+      - name: say what is about to be published
+        run: |
+          ls -l dist/wheels/*.whl
+          python3 - <<'PY'
+          import glob, zipfile
+          w = sorted(glob.glob("dist/wheels/*.whl"))[-1]
+          with zipfile.ZipFile(w) as z:
+              meta = z.read([n for n in z.namelist() if n.endswith("METADATA")][0]).decode()
+          print(w)
+          print("\n".join(meta.splitlines()[:5]))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ckpt-policy-wheel
+          path: dist/wheels/*.whl
+
+  publish:
+    needs: wheel
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ckpt-policy-wheel
+          path: dist/wheels
+
+      # A tag that disagrees with the wheel is how one version gets published under another version's
+      # name, and PyPI never lets that be undone.
+      - name: the tag and the wheel must agree
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          want="${GITHUB_REF_NAME#pypi-v}"
+          got=$(ls dist/wheels/*.whl | sed -E 's/.*ckpt_policy-([0-9]+\.[0-9]+\.[0-9]+)-.*/\1/')
+          if [ "$want" != "$got" ]; then
+            echo "tag says $want, wheel says $got" >&2
+            exit 1
+          fi
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/wheels

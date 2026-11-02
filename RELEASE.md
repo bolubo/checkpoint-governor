@@ -36,6 +36,38 @@ The numbered line continues from the project this repository replaced (`v0.5.0` 
 release of this codebase). A release that changes a decision record is a minor version; a release
 that only fixes a bug inside an existing decision is a patch.
 
+## The Python package
+
+`ckpt-policy` is a second thing a tag does not produce, because its version number and the binaries'
+version number move independently. It is published by `.github/workflows/publish-pypi.yml`, and the
+wheel carries the Go engine, so `pip install` needs nothing else.
+
+PyPI trusts this repository once, and that configuration is the only step a person does:
+
+```
+PyPI -> Publishing -> add a pending publisher
+project name  ckpt-policy
+owner         bolubo
+repository    checkpoint-governor
+workflow      publish-pypi.yml
+environment   pypi
+```
+
+After that, publishing is one command or one tag:
+
+```bash
+gh workflow run publish-pypi.yml          # the version in pyproject.toml
+git push origin pypi-v0.3.0              # the tag must equal the wheel's version
+```
+
+The workflow builds the wheel with `hack/build-wheel.sh` — the same script a laptop runs — and refuses
+to publish a wheel without the engine inside. It publishes **one platform**, `linux/x86_64`: the
+binary is the engine, and a `py3-none-any` wheel would install on a machine that cannot run it. The
+classifier says so rather than leaving pip to discover it.
+
+**A version on PyPI is immutable.** A bad wheel is fixed by publishing the next version; the old file
+stays, and is never replaced or deleted.
+
 ## Rollback
 
 A bad tag is never moved. Delete the release, then delete the tag and re-tag the previous commit —
