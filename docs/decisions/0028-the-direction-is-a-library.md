@@ -29,9 +29,9 @@ CLI-first, and not a standards body.
 1. **The default is zero periodic writes.** With nothing configured: one write at the end, and one more
    when a stop is announced and it fits. A configured time bound is enforced exactly — the bound is the
    configurator's promise, not ours.
-2. **The decision lives in-process.** The Python path is the front door and carries a real policy
-   engine, not glue. The Go engine stays for the deployment shape; both are held to the same golden
-   policy cases so they cannot drift.
+2. **The decision lives in one place: the Go engine.** The Python path is the front door and the client:
+   it ships the engine in the wheel, starts it for the job, reads the plan, and degrades to "end plus an
+   announced stop" when the engine dies. There is no second implementation of the policy.
 3. **Growth is integration, not features.** One callback per framework (Hugging Face Trainer, Lightning,
    Composer), each small enough to review in a sitting. The operator deployment stays as a deployment
    shape; it is not where new work goes.
@@ -44,9 +44,10 @@ CLI-first, and not a standards body.
 
 ## Consequences
 
-- **Python becomes the product surface.** The policy core is ported (a small, pure module: bound or
-  none, announced stop, end of training, measured write time, step rate), with golden cases shared with
-  the Go engine and a test that both answers agree.
+- **Python becomes the product surface without a rewrite.** The wheel carries the engine
+  (`ckptctl_pytorch/_bin`), the client starts it and reads `.ckpt-governor/state.json`; the Go engine, its
+  tests and the plan contract are unchanged. The price is a platform wheel and one small process per job
+  we actually decide for.
 - **The repository's first screen changes.** `pip install` plus three lines, then the contrast table;
   `docker build` and `kubectl apply` move to the second screen.
 - **`docs/plan-platform.md` and 0027 become history.** The installer/payer analysis in 0027 still holds
