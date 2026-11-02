@@ -9,7 +9,7 @@ IMAGE ?= ghcr.io/bolubo/checkpoint-governor
 # How long the real-clock smoke runs (make smoke MINUTES=2 for a quick check).
 MINUTES ?= 10
 
-.PHONY: all check fmt vet build test verify e2e clean dist release
+.PHONY: all check fmt vet build test verify ci e2e exp clean dist release
 
 all: check
 
@@ -95,6 +95,10 @@ e2e:
 
 # verify is the gate: `check` plus the pins that keep the contract and the delivery sheet on one
 # field set, and the golden decisions that catch an unintended behaviour change.
+# ci is exactly what .github/workflows/ci.yml runs, in the same order.  stays the fast gate a
+# person runs while working; this is the promise that a push will not go red, so run it before pushing.
+ci: check e2e exp demo
+
 verify: check e2e
 	$(GO) test ./internal/loop ./cmd/ckptctl
 	$(GO) test ./internal/simulate -run TestGoldenDecisions
