@@ -242,6 +242,10 @@ type Overhead struct {
 	// unlinked later. They differ because removal is split in two to keep a round short.
 	DeletedDirs int `json:"deletedDirs,omitempty"`
 	SweptDirs   int `json:"sweptDirs,omitempty"`
+	// SweptBytes is what those sweeps actually gave back. It is kept apart from SweptDirs because a sweep
+	// is bounded in bytes: a large directory can take several rounds, so the count rises before the space is
+	// fully returned, and only the bytes say when the disk is actually back.
+	SweptBytes int64 `json:"sweptBytes,omitempty"`
 
 	VerifyBytes int64 `json:"verifyBytes,omitempty"`
 
