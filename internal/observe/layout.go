@@ -176,9 +176,16 @@ func newestChange(dir string) time.Time {
 	return newest
 }
 
-// parseStepName accepts exactly `step-<non-negative integer>`.
+// parseStepName accepts `step-<n>` and `gen-<n>`, both non-negative.
+//
+// Two prefixes because the contract's writer (0025) names its directories by generation, and the older one
+// counted steps. Recognising only the first made every checkpoint written under the new contract invisible
+// to this package — the governor then said "no writes" immediately after a write (F11 in the rig's findings).
 func parseStepName(name string) (int64, bool) {
 	rest, ok := strings.CutPrefix(name, "step-")
+	if !ok {
+		rest, ok = strings.CutPrefix(name, "gen-")
+	}
 	if !ok || rest == "" {
 		return 0, false
 	}

@@ -1760,7 +1760,10 @@ func countSealed(dir string) int {
 	}
 	n := 0
 	for _, e := range entries {
-		if !e.IsDir() || !strings.HasPrefix(e.Name(), "step-") {
+		// Both layouts, because the contract's writer (0025) names its directories by generation. Counting
+		// only `step-` made every checkpoint written under the contract invisible here, and the receipt
+		// then said "no writes" immediately after a write (F11).
+		if !e.IsDir() || !(strings.HasPrefix(e.Name(), "step-") || strings.HasPrefix(e.Name(), "gen-")) {
 			continue
 		}
 		if fileExists(filepath.Join(dir, e.Name(), "manifest.json")) {

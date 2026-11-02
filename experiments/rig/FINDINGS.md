@@ -94,6 +94,31 @@ field that will be misread as success one day.
 **Still owed:** when the matrix becomes part of `make ci` (Day 3), the row should come from a structured
 emitter rather than from formatted text at all.
 
+## F11 — joining the loop found the old layout in three places
+
+**Seen:** running the demo's act 2 with the contract writer (`--contract`), then classifying what it left.
+The decision line said `save risk.preempt`, and the receipt two lines later said `run 8s · no writes`.
+
+**Means:** the product's own accounting could not see the checkpoints it had just caused. Three separate
+places spoke only `step-`:
+
+1. `internal/observe` parsed names with `CutPrefix(name, "step-")`, so a `gen-` directory was not a
+   checkpoint at all;
+2. `internal/loop`'s `countSealed` filtered on the same prefix, so `OnDisk` stayed zero;
+3. the **repair** path tried to move `step-1` — a directory that never existed — and logged
+   `rename ...: no such file or directory` while the run carried on.
+
+**Changed:** (1) and (2) accept both prefixes now. **(3) is still open**: repair has to learn the generation
+layout, or refuse loudly instead of logging a rename that cannot work.
+
+**The instrument hid it for one run.** `demo.sh` rebuilt the binaries only when something under `cmd/` was
+newer, and these fixes were in `internal/` — so the first re-run showed the old behaviour and looked like the
+fix had failed. A staleness check that covers half the tree produces exactly the wrong conclusion.
+
+**Why this matters beyond the demo:** a customer running the contract writer would see a receipt saying "no
+writes" while their checkpoint directory fills up. That is the one sentence this product must never get
+wrong.
+
 ## F5 — a rebuild from a stale tree silently reverted a rule-fix on main
 
 **Seen:** rebuilding #145 on current main by copying whole files from an older worktree put back
