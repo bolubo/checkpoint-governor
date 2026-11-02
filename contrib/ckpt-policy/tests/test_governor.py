@@ -349,5 +349,82 @@ class TestHuggingFaceCallback(unittest.TestCase):
             self.assertIs(cb.on_train_end(None, _State(), control), control)
 
 
+class _FakeLightningTrainer:
+    def __init__(self, root):
+        self.default_root_dir = root
+        self.global_step = 0
+        self.saved = []
+
+    def save_checkpoint(self, path):
+        self.saved.append(path)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("ckpt")
+
+
+class TestLightningCallback(unittest.TestCase):
+    def test_nothing_is_written_while_the_plan_is_silent(self):
+        from ckpt_policy.lightning import GovernorCallback
+
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            trainer = _FakeLightningTrainer(root)
+            cb = GovernorCallback(g)
+            for step in range(1, 101):
+                trainer.global_step = step
+                cb.on_train_batch_end(trainer, None)
+            self.assertEqual(trainer.saved, [])
+            self.assertEqual(cb.saves, 0)
+
+    def test_a_request_is_honoured_at_the_next_batch_end_and_once(self):
+        from ckpt_policy.lightning import GovernorCallback
+
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            plan(root, generation=7)
+            trainer = _FakeLightningTrainer(root)
+            cb = GovernorCallback(g)
+            for step in range(1, 101):
+                trainer.global_step = step
+                cb.on_train_batch_end(trainer, None)
+            self.assertEqual(len(trainer.saved), 1, "one request, one checkpoint")
+            self.assertTrue(trainer.saved[0].endswith("ckpt-step-1.ckpt"))
+            self.assertFalse(g.should_save(), "the served generation is not asked for twice")
+
+    def test_a_custom_filename_is_used(self):
+        from ckpt_policy.lightning import GovernorCallback
+
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            plan(root, generation=3)
+            trainer = _FakeLightningTrainer(root)
+            cb = GovernorCallback(g, filename=lambda t: os.path.join(t.default_root_dir, "custom.ckpt"))
+            trainer.global_step = 1
+            cb.on_train_batch_end(trainer, None)
+            self.assertEqual(trainer.saved[-1], os.path.join(root, "custom.ckpt"))
+
+    def test_the_end_of_training_is_recorded(self):
+        from ckpt_policy.lightning import GovernorCallback
+
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            cb = GovernorCallback(g)
+            cb.on_train_end(_FakeLightningTrainer(root), None)
+            self.assertEqual(glue(root, "ending"), "1")
+
+
+class TestServed(unittest.TestCase):
+    """A framework that writes its own format still has to mark the request as served."""
+
+    def test_served_marks_without_writing_metadata(self):
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            plan(root, generation=9)
+            self.assertTrue(g.should_save())
+            g.served(9)
+            self.assertFalse(g.should_save())
+            gens = [n for n in os.listdir(root) if n.startswith("gen-")]
+            self.assertEqual(gens, [], "served() records the request; it does not write a checkpoint")
+
+
 if __name__ == "__main__":
     unittest.main()

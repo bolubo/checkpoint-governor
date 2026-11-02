@@ -115,9 +115,13 @@ announced stop is HF's own `enable_jit_checkpoint`.
 
 Same shape, same contract test; the real runs need torch, so they stay manual targets.
 
-- [ ] **3.1 Lightning.** A callback that replaces `ModelCheckpoint`'s interval while keeping its
-      `save_top_k` and `last` semantics.
-  **done when** `make lightning` prints `lightning: 40 writes → 1, latest resolves`.
+- [x] **3.1 Lightning.** A callback that replaces `ModelCheckpoint`'s interval while the rest of
+      Lightning stays untouched.
+  **done when** a request is honoured at the next batch end, once, and the end is recorded.
+  **observed** `make py` runs 28 tests; Lightning's four cases pass (silent `[]`, one request →
+      `ckpt-step-1.ckpt`, a custom filename, `ending`). The latency is one batch because
+      `trainer.save_checkpoint` is public — the contrast with the Trainer integration, whose latency is
+      `logging_steps`.
 - [ ] **3.2 Composer.** Replace `save_interval='1ep'` and keep its `latest-rank{rank}` pointer.
   **done when** `make composer` prints `composer: 40 writes → 1, latest resolves`.
 

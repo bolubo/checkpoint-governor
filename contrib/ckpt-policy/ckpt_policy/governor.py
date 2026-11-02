@@ -143,6 +143,15 @@ class Governor:
         """Whether the plan asks for a write now. The whole of the write side, one line."""
         return self.requested() != 0
 
+    def served(self, generation: int) -> None:
+        """Record that the plan's request was written by the framework's own path.
+
+        `sealed()` does this as part of writing our metadata, but a framework that writes its own
+        checkpoint format (Lightning `.ckpt`, Composer, a custom saver) never calls `sealed()`. Without
+        this, the same generation is asked for on every step. It records, it does not write.
+        """
+        self._served.add(int(generation))
+
     def close(self, timeout: float = 5.0) -> None:
         """Stop the engine this client started. Safe to call twice; a client that never started one
         does nothing."""

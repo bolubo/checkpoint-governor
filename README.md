@@ -154,7 +154,7 @@ use `python3`.
 
 ## Documentation
 
-Twenty-eight pages, and one directory of decisions. Start here, then read only what your question needs.
+Twenty-nine pages, and one directory of decisions. Start here, then read only what your question needs.
 
 - `docs/ci.md` — the gate: what was red, what runs for which change, and the rules that keep it deterministic.
 
@@ -167,6 +167,7 @@ Twenty-eight pages, and one directory of decisions. Start here, then read only w
   engine is missing.
 - `docs/huggingface.md` — the Trainer integration: the diff, the four events, and the two caveats it
   states rather than hides.
+- `docs/lightning.md` — the Lightning integration: one batch of latency, because its save is public.
 - `docs/references.md` — what fifteen neighbouring projects actually do about "when to save", read from
   their source, and what that says about who the customer is.
 - `docs/plan-library.md` — the current plan: the contrast, the Python front door, and the three
