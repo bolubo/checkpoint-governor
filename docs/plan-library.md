@@ -197,9 +197,16 @@ anyway, and each one is checked by a link test rather than by memory.
       while "Latest" was v0.21.0, the wheel said `0.2.0`, and its engine printed `dev`.
   **done when** `make wheel` prints `ckptctl v0.21.0` and a wheel named `ckpt_policy-0.21.0-…`, and the
       README, `docs/index.md` and `docs/release-0.21.md` name the current number once each.
-  **observed** `engine: linux/amd64 (v0.21.0)` · `ckptctl v0.21.0` · `ckpt_policy-0.21.0-py3-none-linux_x86_64.whl`
+  **observed** `engine: linux/amd64 (v0.21.0)` · `ckptctl v0.21.0` · `ckpt_policy-0.21.0-py3-none-manylinux_2_17_x86_64.whl`
       · `METADATA` says `Version: 0.21.0` · `ckpt_policy.__version__` is `"0.21.0"`. Decision 0029 is
       the record, and `docs/index.md` calls v0.2 and v0.15 history in the place a reader looks first.
+- [x] **6.5 The wheel tag PyPI accepts.** The first upload was refused with
+      `400 Binary wheel '…py3-none-linux_x86_64.whl' has an unsupported platform tag 'linux_x86_64'` —
+      the publisher was configured, the artifact was the problem.
+  **done when** `make wheel` prints a tag PyPI accepts and a clean venv installs that wheel.
+  **observed** `Tag: py3-none-manylinux_2_17_x86_64`; `pip install` in a clean venv gives
+      `pkg 0.21.0 · engine ckptctl v0.21.0`. The engine is static (`CGO_ENABLED=0`), so `manylinux_2_17`
+      is a claim about the host pip installs on, not about linkage that does not exist.
 
 ## What is demoted or removed (do these as part of P0/P1, not later)
 

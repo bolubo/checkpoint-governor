@@ -69,6 +69,7 @@ gets a number in this line, not a new one.
 
 ## What this does not promise
 
-No source distribution, and no platform other than `linux/x86_64` — the wheel contains a binary, and
-the classifier says so. Publishing the same release to PyPI is not a promise of "same hour as the tag";
-the rule is that the two artifacts are built from the same tree, not that they land together.
+No source distribution, and no platform other than `manylinux_2_17_x86_64` — the wheel contains a
+binary, and the classifier says so. Publishing the same release to PyPI is not a promise of "same hour
+as the tag"; the rule is that the two artifacts are built from the same tree, not that they land
+together.

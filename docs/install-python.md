@@ -1,8 +1,9 @@
 # Install for Python
 
-Status: a wheel, `ckpt-policy 0.21.0`, linux/x86_64 — the same number as the release tag (decision
-0029). The name is decided and publishing is trusted publishing from `.github/workflows/publish-pypi.yml`
-(`RELEASE.md`); until the first upload lands, `pip install` means "install the wheel we built".
+Status: a wheel, `ckpt-policy 0.21.0`, `manylinux_2_17_x86_64` — the same number as the release tag
+(decision 0029). The name is decided and publishing is trusted publishing from
+`.github/workflows/publish-pypi.yml` (`RELEASE.md`); until the first upload lands, `pip install` means
+"install the wheel we built".
 
 ## 1. Build the wheel
 
@@ -10,13 +11,16 @@ Status: a wheel, `ckpt-policy 0.21.0`, linux/x86_64 — the same number as the r
 make wheel
 # engine: linux/amd64 (v0.21.0)
 # ckptctl v0.21.0
-# wheel: ckpt_policy-0.21.0-py3-none-linux_x86_64.whl, engine inside
+# wheel: ckpt_policy-0.21.0-py3-none-manylinux_2_17_x86_64.whl, engine inside
 ```
 
 The engine inside names the release, so a wheel that says `dev` is a wheel nobody built on purpose.
 
-The wheel carries the Go engine as package data (decision 0028). It is built for **this machine**:
-the tag names the platform, so a wheel built on linux/amd64 will not install on macOS by accident.
+The wheel carries the Go engine as package data (decision 0028). Its tag says `manylinux_2_17`, not
+`linux_x86_64`: PyPI refuses the raw tag (`400 ... has an unsupported platform tag 'linux_x86_64'`),
+and it is right to, because `linux_x86_64` promises nothing about which Linux. The engine is a static
+Go binary with no glibc symbols, so the floor is a claim about the host pip installs on. A wheel built
+on linux/amd64 still does not install on macOS by accident.
 
 ## 2. Install
 

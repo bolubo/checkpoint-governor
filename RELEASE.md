@@ -63,9 +63,10 @@ gh workflow run publish-pypi.yml    # manual, for a version whose tag already ex
 ```
 
 The workflow builds the wheel with `hack/build-wheel.sh` — the same script a laptop runs — and refuses
-to publish a wheel without the engine inside. It publishes **one platform**, `linux/x86_64`: the
-binary is the engine, and a `py3-none-any` wheel would install on a machine that cannot run it. The
-classifier says so rather than leaving pip to discover it.
+to publish a wheel without the engine inside. It publishes **one platform**, `manylinux_2_17_x86_64`:
+the binary is the engine, and the raw `linux_x86_64` tag is refused by PyPI itself
+(`400 ... has an unsupported platform tag`). The classifier says Linux rather than leaving pip to
+discover it.
 
 **A version on PyPI is immutable.** A bad wheel is fixed by publishing the next version; the old file
 stays, and is never replaced or deleted.
