@@ -39,11 +39,12 @@ func main() {
 	fmt.Printf("a %s job, %d steps, one write costs %s — a model, not a measurement\n",
 		contrast.Short(time.Duration(*steps)*o.Step), *steps, contrast.Short(o.WriteCost))
 	fmt.Println()
-	fmt.Printf("%-28s %8s %10s  %-16s %-16s\n", "policy", "writes", "io", "announced stop", "silent death")
+	fmt.Printf("%-28s %8s %10s  %-24s\n", "policy", "writes", "io", "worst case, no signal")
 	for _, r := range rows {
-		fmt.Printf("%-28s %8d %10s  %-16s %-16s\n",
-			r.Policy, r.Writes, contrast.Short(r.IO), r.Announced, r.Silent)
+		fmt.Printf("%-28s %8d %10s  %-24s\n",
+			r.Policy, r.Writes, contrast.Short(r.IO), r.NoSignal)
 	}
 	fmt.Println()
-	fmt.Println("every row names what it covers; a row with a count and no coverage would be refused")
+	fmt.Println("this job has no signals: a stop that announces itself is risk.shutdown, and the executor covers it")
+	fmt.Println("one probe interval plus one round later — that budget is in docs/conditions.md, not in this model")
 }

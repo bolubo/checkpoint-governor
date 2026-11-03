@@ -3,26 +3,31 @@
 [![ci](https://github.com/bolubo/checkpoint-governor/actions/workflows/ci.yml/badge.svg)](https://github.com/bolubo/checkpoint-governor/actions/workflows/ci.yml)
 
 Current release: [`v0.21.0`](docs/release-0.21.md) · [changelog](CHANGELOG.md). The Python package
-carries the same number (decision 0029).
+carries the same number.
 
-A checkpoint policy for training runs: it decides when a write is worth doing, and proves what a loss
-would cost. One Go binary, one plan file, no CRD, no API, no new permission.
+A backstop for training runs: it watches the named conditions that come before a lost job, asks for a
+write when one fires, and proves that the copy which landed can resume. One Go engine, one plan file,
+no CRD, no API, no new permission.
 
 ## The default is the problem
 
 ```
-500 steps (framework default)   28 writes   1120s   ≤500 steps   ≤500 steps
-nothing installed                0 writes      0s   everything   everything
-governor, unconfigured           1 write      40s   0            everything
-2h bound                         2 writes     80s   0            ≤2h
+policy                          writes      io   worst case, no signal
+500 steps (framework default)       28    1120s   ≤500 steps
+nothing installed                    0       0s   everything
+governor, unconfigured               1      40s   everything
+2h bound                             2      80s   ≤2h
 ```
 
-Four policies on one four-hour job, printed by `make contrast`: the same steps, the same disk, the same
-write cost. Each row names its writes, its io and **what it covers** — a count without coverage is not a
-claim. The framework's cadence writes 28 times; a job that configures nothing writes once, and says what
-that still costs.
+Four policies on one four-hour job (`make contrast`): same steps, same disk, same write cost. The job
+has **no signals**, which is the last column: a job that configures nothing writes once, at the end, and
+a silent death costs everything since the last write.
 
-What the frameworks' actual defaults cost at four scales is `make waste`, explained in `docs/waste.md`.
+A stop is not silent: `SIGTERM`, an eviction, a drain, a full volume and a memory limit are named
+conditions (`docs/conditions.md`); an urgent one asks for a write. The budget is one probe interval, one
+round and the write — that page prints it instead of a probability.
+
+The frameworks' real defaults at four scales are `make waste` (`docs/waste.md`).
 
 ## Install
 
@@ -41,8 +46,7 @@ docker run --rm --tmpfs /tmp --entrypoint /contrast ckpt-governor:local    # the
 ```
 
 In Python, `pip install ckpt-policy` puts the client and the engine in one place (manylinux x86_64;
-`make wheel` builds the same wheel from a checkout). Three lines, and what to do when it fails, are
-`docs/install-python.md`.
+`make wheel` builds the same wheel). Three lines, and what to do when it fails: `docs/install-python.md`.
 
 ## In a training loop
 
@@ -56,18 +60,22 @@ for step, batch in loader:
         save(g.generation())       # your library writes the shards
 ```
 
-Integrations for Hugging Face Trainer, Lightning and Composer are one callback each:
-`docs/huggingface.md`, `docs/lightning.md`, `docs/composer.md`.
+One callback each for Hugging Face Trainer, Lightning and Composer: `docs/huggingface.md`,
+`docs/lightning.md`, `docs/composer.md`.
 
 ## The two inputs
 
 | input | meaning | required |
 |---|---|---|
-| `no-us` | what the job would do without us: `none`, or a period | no — unset means `none` |
+| `no-us` | what the job would do without us: `none`, or a period | **yes** — `none` is an answer; unset refuses to start |
 | `with-us` | how stale the newest checkpoint may become while we are alive | no — unset means exceptions only |
 
-A write has two causes while the process is alive: a condition is `1`, or the window is closing. Training
-end is written once, always. The contract is decision 0017.
+Unset `with-us` means **no periodic writes**: the governor is silent until a condition says the work is
+at risk. That is the posture the product exists for.
+
+A write has two causes while we live: a condition is `1`, or the window closes. Training end is always
+written once (decision 0017). Nothing is promised when no condition fires: a death that announces
+nothing loses what was never written, and the status prints that hole.
 
 ## On a cluster
 
@@ -82,25 +90,26 @@ Volume, tag and limits are in `deploy/README.md`.
 ## What it does not do
 
 - It is not monitoring software: `ckptctl serve` exports numbers and decides nothing.
+- It never writes, repairs or deletes a checkpoint: your library writes; the governor asks and checks
+  what landed.
 - It is not a scheduler, and it does not pick the checkpoint a job resumes from — it says whether the
   newest one can continue, and proves one step of it.
-- It does not promise the machine, the network, or a silent death between writes. It decides when to
-  write and checks that the write is sound.
+- It does not promise the machine, the network, or a death that announces nothing: a polling interval
+  is not a completed write.
 
 ## Documentation
 
 Start with the plan (`docs/plan-library.md`), the cost model (`docs/waste.md`), the resume contract
-(`docs/resume-contract.md`), and the integration template (`docs/integration-template.md`).
-Every page is indexed in `docs/index.md`; decisions are `docs/decisions/README.md`; a tag becomes a
-release as `RELEASE.md` says.
+(`docs/resume-contract.md`) and the integration template (`docs/integration-template.md`). Every page is
+in `docs/index.md`; decisions in `docs/decisions/`; a tag releases as `RELEASE.md` says.
 
 ## Community
 
 - Questions and ideas: [Discussions](https://github.com/bolubo/checkpoint-governor/discussions).
 - Bugs and features: the issue templates; `good first issue` is the entry point.
-- Before a pull request: `CONTRIBUTING.md` and the pull request template.
-- How decisions are made: `GOVERNANCE.md`; the records are numbered in `docs/decisions/`.
-- Code of conduct: `CODE_OF_CONDUCT.md`. Security reports: `SECURITY.md`, privately.
+- Before a pull request: `CONTRIBUTING.md` and its template.
+- Decisions: `GOVERNANCE.md`, records in `docs/decisions/`. Conduct: `CODE_OF_CONDUCT.md`. Security
+  reports: `SECURITY.md`, privately.
 
 ## License
 

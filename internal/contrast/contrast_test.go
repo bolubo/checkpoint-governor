@@ -31,8 +31,8 @@ func TestEveryRowNamesItsCoverageAndItsWrites(t *testing.T) {
 		"30m bound":                     2, // the window at 30m, then the final write
 	}
 	for _, r := range rows {
-		if r.Announced == "" || r.Silent == "" {
-			t.Errorf("%q prints writes without coverage: %+v", r.Policy, r)
+		if r.NoSignal == "" {
+			t.Errorf("%q prints writes without a worst case: %+v", r.Policy, r)
 		}
 		w, ok := want[r.Policy]
 		if !ok {
@@ -43,20 +43,19 @@ func TestEveryRowNamesItsCoverageAndItsWrites(t *testing.T) {
 		}
 	}
 
-	// The unconfigured default is the whole point: one write, and a silent death still costs
-	// everything. The table says both, so nobody can read it as a guarantee.
+	// The unconfigured default is the whole point: one write, and a death that announces nothing still
+	// costs everything. The table says so, so nobody can read it as a guarantee. This model has no
+	// conditions, so an announced stop is not a column here; `risk.shutdown` is the executor's, and the
+	// real-machine work measures it.
 	for _, r := range rows {
 		if r.Policy == "governor, unconfigured" {
-			if r.Silent != "everything" {
-				t.Errorf("unconfigured row claims silent coverage %q; it has none", r.Silent)
-			}
-			if r.Announced != "0" {
-				t.Errorf("unconfigured row announced coverage %q, want 0", r.Announced)
+			if r.NoSignal != "everything" {
+				t.Errorf("unconfigured row claims a worst case of %q; it has everything", r.NoSignal)
 			}
 		}
 		if strings.HasPrefix(r.Policy, "30m bound") {
-			if r.Silent != "≤30m" {
-				t.Errorf("bounded row silent coverage = %q, want ≤30m", r.Silent)
+			if r.NoSignal != "≤30m" {
+				t.Errorf("bounded row worst case = %q, want ≤30m", r.NoSignal)
 			}
 			if r.LostSteps != 1800 {
 				t.Errorf("bounded row lost steps = %d, want 1800", r.LostSteps)

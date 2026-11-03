@@ -28,16 +28,22 @@ cluster, under two minutes from a clone.
       run is deterministic and fast. Arm A simulates the framework default (`save every N steps`); arm
       B saves nothing; arm C is the real policy with nothing configured; arm C2 is the real policy with
       a bound. The writer costs `write-ms` of virtual time per save.
-  **done when** `make contrast` prints four rows — `writes`, `io seconds`, coverage (announced stop,
-      silent death) — and a test asserts four rows, the exact write counts, and that every row names
-      its coverage.
+  **done when** `make contrast` prints four rows — `writes`, `io seconds`, and the worst case when no
+      condition can fire — and a test asserts four rows, the exact write counts, and that every row
+      names its worst case.
   **observed** on a four-hour job (14,400 steps of 1s, a write costing 40s):
   ```
-  500 steps (framework default)   28 writes   1120s   ≤500 steps   ≤500 steps
-  nothing installed                0 writes      0s   everything   everything
-  governor, unconfigured           1 write      40s   0            everything
-  2h bound                         2 writes     80s   0            ≤2h
+  policy                          writes      io   worst case, no signal
+  500 steps (framework default)       28    1120s   ≤500 steps
+  nothing installed                    0       0s   everything
+  governor, unconfigured               1      40s   everything
+  2h bound                             2      80s   ≤2h
   ```
+  **corrected** the first version printed an "announced stop" column with `0` for the unconfigured
+      arm, which contradicted `docs/conditions.md`: an announced stop is `risk.shutdown`, an urgent
+      condition, so the governor asks for a write. The model has no conditions and therefore no
+      announcement; the column is now "no signal", and the announced path is measured in the
+      real-machine work, not claimed here.
 - [x] **0.2 The table is the README's first screen.** The contrast directly below the one-line claim, the
       install line next, Docker and Kubernetes below. Until the wheel exists (P1.1), the install line is
       the one that actually runs today — `install.sh` — and the page says so instead of promising

@@ -42,12 +42,15 @@ func Default() Options {
 
 // Row is one policy and what it costs.
 type Row struct {
-	Policy    string
-	Writes    int
-	IO        time.Duration
-	Announced string // what a stop the platform announces costs
-	Silent    string // what a death nobody announces costs
-	LostSteps int    // the worst case, in steps, for the coverage in Silent
+	Policy string
+	Writes int
+	IO     time.Duration
+	// NoSignal is what a death costs when no condition can fire: this model has no signals, so it has
+	// no announcement to react to. An announced stop is `risk.shutdown` and belongs to the executor
+	// (decision 0013), which is why it is not a column here: a table cannot claim a mechanism it does
+	// not run.
+	NoSignal  string
+	LostSteps int // the worst case, in steps, for NoSignal
 }
 
 // Run builds the table. Every row names what it covers; a row with a count and no coverage would be a
@@ -66,24 +69,23 @@ func Run(o Options) ([]Row, error) {
 		Policy:    fmt.Sprintf("%d steps (framework default)", o.SaveEverySteps),
 		Writes:    o.Steps / o.SaveEverySteps,
 		IO:        time.Duration(o.Steps/o.SaveEverySteps) * o.WriteCost,
-		Announced: fmt.Sprintf("≤%d steps", o.SaveEverySteps),
-		Silent:    fmt.Sprintf("≤%d steps", o.SaveEverySteps),
+		NoSignal:  fmt.Sprintf("≤%d steps", o.SaveEverySteps),
 		LostSteps: o.SaveEverySteps,
 	}
 
-	// Arm B: nothing installed. The job never writes, so both deaths cost everything.
+	// Arm B: nothing installed. The job never writes, so a death costs everything.
 	nothing := Row{
 		Policy:    "nothing installed",
 		Writes:    0,
 		IO:        0,
-		Announced: "everything",
-		Silent:    "everything",
+		NoSignal:  "everything",
 		LostSteps: o.Steps,
 	}
 
-	// Arm C: the governor with nothing configured. It writes at the end, and on an announced stop —
-	// the two events the product actually handles. A silent death still costs the whole job, and the
-	// row says so instead of hiding it.
+	// Arm C: the governor with nothing configured. It writes at the end. This model has no conditions,
+	// so nothing can announce itself here; in the real loop a stop is `risk.shutdown` and is covered
+	// one probe interval plus one round later (decision 0013). A death that announces nothing still
+	// costs the whole job, and the row says so instead of hiding it.
 	bare, err := governedWrites(o, 0)
 	if err != nil {
 		return nil, err
@@ -92,12 +94,12 @@ func Run(o Options) ([]Row, error) {
 		Policy:    "governor, unconfigured",
 		Writes:    bare + 1,
 		IO:        time.Duration(bare+1) * o.WriteCost,
-		Announced: "0",
-		Silent:    "everything",
+		NoSignal:  "everything",
 		LostSteps: o.Steps,
 	}
 
-	// Arm C2: a promise a platform would make — at most the bound lost even on a silent death.
+	// Arm C2: a promise a platform would make — at most the bound lost even on a death that announces
+	// nothing.
 	boundWrites, err := governedWrites(o, o.Bound)
 	if err != nil {
 		return nil, err
@@ -106,8 +108,7 @@ func Run(o Options) ([]Row, error) {
 		Policy:    fmt.Sprintf("%s bound", Short(o.Bound)),
 		Writes:    boundWrites + 1,
 		IO:        time.Duration(boundWrites+1) * o.WriteCost,
-		Announced: "0",
-		Silent:    "≤" + Short(o.Bound),
+		NoSignal:  "≤" + Short(o.Bound),
 		LostSteps: int(o.Bound / o.Step),
 	}
 
