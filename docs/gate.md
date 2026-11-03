@@ -96,6 +96,9 @@ submitted  default/arrival
 
 The victim's newest manifest was `gen-0007` (step 7) and its step file also read 7 — **lost 0 steps**.
 
+Five consecutive runs: wait **4.0, 4.5, 4.0, 4.5, 4.3 s** (median 4.5), and the newest checkpoint
+equalled the step at death in all five — **0 lost, 5/5**.
+
 The wait is the victim's probe cadence plus one write, not a fixed latency. It took 55 s on the
 first run of this harness for two reasons that were bugs, not cost: the probes hashed the checkpoint
 directory's basename instead of the `--unit` the run was given (so they were blind to the observer's

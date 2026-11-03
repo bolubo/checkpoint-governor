@@ -267,6 +267,7 @@ The S3-A measurement changed the shape of the preemption feature, not its purpos
       only after the victim's manifest changed.
   **observed** `gate sealed at step 7 after 5s: releasing the arrival` · `submitted default/arrival`
       · newest manifest `gen-0007` and step file 7 → `intruder waited 5s · victim lost 0 steps`.
+      Five consecutive runs: waits 4.0/4.5/4.0/4.5/4.3 s (median 4.5), lost 0 in all five.
       Harness: `experiments/gate/`. The first run waited 55 s: the probes hashed the directory
       basename instead of `--unit`, and the 60 s cooldown applied to a new reclaim. Both fixed here.
 - [x] **8.5 G2, fail-open.** `kill -9` the gate during a hold; nothing is blocked, and `gc` marks the

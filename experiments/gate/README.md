@@ -67,7 +67,18 @@ gc         default/victim-qk5vw held for default/arrival: past its deadline, nev
 gc         1 marked uncovered
 ```
 
-The 5 s wait is the probe cadence plus one write. The first run of this harness waited 55 s because
+Five consecutive G1 runs (`run-g1-5x.sh`):
+
+```
+run  waited  step  seal  lost
+1    4.8     7     7     0
+2    4.5     7     7     0
+3    4.0     7     7     0
+4    4.5     7     7     0
+5    4.3     7     7     0
+```
+
+The ~5 s wait is the probe cadence plus one write. The first run of this harness waited 55 s because
 the probes hashed the checkpoint directory's basename instead of `--unit`, and the 60 s cooldown
 applied to a new reclaim; both are fixed.
 
