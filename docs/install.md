@@ -16,7 +16,7 @@ ckptctl version
 With Go, the same two binaries come from a checkout: `make install`, or
 `go install ./cmd/ckptctl ./cmd/ckpttrainer`.
 
-## 1b. The training script (v0.2)
+## 1b. The training script
 
 If the job is Python, one package tells the governor where the loop is:
 

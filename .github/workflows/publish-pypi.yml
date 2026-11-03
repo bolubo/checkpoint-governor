@@ -2,14 +2,15 @@
 # the engine is already built, rather than from a laptop. PyPI verifies this file through trusted
 # publishing (`id-token`), so no long-lived token sits on any machine.
 #
-# `pypi-v*` is a separate tag from the binary's `v*`: the package version and the release version are
-# different numbers, and a tag that matched both would publish two different things from one name.
+# One tag publishes both artifacts: `release.yml` builds the binaries and the image, this file builds
+# the wheel, both from the tree the tag points at, and the two numbers agree (decision 0029).
+# `workflow_dispatch` exists for the first upload, because v0.21.0 was tagged before this file did.
 name: publish-pypi
 
 on:
   workflow_dispatch:
   push:
-    tags: ["pypi-v*"]
+    tags: ["v*"]
 
 permissions:
   contents: read
@@ -59,13 +60,25 @@ jobs:
           name: ckpt-policy-wheel
           path: dist/wheels
 
+      # One artifact, one version. Two wheels in the directory would be two uploads, and the second
+      # would either fail or publish something nobody asked for.
+      - name: exactly one wheel
+        run: |
+          count=$(ls dist/wheels/*.whl 2>/dev/null | wc -l)
+          if [ "$count" != "1" ]; then
+            echo "expected one wheel, found $count" >&2
+            ls -l dist/wheels >&2 || true
+            exit 1
+          fi
+
       # A tag that disagrees with the wheel is how one version gets published under another version's
       # name, and PyPI never lets that be undone.
       - name: the tag and the wheel must agree
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          want="${GITHUB_REF_NAME#pypi-v}"
-          got=$(ls dist/wheels/*.whl | sed -E 's/.*ckpt_policy-([0-9]+\.[0-9]+\.[0-9]+)-.*/\1/')
+          want="${GITHUB_REF_NAME#v}"
+          wheel=$(ls dist/wheels/*.whl | head -1)
+          got=$(basename "$wheel" | sed -E 's/.*ckpt_policy-([0-9]+\.[0-9]+\.[0-9]+)-.*/\1/')
           if [ "$want" != "$got" ]; then
             echo "tag says $want, wheel says $got" >&2
             exit 1

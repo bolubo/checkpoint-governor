@@ -2,6 +2,9 @@
 
 [![ci](https://github.com/bolubo/checkpoint-governor/actions/workflows/ci.yml/badge.svg)](https://github.com/bolubo/checkpoint-governor/actions/workflows/ci.yml)
 
+Current release: [`v0.21.0`](docs/release-0.21.md) · [changelog](CHANGELOG.md). The Python package
+carries the same number (decision 0029).
+
 A checkpoint policy for training runs: it decides when a write is worth doing, and proves what a loss
 would cost. One Go binary, one plan file, no CRD, no API, no new permission.
 

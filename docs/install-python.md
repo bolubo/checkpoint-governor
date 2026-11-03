@@ -1,15 +1,19 @@
 # Install for Python
 
-Status: a local wheel, 2026-11-02. Not on PyPI yet — the package name is a precondition in
-`docs/plan-library.md`, and until it is decided `pip install` means "install the wheel we built".
+Status: a wheel, `ckpt-policy 0.21.0`, linux/x86_64 — the same number as the release tag (decision
+0029). The name is decided and publishing is trusted publishing from `.github/workflows/publish-pypi.yml`
+(`RELEASE.md`); until the first upload lands, `pip install` means "install the wheel we built".
 
 ## 1. Build the wheel
 
 ```bash
 make wheel
-# engine: linux/amd64
-# wheel: ckpt_policy-0.2.0-py3-none-linux_x86_64.whl, engine inside
+# engine: linux/amd64 (v0.21.0)
+# ckptctl v0.21.0
+# wheel: ckpt_policy-0.21.0-py3-none-linux_x86_64.whl, engine inside
 ```
+
+The engine inside names the release, so a wheel that says `dev` is a wheel nobody built on purpose.
 
 The wheel carries the Go engine as package data (decision 0028). It is built for **this machine**:
 the tag names the platform, so a wheel built on linux/amd64 will not install on macOS by accident.

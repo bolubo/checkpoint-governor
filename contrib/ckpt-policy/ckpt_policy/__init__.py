@@ -11,4 +11,4 @@ from .manifest import write_manifest, write_resume
 # Each framework's callback lives in its own module (`ckpt_policy.hf`, `ckpt_policy.lightning`), so a
 # name collision cannot hide which one a program imported.
 __all__ = ["Governor", "Saves", "World", "write_manifest", "write_resume"]
-__version__ = "0.2.0"
+__version__ = "0.21.0"

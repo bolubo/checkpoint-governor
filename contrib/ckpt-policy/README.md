@@ -1,5 +1,7 @@
 # ckpt-policy
 
+Version `0.21.0` — the same number as the release tag (decision 0029).
+
 The training loop's half of the contract: one install, three lines, no runtime dependencies, and the
 shards stay with whatever library you already use.
 

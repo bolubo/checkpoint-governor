@@ -61,6 +61,9 @@ reads two schemas, `Reads()` becomes `2..3` and this table grows a row.
 
 ## Added in v0.2, and additive by construction
 
+The current number is `v0.21.0`; v0.2 and v0.15 are earlier numbers from two schemes that crossed
+before it (decision 0029). Their additions are carried by every later release.
+
 The resume contract adds files; it renames nothing and adds no frozen name (decision 0026).
 
 - **`resume.json`, schema 1**, beside a generation's manifest: `generation`, `step`, `format`,

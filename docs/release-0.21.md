@@ -49,8 +49,15 @@ the Makefile still has its `fast` target.
 clusters, caches — and exits non-zero over budget. It reports; it does not delete, because a tool that deletes
 other people's images gets run once.
 
-## A note on the version numbers
+## The version numbers, settled
 
-The repository carries `v0.15.0` (04:13 today) and `v0.2.0` (05:56 today, which took over "Latest"). Two
-numbering schemes crossed. **v0.21.0 is the newest by date and supersedes both**; the next release should settle
-on one scheme rather than add a third.
+The repository carried `v0.15.0` (04:13) and `v0.2.0` (05:56, which took over "Latest") before this
+release: two numbering schemes crossed in one day. **`v0.21.0` is the newest by date and supersedes
+both, and it is the line from here on** (decision 0029).
+
+The two earlier numbers stay published and are never renumbered. Their pages — `docs/product-v0.15.md`
+and `docs/product-v0.2.md` — are history rather than install instructions, and `docs/index.md` says so
+in the place a reader looks first.
+
+The Python package carries the same number without the `v`: `ckpt-policy 0.21.0` is the wheel of this
+release, built by `.github/workflows/publish-pypi.yml` from the tree the tag points at.

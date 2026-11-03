@@ -52,13 +52,16 @@ One page per question. Start where your question is. Every local link here resol
 
 ## If you are following the work
 
+The current number is **`v0.21.0`** (decision 0029). `v0.15.0` and `v0.2.0` are two earlier numbering
+schemes; their pages are history, not install instructions.
+
 | page | question |
 |---|---|
+| [release-0.21.md](release-0.21.md) | **the current release**: where the loop closed, under a real eviction |
 | [plan-library.md](plan-library.md) | the roadmap: what is done, what is next, and the command that proves each line |
-| [product-v0.2.md](product-v0.2.md) | v0.2: the release that says whether the work can continue |
-| [product-v0.15.md](product-v0.15.md) | v0.15: the release that can be installed, and proved |
 | [product-v1.md](product-v1.md) | v1: the surface |
-| [release-0.21.md](release-0.21.md) | v0.21: the release where the loop closed |
+| [product-v0.15.md](product-v0.15.md) | history: the release that could be installed, and proved |
+| [product-v0.2.md](product-v0.2.md) | history: the release that says whether the work can continue |
 | [plan-platform.md](plan-platform.md) | superseded by the library direction; kept as history |
 
 ## Outside this folder

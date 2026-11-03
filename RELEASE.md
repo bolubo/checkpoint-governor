@@ -38,9 +38,10 @@ that only fixes a bug inside an existing decision is a patch.
 
 ## The Python package
 
-`ckpt-policy` is a second thing a tag does not produce, because its version number and the binaries'
-version number move independently. It is published by `.github/workflows/publish-pypi.yml`, and the
-wheel carries the Go engine, so `pip install` needs nothing else.
+`ckpt-policy` is published by `.github/workflows/publish-pypi.yml` from the same tag as the binaries, and
+the wheel carries the Go engine, so `pip install` needs nothing else. It carries the release number
+without the `v` (decision 0029), which is why the two artifacts are published from one tag rather than
+from two.
 
 PyPI trusts this repository once, and that configuration is the only step a person does:
 
@@ -53,11 +54,12 @@ workflow      publish-pypi.yml
 environment   pypi
 ```
 
-After that, publishing is one command or one tag:
+After that, publishing is the tag itself, and the manual form exists for the first upload only
+(`v0.21.0` was tagged before this workflow did):
 
 ```bash
-gh workflow run publish-pypi.yml          # the version in pyproject.toml
-git push origin pypi-v0.3.0              # the tag must equal the wheel's version
+sh hack/release.sh v0.22.0          # the tag also triggers the wheel
+gh workflow run publish-pypi.yml    # manual, for a version whose tag already exists
 ```
 
 The workflow builds the wheel with `hack/build-wheel.sh` — the same script a laptop runs — and refuses
