@@ -84,6 +84,30 @@ This is the product behaving correctly with the information it was given: the jo
 `T_write`; the platform's grace is still the platform's. Without the declaration the engine cannot
 know and writes (fail-open), which is the late row above.
 
+## S3: memory pressure and the end of a job
+
+`host.memory-pressure` reads the process's cgroup. The host root is `max` (absent), so the test is a
+container with `--memory=2g` and a `memhog` in the same cgroup:
+
+```sh
+TRIALS=3 sh experiments/real/s3_memory.sh
+```
+
+N=3: the condition is **1**, the first write lands at step 496-498, the next attempt a few steps later
+is refused by the 60s cooldown, and at 40s the step is 540-541 while the newest copy is at 496-498
+(lost 42-45); `oom_kill` 0 because the hog holds 1.94/2 GiB. The condition is **persistent**, not an
+event; the copy is the protection, and the cooldown is the retry. A real OOM death and a shorter retry
+for a persistent pressure are a design question, not measured here.
+
+The normal end of a run:
+
+```sh
+TRIALS=3 sh experiments/real/s3_ending.sh
+```
+
+N=3: `may-exit` 3/3, the final copy at step 49, lost 0. The state file after the handshake reads
+`skip/calm`; the proof is the copy and `may-exit`, not the last plan's sentence.
+
 ## What is measured, and what is not
 
 - `S` and `T_write` are for **this** disk. `T_write` is a lower bound for a cluster volume: it is a

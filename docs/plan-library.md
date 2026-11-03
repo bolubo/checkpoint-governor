@@ -294,9 +294,10 @@ Every row prints N, the margin or the lost steps, and the command that reproduce
 |---|---|---|
 | `risk.shutdown` | S2 2026-11-03, grace 60 / 5s, N=5: 5/5, margin +36.5..+41.5s, lost 0, `may-exit` 5/5; grace 30: 5/5, +7.1..+15.1s; grace 10: 0/5, -9.9..-5.6s; **with a declared `T_write` (`--estimate=20s`): `skip no-time`, 0 writes, may-exit, no broken copy**; cadence-only 0/5 | grace 1s / other cadences, if anyone asks |
 | `risk.preempt` | G1 5/5, wait 4.0-4.8s, lost 0; G2 fail-open, lost 6 | multi-node / fleet fanout |
-| `store.low-space` | rig X `disk-full` (a tmpfs copy) | N real runs on a real volume |
-| `host.memory-pressure` | D-layer decision only | N real runs under a cgroup memory limit |
-| `job.ending` / `watch.broken` | loop tests and the D layer | real runs at the end of a job |
+| `store.low-space` | rig X `disk-full` (8 MiB size-limited volume), N=5: naive ends at **0 KiB free**, governed stops at **6.076-6.080 MiB**, and both leave one intact copy | a physical disk volume (tmpfs is real size accounting, not disk timing) |
+| `host.memory-pressure` | container cgroup 2 GiB + 1.94 GiB hog, N=3: condition **1**, first write at step 496-498, the next attempt a few steps later refused by the 60s cooldown, step 540-541 at 40s (lost 42-45), `oom_kill` 0. The condition is persistent; the cooldown is the only retry | a real OOM death, and whether a persistent pressure deserves a shorter retry (design question) |
+| `job.ending` | N=3 normal end: `may-exit` 3/3, copy at step 49, lost 0 | — |
+| `watch.broken` | loop tests and the D layer | no real trigger: the controller is the watcher, so killing it removes the observer rather than a probe |
 
 The `risk.shutdown` row is in `experiments/real/README.md`; the harness is `s2_shutdown.sh` and its
 `WAIT_AFTER_SEAL=20` is part of the measurement, not a tuning knob.
