@@ -44,7 +44,7 @@ func TestAHeldReclaimReachesTheDecisionAndTheExplanation(t *testing.T) {
 	cfg := adapters.Config{}.WithWorld(dir)
 	now := time.Now().UTC()
 	if err := adapters.WriteReclaim(cfg.WorldDir, "a", adapters.ReclaimRecord{
-		Cluster: "a", UnitID: dir, RequestID: "r-1", Intruder: "intruder",
+		Cluster: "a", UnitID: cfg.UnitID, RequestID: "r-1", Intruder: "intruder",
 		State: adapters.ReclaimHeld, Since: now, Deadline: now.Add(5 * time.Minute),
 	}); err != nil {
 		t.Fatal(err)
@@ -189,7 +189,7 @@ func writeAnnouncedWorld(t *testing.T, dir string, announced bool, cpuPct int) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	u := adapters.UnitRecord{Cluster: "a", UnitID: dir, At: now, Node: "worker-1", Priority: 1000}
+	u := adapters.UnitRecord{Cluster: "a", UnitID: cfg.UnitID, At: now, Node: "worker-1", Priority: 1000}
 	if announced {
 		d := now.Add(-time.Second)
 		u.DeletionTimestamp = &d

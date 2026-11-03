@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -85,7 +86,10 @@ func runRun(args []string, out io.Writer) int {
 	}
 	name := *unit
 	if name == "" {
-		name = *dir
+		// The directory's name, not its full path: that is what the world's default unit id is and
+		// what the observer's unit identity is built from. A run that sees a world and does not pass
+		// --unit must not hash a path nobody published (0030).
+		name = filepath.Base(filepath.Clean(*dir))
 	}
 
 	// The answers may come from `init` instead of the flags. Flags win, because a person overriding
