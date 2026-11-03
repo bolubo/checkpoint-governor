@@ -207,6 +207,15 @@ anyway, and each one is checked by a link test rather than by memory.
   **observed** `Tag: py3-none-manylinux_2_17_x86_64`; `pip install` in a clean venv gives
       `pkg 0.21.0 · engine ckptctl v0.21.0`. The engine is static (`CGO_ENABLED=0`), so `manylinux_2_17`
       is a claim about the host pip installs on, not about linkage that does not exist.
+- [x] **6.6 The first upload.** `ckpt-policy 0.21.0` is on PyPI: the publisher trusted the workflow,
+      the wheel was accepted, and `pip install` works on a machine that never saw the repository.
+  **done when** `https://pypi.org/pypi/ckpt-policy/json` answers 200 with version `0.21.0`, and a clean
+      venv installs the package by name.
+  **observed** HTTP 200 · `version: 0.21.0` · one file,
+      `ckpt_policy-0.21.0-py3-none-manylinux_2_17_x86_64.whl` · `pip show` says `Name: ckpt-policy`,
+      `Version: 0.21.0` · `ckpt_policy.__version__` is `0.21.0`, the engine says `ckptctl v0.21.0`, and
+      `python -m ckpt_policy.demo` prints 2 writes against 1. Run `41559712153`: wheel and publish both
+      succeeded.
 
 ## What is demoted or removed (do these as part of P0/P1, not later)
 

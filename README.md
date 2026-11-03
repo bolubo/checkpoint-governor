@@ -40,8 +40,8 @@ docker run --rm -v /ckpt:/ckpt ckpt-governor:local run --dir /ckpt
 docker run --rm --tmpfs /tmp --entrypoint /contrast ckpt-governor:local    # the four rows above
 ```
 
-In Python, `make wheel` builds `ckpt-policy` with the engine inside:
-`pip install dist/wheels/ckpt_policy-*.whl`, three lines, and what to do when it fails are
+In Python, `pip install ckpt-policy` puts the client and the engine in one place (manylinux x86_64;
+`make wheel` builds the same wheel from a checkout). Three lines, and what to do when it fails, are
 `docs/install-python.md`.
 
 ## In a training loop

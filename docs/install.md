@@ -21,7 +21,7 @@ With Go, the same two binaries come from a checkout: `make install`, or
 If the job is Python, one package tells the governor where the loop is:
 
 ```bash
-pip install ./contrib/ckpt-policy     # zero runtime dependencies
+pip install ckpt-policy              # the wheel with the engine inside, from PyPI
 ```
 
 ```python

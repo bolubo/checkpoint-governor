@@ -1,17 +1,25 @@
 # Install for Python
 
-Status: a wheel, `ckpt-policy 0.21.0`, `manylinux_2_17_x86_64` — the same number as the release tag
-(decision 0029). The name is decided and publishing is trusted publishing from
-`.github/workflows/publish-pypi.yml` (`RELEASE.md`); until the first upload lands, `pip install` means
-"install the wheel we built".
+Status: published as `ckpt-policy 0.21.0`, `manylinux_2_17_x86_64` — the same number as the release tag
+(decision 0029), uploaded by `.github/workflows/publish-pypi.yml` through trusted publishing. `make
+wheel` builds the same wheel from a checkout.
 
-## 1. Build the wheel
+## 1. Install
+
+```bash
+pip install ckpt-policy
+```
+
+No other install step: no `go install`, no PATH entry, no second download.
+
+From a checkout, the same wheel:
 
 ```bash
 make wheel
 # engine: linux/amd64 (v0.21.0)
 # ckptctl v0.21.0
 # wheel: ckpt_policy-0.21.0-py3-none-manylinux_2_17_x86_64.whl, engine inside
+python3 -m pip install dist/wheels/ckpt_policy-*.whl
 ```
 
 The engine inside names the release, so a wheel that says `dev` is a wheel nobody built on purpose.

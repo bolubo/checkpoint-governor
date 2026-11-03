@@ -60,4 +60,6 @@ and `docs/product-v0.2.md` — are history rather than install instructions, and
 in the place a reader looks first.
 
 The Python package carries the same number without the `v`: `ckpt-policy 0.21.0` is the wheel of this
-release, built by `.github/workflows/publish-pypi.yml` from the tree the tag points at.
+release. The first upload came from `main` through `workflow_dispatch`, because this tag predates the
+workflow; from the next tag on, `publish-pypi.yml` runs on the tag itself and builds from the tree it
+points at.

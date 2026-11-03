@@ -6,6 +6,12 @@ The training loop's half of the contract: one install, three lines, no runtime d
 shards stay with whatever library you already use.
 
 ```bash
+pip install ckpt-policy        # manylinux x86_64; the engine is inside the wheel
+```
+
+From a checkout, the same wheel:
+
+```bash
 make wheel                     # from the repository root: the wheel carries the Go engine
 python3 -m pip install dist/wheels/ckpt_policy-*.whl
 ```
