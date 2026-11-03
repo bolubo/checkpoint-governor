@@ -24,10 +24,10 @@ has **no signals**, which is the last column: a job that configures nothing writ
 a silent death costs everything since the last write.
 
 A stop is not silent: `SIGTERM`, an eviction, a drain, a full volume and a memory limit are named
-conditions (`docs/conditions.md`); an urgent one asks for a write. The budget is one probe interval, one
-round and the write — that page prints it instead of a probability.
+conditions (`docs/conditions.md`); an urgent one asks for a write. What the platform must allow for that
+write is `docs/operator-notes.md`.
 
-The frameworks' real defaults at four scales are `make waste` (`docs/waste.md`).
+Framework defaults at four scales: `make waste` (`docs/waste.md`).
 
 ## Install
 
