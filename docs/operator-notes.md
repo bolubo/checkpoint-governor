@@ -28,8 +28,13 @@ grace >= (one probe interval + one round) + T_write + T_seal
 | grace | outcome |
 |---|---|
 | 60s | **5 trials, 5 landed**; detected 1.7-2.9s, sealed 18.5-23.5s after the signal, **36.5-41.5s of margin**; `may-exit` 5/5; **0 lost steps**; every copy resumable |
+| 30s | **5 trials, 5 landed**; sealed 14.9-22.9s after the signal, **7.1-15.1s of margin**; `may-exit` 5/5; 0 lost steps |
+| 10s | **0/5 inside the deadline**; the write sealed 5.6-9.9s *after* the grace, `may-exit` 0/5. A real kill at 10s would leave a broken or absent copy; the harness lets the job finish so the lateness is measurable |
 | 60s, no handler | the counterfactual: a cadence-only arm (100-step interval here) landed **0/5**; lost 0-5 steps in this short trial, and nothing to resume from |
-| 10s | impossible for any policy: the write alone is 16-22s on this volume |
+
+The 30s row is where the measured chain and the formula meet: the formula's worst case is
+`10 + T_write + T_seal` (31.5-40.5s here), while the observed detection is 0.6-3.3s, which is why the
+same grace has 7-15s of margin on a good run. Do not read 30s as a guarantee; read the formula.
 
 The counterfactual is the honest comparison: a cadence loses up to one interval, and the governor's
 arm is the one that closes the chain. The 20s wait after the seal is part of the trial, because

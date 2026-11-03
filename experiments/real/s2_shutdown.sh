@@ -31,6 +31,8 @@ SAVE_EVERY=${SAVE_EVERY:-100}
 WAIT_AFTER_SEAL=${WAIT_AFTER_SEAL:-20}
 GRACES=${GRACES:-"60 30 10"}
 CADENCES=${CADENCES:-"5s 1s"}
+# Which arms to run. The counterfactual does not care about the deadline; a boundary run can skip it.
+ARMS=${ARMS:-"us default500"}
 DIR_ROOT=${DIR_ROOT:-/root/tmp/s2}
 mkdir -p "$DIR_ROOT" "$HERE/experiments/real/bin" "$HERE/experiments/real/results"
 
@@ -86,21 +88,15 @@ run_one() {
 	rm -rf "$dir"
 }
 
-for grace in $GRACES; do
-	for every in $CADENCES; do
-		trial=1
-		while [ "$trial" -le "$TRIALS" ]; do
-			run_one us "$grace" "$every" "$trial"
-			trial=$((trial + 1))
+for arm in $ARMS; do
+	for grace in $GRACES; do
+		for every in $CADENCES; do
+			trial=1
+			while [ "$trial" -le "$TRIALS" ]; do
+				run_one "$arm" "$grace" "$every" "$trial"
+				trial=$((trial + 1))
+			done
 		done
-	done
-done
-
-for grace in $GRACES; do
-	trial=1
-	while [ "$trial" -le "$TRIALS" ]; do
-		run_one default500 "$grace" 5s "$trial"
-		trial=$((trial + 1))
 	done
 done
 

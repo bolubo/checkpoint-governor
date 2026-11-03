@@ -59,6 +59,18 @@ default500 grace=60s every=5s  0/5                     -  5          -
 `may-exit` 5/5, resumable 5/5. The counterfactual's cadence is 100 steps here (the trial is shorter
 than 500 steps); it loses up to one interval, which is the claim being tested.
 
+### The boundary (`ARMS=us GRACES="30 10"`, 5 trials each)
+
+```
+us grace=30s every=5s  5/5  margin +7.1..+15.1   lost 0  may-exit 5/5
+us grace=10s every=5s  0/5  margin  -9.9..-5.6   lost 0  may-exit 0/5
+```
+
+At grace 10 the write still sealed, 5.6-9.9s after the deadline: the harness lets the job finish so
+the lateness is visible, while a real platform kill at 10s would leave a broken or absent copy. Grace
+30 is the measured edge on this disk *for a good run*; the formula's worst case is 31.5-40.5s, so the
+operator note still says use the formula, not the observed margin.
+
 ## What is measured, and what is not
 
 - `S` and `T_write` are for **this** disk. `T_write` is a lower bound for a cluster volume: it is a
