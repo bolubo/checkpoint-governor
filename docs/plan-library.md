@@ -222,6 +222,14 @@ anyway, and each one is checked by a link test rather than by memory.
       `Version: 0.21.0` · `ckpt_policy.__version__` is `0.21.0`, the engine says `ckptctl v0.21.0`, and
       `python -m ckpt_policy.demo` prints 2 writes against 1. Run `41559712153`: wheel and publish both
       succeeded.
+- [x] **6.7 The operator note.** Seconds were leaking into product pages. A platform's grace is not a
+      user setting, and a user's inputs are periods: the measured chain (detect ≤10s, write 11–13s,
+      seal 4–4.6s for 5.5 GiB) belongs in an operator note, not in the README.
+  **done when** the README names no seconds, `docs/operator-notes.md` carries the formula, and
+      `make docs` passes.
+  **observed** README says "how much time a platform must allow … is measured in
+      `docs/operator-notes.md`"; `docs/index.md` lists the page under "If you are operating it";
+      `make docs` = 47 pages, 52 local links, 0 dead.
 
 ## What is demoted or removed (do these as part of P0/P1, not later)
 
