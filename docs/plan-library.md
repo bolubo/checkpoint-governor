@@ -292,7 +292,7 @@ Every row prints N, the margin or the lost steps, and the command that reproduce
 
 | condition | evidence | still missing |
 |---|---|---|
-| `risk.shutdown` | S2 2026-11-03, grace 60 / 5s, N=5: 5/5, margin +36.5..+41.5s, lost 0, `may-exit` 5/5; grace 30: 5/5, +7.1..+15.1s; grace 10: 0/5, -9.9..-5.6s (the copy seals late; a real kill would not have it); cadence-only 0/5 | grace 1s / other cadences, if anyone asks |
+| `risk.shutdown` | S2 2026-11-03, grace 60 / 5s, N=5: 5/5, margin +36.5..+41.5s, lost 0, `may-exit` 5/5; grace 30: 5/5, +7.1..+15.1s; grace 10: 0/5, -9.9..-5.6s; **with a declared `T_write` (`--estimate=20s`): `skip no-time`, 0 writes, may-exit, no broken copy**; cadence-only 0/5 | grace 1s / other cadences, if anyone asks |
 | `risk.preempt` | G1 5/5, wait 4.0-4.8s, lost 0; G2 fail-open, lost 6 | multi-node / fleet fanout |
 | `store.low-space` | rig X `disk-full` (a tmpfs copy) | N real runs on a real volume |
 | `host.memory-pressure` | D-layer decision only | N real runs under a cgroup memory limit |

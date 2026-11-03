@@ -36,6 +36,24 @@ The 30s row is where the measured chain and the formula meet: the formula's wors
 `10 + T_write + T_seal` (31.5-40.5s here), while the observed detection is 0.6-3.3s, which is why the
 same grace has 7-15s of margin on a good run. Do not read 30s as a guarantee; read the formula.
 
+### 10s with a declared write cost
+
+If the job (or the operator) declares one write's duration — the glue's `last-save-seconds`, or the
+engine's `--estimate` — grace 10 changes from a late write to a **refusal**:
+
+```
+skip  no-time
+writes_after_signal = 0
+may-exit = true
+lost = the work since the last checkpoint
+```
+
+The engine says `not made: no-time (need 25s, have 10s)` and leaves no broken copy. Without a declared
+cost it cannot know and writes (fail-open), which is the late row above. **The declaration is
+ours/the job's; the grace is the platform's.** A platform that gives 10s for a 5.5 GiB state has
+configured a deadline shorter than the checkpoint; the product can only refuse, not make the disk
+faster.
+
 The counterfactual is the honest comparison: a cadence loses up to one interval, and the governor's
 arm is the one that closes the chain. The 20s wait after the seal is part of the trial, because
 `may-exit` is the controller's answer *after* it saw the final copy, not the job's own write.

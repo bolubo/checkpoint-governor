@@ -71,6 +71,19 @@ the lateness is visible, while a real platform kill at 10s would leave a broken 
 30 is the measured edge on this disk *for a good run*; the formula's worst case is 31.5-40.5s, so the
 operator note still says use the formula, not the observed margin.
 
+### The no-time probe (`ARMS=us GRACES=10 ESTIMATE=20s`)
+
+With a declared write cost, the same grace 10 becomes a refusal rather than a late write:
+
+```
+us grace=10s every=5s  0/1  writes=0  exit=may-exit  lost=365  resumable=2
+engine: skip no-time
+```
+
+This is the product behaving correctly with the information it was given: the job/operator declared
+`T_write`; the platform's grace is still the platform's. Without the declaration the engine cannot
+know and writes (fail-open), which is the late row above.
+
 ## What is measured, and what is not
 
 - `S` and `T_write` are for **this** disk. `T_write` is a lower bound for a cluster volume: it is a

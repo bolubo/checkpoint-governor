@@ -29,6 +29,8 @@ SAVE_EVERY=${SAVE_EVERY:-100}
 # The first runs used 2s and reported "sealed, no may-exit" for a chain that had worked; 20s is the
 # wait the handshake actually needs on this box (measured in P1).
 WAIT_AFTER_SEAL=${WAIT_AFTER_SEAL:-20}
+# Set to a duration (e.g. 20s) to declare one write's cost to the engine; empty means unknown.
+ESTIMATE=${ESTIMATE:-}
 GRACES=${GRACES:-"60 30 10"}
 CADENCES=${CADENCES:-"5s 1s"}
 # Which arms to run. The counterfactual does not care about the deadline; a boundary run can skip it.
@@ -61,7 +63,7 @@ run_one() {
 	"$PY" experiments/real/s2_job.py \
 		--dir="$dir" --arm="$arm" --grace="$grace" --every="$every" \
 		--steps="$STEPS" --seq="$SEQ" --batch="$BATCH" --save-every="$SAVE_EVERY" \
-		--wait-after-seal="$WAIT_AFTER_SEAL" \
+		--wait-after-seal="$WAIT_AFTER_SEAL" ${ESTIMATE:+--estimate "$ESTIMATE"} \
 		> "$dir.log" 2>&1 &
 	pid=$!
 
