@@ -8,6 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/bolubo/checkpoint-governor/internal/observe"
+	"github.com/bolubo/checkpoint-governor/internal/policy"
 )
 
 func fixture(t *testing.T, name string) string {
@@ -67,7 +71,55 @@ func copiedFixture(t *testing.T, name string) string {
 	if err := os.CopyFS(dst, os.DirFS(fixture(t, name))); err != nil {
 		t.Fatal(err)
 	}
+	// A copy writes bytes, not time. Go's CopyFS leaves the shard mtimes wherever the copy happened
+	// to land, and the seal rule refuses a shard newer than its manifest (`seal_stale`). On a slow
+	// runner the shards can land after the manifest, so one copy reads as broken and the other as
+	// sealed — the two arms of a test then compare different decisions. The fixture must mean the
+	// same thing on every machine, so the order is written down here.
+	normalizeCheckpointTimes(t, dst)
 	return dst
+}
+
+// normalizeCheckpointTimes makes the manifest the newest file in every checkpoint directory, which
+// is the order a real writer leaves behind.
+func normalizeCheckpointTimes(t *testing.T, root string) {
+	t.Helper()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := time.Now().Add(-time.Hour)
+	for _, e := range entries {
+		if !e.IsDir() || !(strings.HasPrefix(e.Name(), "gen-") || strings.HasPrefix(e.Name(), "step-")) {
+			continue
+		}
+		dir := filepath.Join(root, e.Name())
+		files, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range files {
+			at := base
+			if f.Name() == observe.ManifestName {
+				at = base.Add(time.Second)
+			}
+			if err := os.Chtimes(filepath.Join(dir, f.Name()), at, at); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
+// The copy must keep the seal order; this is what the flake was about.
+func TestACopiedFixtureKeepsTheSealOrder(t *testing.T) {
+	root := copiedFixture(t, "full")
+	snap, _, err := observe.Scan(observe.Request{Dir: root, UnitID: root, Now: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Copies) == 0 || snap.Copies[len(snap.Copies)-1].State != policy.CopySealed {
+		t.Fatalf("the copied fixture has no sealed copy: %+v", snap.Copies)
+	}
 }
 
 func writeGlue(t *testing.T, root, name, value string) {
