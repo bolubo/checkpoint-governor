@@ -47,6 +47,13 @@ other is sealed. The test then compares a repair with a calm skip. `copiedFixtur
 order down, and `TestACopiedFixtureKeepsTheSealOrder` pins it. Same class: a test-design defect that
 only a loaded runner exposes.
 
+The third red (2026-11-03, `make exp user-stop`) was a fault aimed at the wrong moment. The round
+waited for the governed arm to seal before sending SIGTERM; on a loaded runner the baseline's copy
+loop got one more snapshot after its own write had finished, so it survived the stop whole and the
+claim came back vacuous. `await_torn` now waits for the state that loses work — a write in flight
+*and* its half-written copy on disk — before stopping. Five idle rounds plus eight under four busy
+loops: the baseline lost 1s and the governed arm 0s in every one.
+
 ## What the gate is now
 
 One required check, `verify`, and it does not always do the same work:

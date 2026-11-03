@@ -68,6 +68,25 @@ await_midwrite() {
 	return 1
 }
 
+# await_torn <dir> <timeout-ms> -> the job is writing and the copy loop has already taken that
+# half-written directory. This is the state in which a stop costs the naive arm work: the copy on
+# disk is torn, and the job's own write finishing later cannot repair it. Waiting for it makes the
+# round deterministic — without it, a stop that lands after the copier took a *complete* copy leaves
+# the baseline whole, and the round measures nothing.
+await_torn() {
+	tries=$(( $2 / 20 ))
+	i=0
+	while [ "$i" -lt "$tries" ]; do
+		d=$(newest_step "$1")
+		if [ -n "$d" ] && [ ! -f "$d/manifest.json" ] && [ -d "$1/.backup/$(basename "$d")" ]; then
+			return 0
+		fi
+		sleep 0.02
+		i=$((i + 1))
+	done
+	return 1
+}
+
 # await_sealed <dir> <timeout-ms> -> once the job has at least one intact checkpoint
 await_sealed() {
 	tries=$(( $2 / 20 ))
@@ -133,27 +152,34 @@ scenario_kill() {
 # --- user-stop --------------------------------------------------------------
 #
 # X3. SIGTERM. The naive arm has no protocol for a stop: it exits the moment it is told, so a write
-# that takes 150ms cannot finish and the last period is lost. The governed job waits for the
+# that takes 400ms cannot finish and the last period is lost. The governed job waits for the
 # controller's `may-exit`, which is only written after the final write has landed.
+#
+# The stop is aimed at the state where the naive arm has already lost: a write in flight *and* the
+# copy loop's snapshot of that half-written directory on disk. Waiting for the governed arm to seal
+# first used to be enough to make the round vacuous on a loaded machine: the copier got its next
+# snapshot after the naive write had completed, so the baseline survived the stop whole.
 scenario_stop() {
 	step_ms=20
+	write_ms=400
 	naive="$TMP/stop/naive"
 	gov="$TMP/stop/gov"
 	mkdir -p "$naive" "$gov"
 
-	"$BIN/ckpttrainer" --dir "$naive" --steps 100000 --step-ms $step_ms --write-ms 150 \
+	"$BIN/ckpttrainer" --dir "$naive" --steps 100000 --step-ms $step_ms --write-ms $write_ms \
 		--grace 0s --save-every 1s >/dev/null 2>&1 &
 	naive_job=$!
-	sh "$RIG/baseline.sh" --dir "$naive" --period 0.5 --mode "${BASELINE:-b3}" >/dev/null 2>&1 &
+	sh "$RIG/baseline.sh" --dir "$naive" --period 0.1 --mode "${BASELINE:-b3}" >/dev/null 2>&1 &
 	naive_copy=$!
 
 	"$BIN/ckptctl" run --dir "$gov" --no-us=none --window=400ms --every=40ms >/dev/null 2>&1 &
 	gov_ctl=$!
-	"$BIN/ckpttrainer" --dir "$gov" --steps 100000 --step-ms $step_ms --write-ms 150 --grace 5s >/dev/null 2>&1 &
+	"$BIN/ckpttrainer" --dir "$gov" --steps 100000 --step-ms $step_ms --write-ms $write_ms --grace 5s >/dev/null 2>&1 &
 	gov_job=$!
 
-	await_sealed "$naive" 3000 || true
-	await_sealed "$gov" 3000 || true
+	if ! await_torn "$naive" 5000; then
+		echo "note: the baseline never copied a write in flight within 5s; the round is vacuous" >&2
+	fi
 
 	kill -TERM "$naive_job" "$gov_job" 2>/dev/null || true
 
