@@ -9,10 +9,13 @@ checkpoint cannot meet.
 
 ```
 detect    one probe interval + one round      risk.shutdown: 5s + 5s  -> upper bound 10s
-write     the job's own save                  measured 5.5 GiB in 11-13s on this volume
-seal      read the shards back and hash them  measured 4-4.6s for the same 5.5 GiB
+write     the job's own save                  measured 5.5 GiB in 16-22s on this volume
+seal      read the shards back and hash them  measured 5.7-8.5s for the same 5.5 GiB
 deadline  the platform's grace                must be >= the three above
 ```
+
+A quieter run measured 11-13s and 4-4.6s for the same state; the range is the disk, not the policy.
+Use your own measurement (below) rather than either end of it.
 
 The sizing rule is a formula, not a promise:
 
@@ -24,8 +27,13 @@ grace >= (one probe interval + one round) + T_write + T_seal
 
 | grace | outcome |
 |---|---|
-| 60s | 3 trials, 3 landed; sealed 22-23s after the signal, 37-47s before the deadline |
-| 10s | impossible for any policy: the write alone is 11-13s |
+| 60s | **5 trials, 5 landed**; detected 1.7-2.9s, sealed 18.5-23.5s after the signal, **36.5-41.5s of margin**; `may-exit` 5/5; **0 lost steps**; every copy resumable |
+| 60s, no handler | the counterfactual: a cadence-only arm (100-step interval here) landed **0/5**; lost 0-5 steps in this short trial, and nothing to resume from |
+| 10s | impossible for any policy: the write alone is 16-22s on this volume |
+
+The counterfactual is the honest comparison: a cadence loses up to one interval, and the governor's
+arm is the one that closes the chain. The 20s wait after the seal is part of the trial, because
+`may-exit` is the controller's answer *after* it saw the final copy, not the job's own write.
 
 A grace below the chain does not produce a policy failure. It produces one of two honest outcomes:
 the job is killed mid-write, or it leaves a broken copy. The deadline was smaller than the checkpoint.

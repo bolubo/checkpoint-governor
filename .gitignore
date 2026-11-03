@@ -15,3 +15,11 @@ experiments/rig/.cluster/
 experiments/rig/results.jsonl
 experiments/rig/cluster/bin/
 experiments/rig/cluster/kubeconfig
+
+# S1 writes a multi-gigabyte state next to its result; a command reproduces both, and a checkpoint in
+# a git repository is a repository nobody clones twice.
+experiments/real/results/
+
+# S1/S2 download these; fetch.py reproduces both.
+experiments/real/models/
+experiments/real/data/

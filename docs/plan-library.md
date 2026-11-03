@@ -286,6 +286,21 @@ The S3-A measurement changed the shape of the preemption feature, not its purpos
       `ckptgate v0.21.0` · `make install` installs the third binary too. `install.sh` treats it as
       optional, so a tarball from before it existed still installs the two core binaries.
 
+## P9 — The real-machine matrix (in progress)
+
+Every row prints N, the margin or the lost steps, and the command that reproduces it. No probabilities.
+
+| condition | evidence | still missing |
+|---|---|---|
+| `risk.shutdown` | S2 2026-11-03, grace 60 / 5s, N=5: 5/5 landed, margin +36.5..+41.5s, lost 0, `may-exit` 5/5; the cadence-only arm 0/5 | grace 30 and 10 on the refreshed harness |
+| `risk.preempt` | G1 5/5, wait 4.0-4.8s, lost 0; G2 fail-open, lost 6 | multi-node / fleet fanout |
+| `store.low-space` | rig X `disk-full` (a tmpfs copy) | N real runs on a real volume |
+| `host.memory-pressure` | D-layer decision only | N real runs under a cgroup memory limit |
+| `job.ending` / `watch.broken` | loop tests and the D layer | real runs at the end of a job |
+
+The `risk.shutdown` row is in `experiments/real/README.md`; the harness is `s2_shutdown.sh` and its
+`WAIT_AFTER_SEAL=20` is part of the measurement, not a tuning knob.
+
 ## What is demoted or removed (do these as part of P0/P1, not later)
 
 | Thing | Action | Done when | State |
