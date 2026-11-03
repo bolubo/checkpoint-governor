@@ -265,16 +265,17 @@ The S3-A measurement changed the shape of the preemption feature, not its purpos
       with `lost 0`.
   **done when** the harness prints `intruder waited X s · victim lost 0 steps` and the job appears
       only after the victim's manifest changed.
-  **observed** `gate sealed at step 82 after 55.4s: releasing the arrival` · `submitted default/arrival`
-      · victim `Terminating`, arrival `Suspended → Running` · newest manifest `gen-0082` and step file
-      82 → **lost 0 steps**. Harness: `experiments/gate/`.
+  **observed** `gate sealed at step 7 after 5s: releasing the arrival` · `submitted default/arrival`
+      · newest manifest `gen-0007` and step file 7 → `intruder waited 5s · victim lost 0 steps`.
+      Harness: `experiments/gate/`. The first run waited 55 s: the probes hashed the directory
+      basename instead of `--unit`, and the 60 s cooldown applied to a new reclaim. Both fixed here.
 - [x] **8.5 G2, fail-open.** `kill -9` the gate during a hold; nothing is blocked, and `gc` marks the
       record `uncovered`.
   **done when** a direct submission after the kill preempts as before, and `ckptgate gc` prints
       `held for … past its deadline, never released`.
   **observed** `gc: 1 marked uncovered`; the job was never created, so the queue was not blocked;
-      a direct submission after the kill preempted the victim, whose last checkpoint was step 1 and
-      whose step at death was 14 — **lost 13 steps**.
+      a direct submission after the kill preempted the victim, whose last checkpoint was step 7 and
+      whose step at death was 13 — **lost 6 steps**.
 - [x] **8.6 The page.** `docs/gate.md`, one screen for a small team, and one README line.
   **done when** `make docs` passes and the page states what the gate does not promise.
   **observed** the page and index row exist; the README names the path in one paragraph.

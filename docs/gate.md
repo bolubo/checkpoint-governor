@@ -87,29 +87,31 @@ same shape the observer already uses (decision 0021).
 kind + Kueue v0.9.0, one node, a 4-CPU `lab` queue. Victim: 2000m at priority 50; four holders at
 500m each; arrival: 2000m at priority 200. The harness is `experiments/gate/`.
 
-**G1 — the hold buys the write.** The gate chose `default/victim-qjdpz`, waited, then:
+**G1 — the hold buys the write.** The gate chose `default/victim-ww5cf`, waited, then:
 
 ```
-gate       sealed at step 82 after 55.4s: releasing the arrival
+gate       sealed at step 7 after 5s: releasing the arrival
 submitted  default/arrival
 ```
 
-The victim pod went `Terminating`; the arrival went from `Suspended` to `Running`. The victim's newest
-manifest was `gen-0082` (step 82) and its step file also read 82 — **lost 0 steps**.
+The victim's newest manifest was `gen-0007` (step 7) and its step file also read 7 — **lost 0 steps**.
 
-The 55.4 s is the victim's own cadence, not the gate's: its controller was inside a write cooldown,
-and the reclaim is one more event after that. The deadline (90 s) has to cover the controller's
-cadence plus one write and the seal; see [operator-notes.md](operator-notes.md).
+The wait is the victim's probe cadence plus one write, not a fixed latency. It took 55 s on the
+first run of this harness for two reasons that were bugs, not cost: the probes hashed the checkpoint
+directory's basename instead of the `--unit` the run was given (so they were blind to the observer's
+unit), and the 60 s write cooldown applied to a reclaim even though a reclaim is a new event. Both
+are fixed; the deadline still has to cover the cadence plus one write and the seal
+([operator-notes.md](operator-notes.md)).
 
 **G2 — fail-open.** `kill -9` while the record was `held`, then wait past the deadline:
 
 ```
-gc         default/victim-qjkml held for default/arrival: past its deadline, never released
+gc         default/victim-qk5vw held for default/arrival: past its deadline, never released
 gc         1 marked uncovered
 ```
 
 The arrival was never created, so nothing was blocked. Submitting the same arrival straight to
-Kueue afterwards preempted as it always did — and the victim, whose newest checkpoint was step 1,
-died at step 14: **lost 13 steps**. That is the difference the gate is for, and the limit it
+Kueue afterwards preempted as it always did — and the victim, whose newest checkpoint was step 7,
+died at step 13: **lost 6 steps**. That is the difference the gate is for, and the limit it
 admits to: only submissions through it get the lead.
 

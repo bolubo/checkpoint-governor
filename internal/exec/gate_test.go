@@ -100,6 +100,32 @@ func TestTheFourDoors(t *testing.T) {
 	}
 }
 
+// A held reclaim is a new event with a deadline we do not own: the cooldown must not make it wait,
+// or the gate's own deadline passes while the victim counts down a pause meant for a repeat. Backoff
+// still applies, because a write that keeps failing is a fact, not a throttle (0030).
+func TestAHeldReclaimIsExemptFromCooldownButNotBackoff(t *testing.T) {
+	done := NewAttempt("u", 1, 400, TriggerCondition, "risk.preempt", t0, t0.Add(time.Minute))
+	done.EndedAt = t0
+	done.Outcome = Sealed
+	env := Env{Step: 401, CheckpointBytes: 1000, FreeBytes: 10 * 1000}
+
+	env.Reclaim = true
+	if got := Gate(save(), []Attempt{done}, env, t0.Add(5*time.Second)); got.Verdict != Start {
+		t.Fatalf("a reclaim five seconds after a seal = %+v, want start", got)
+	}
+	env.Reclaim = false
+	if got := Gate(save(), []Attempt{done}, env, t0.Add(5*time.Second)); got.Verdict != Refuse || got.Reason != "cooldown" {
+		t.Fatalf("the same write without a reclaim = %+v, want cooldown", got)
+	}
+
+	failed := done
+	failed.Outcome = Abandoned
+	env.Reclaim = true
+	if got := Gate(save(), []Attempt{failed}, env, t0.Add(5*time.Second)); got.Verdict != Refuse || got.Reason != "backoff" {
+		t.Fatalf("a reclaim after a failed write = %+v, want backoff", got)
+	}
+}
+
 // TestARefusalIsNeitherACooldownNorAFailure: the gate said no, so nothing was written. Counting that
 // as a finished write would reset the cooldown clock ("we said no a second ago") and grow the
 // backoff ("we said no three times"), which is how a gate ends up refusing forever.

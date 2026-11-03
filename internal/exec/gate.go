@@ -81,6 +81,12 @@ type Env struct {
 	CauseID string
 	// CauseHandled says this unit has already written for that event.
 	CauseHandled bool
+
+	// Reclaim says a held reclaim names this unit: the gate is holding an arrival until this unit
+	// seals, and that deadline is somebody else's clock (0030). It is a new event, so the cooldown
+	// below does not apply to the write it asks for. Backoff still does: a write that keeps failing
+	// is a fact, not a throttle.
+	Reclaim bool
 }
 
 // TeardownMargin is how much of the announced window the job's own shutdown is assumed to need. A
@@ -126,7 +132,7 @@ func (e Env) Pressured() int {
 //	no-time      the job's own deadline is shorter than one write; the write would be killed halfway
 //	headroom     free space cannot hold the new copies and the ones that stay
 //	duplicate    this exact request is already in the history
-//	cooldown     the last write ended too recently
+//	cooldown     the last write ended too recently (a held reclaim is exempt)
 //	backoff      this condition has been failing; wait longer each time
 func Gate(d policy.Decision, recent []Attempt, env Env, now time.Time) Result {
 	if d.Action != policy.ActionSave {
@@ -219,8 +225,14 @@ func Gate(d policy.Decision, recent []Attempt, env Env, now time.Time) Result {
 		cost := 0.0
 		if ok {
 			cost = last.Cost()
-			if wait := Cooldown(cost) - now.Sub(last.EndedAt); wait > 0 {
-				return Result{Verdict: Refuse, Reason: "cooldown", Wait: wait}
+			// A held reclaim is a new event whose deadline we did not set: the gate is waiting on this
+			// unit's seal before it lets an arrival into the cluster (0030). The cooldown stops a
+			// second write for the same situation; this is not the same situation, and making it wait
+			// is how a gate misses its own deadline.
+			if !env.Reclaim {
+				if wait := Cooldown(cost) - now.Sub(last.EndedAt); wait > 0 {
+					return Result{Verdict: Refuse, Reason: "cooldown", Wait: wait}
+				}
 			}
 		}
 

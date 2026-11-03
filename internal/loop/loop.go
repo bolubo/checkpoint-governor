@@ -45,6 +45,12 @@ type Config struct {
 	// writes as it always did: an unreadable event must never suppress a save.
 	CauseID func(now time.Time) string
 
+	// Reclaim names a held reclaim for this unit, with the cause id it carries (0030). The gate is
+	// waiting on this unit's seal before it lets an arrival into the cluster, and its deadline is
+	// somebody else's clock. A reclaim that has not been paid for must be able to force a decision
+	// even when the previous event's cooldown or throttle would otherwise wait.
+	Reclaim func(now time.Time) (causeID string, held bool)
+
 	// VerifyEvery is how often one checkpoint may be read back. Zero means ten minutes; a negative
 	// value turns verification off. Reading a checkpoint costs more than writing it, so the default
 	// is deliberately rare.
@@ -330,8 +336,9 @@ func (l *Loop) writeLead() time.Duration {
 }
 
 // NeedsAttention says whether this unit has something to do even when nothing outside has happened:
-// a running write to settle, the window about to close, or the moment the policy asked to be consulted
-// again. It reads memory only — no directory walk — so a supervisor can ask every unit every tick.
+// a running write to settle, the window about to close, an unpaid reclaim, or the moment the policy
+// asked to be consulted again. It is memory plus one tiny file (the reclaim), no directory walk, so
+// a supervisor can ask every unit every tick.
 func (l *Loop) NeedsAttention(now time.Time) bool {
 	if l.attempts.Count().Running > 0 {
 		// A write is in flight: it has to be settled, and that is a scan, not an event.
@@ -339,6 +346,13 @@ func (l *Loop) NeedsAttention(now time.Time) bool {
 	}
 	if l.window.Due(now) {
 		return true
+	}
+	// A reclaim nobody has paid for is a clock we do not own: the gate is waiting on this unit, and
+	// waiting for the next decision slot is how a deadline is missed (0030).
+	if l.cfg.Reclaim != nil {
+		if id, held := l.cfg.Reclaim(now); held && id != l.ledger.CauseWrittenID {
+			return true
+		}
 	}
 	return !now.Before(time.Unix(0, l.ledger.NextDecisionAt))
 }
@@ -941,8 +955,17 @@ func (l *Loop) Reconcile() (Step, error) {
 
 	// Measure often, decide rarely: the policy is free, but a new plan rewrites a file the job
 	// watches. It is called only when its answer can have changed.
+	//
+	// A held reclaim is one such change, and it is read before the throttle: the gate is waiting on
+	// this unit's seal, and its deadline is not ours. Reusing the cause id keeps one decision per
+	// reclaim: once the write is recorded, CauseWrittenID matches and the throttle applies again.
+	reclaimCause, reclaimHeld := "", false
+	if l.cfg.Reclaim != nil {
+		reclaimCause, reclaimHeld = l.cfg.Reclaim(now)
+	}
 	windowDue := l.window.Due(now)
-	decide := l.shouldDecide(now, s) || windowDue
+	decide := l.shouldDecide(now, s) || windowDue ||
+		(reclaimHeld && l.ledger.CauseWrittenID != reclaimCause)
 	var d policy.Decision
 	if decide {
 		d = l.cfg.Policy.Decide(l.cfg.Bounds, s)
@@ -1027,6 +1050,9 @@ func (l *Loop) Reconcile() (Step, error) {
 			env.CauseID = seenCause
 			env.CauseHandled = l.ledger.CauseWrittenID == seenCause
 		}
+		// A held reclaim is a new event with a deadline the gate owns, so the cooldown does not
+		// apply to the write it asks for (0030). Backoff still does: a failing write is a fact.
+		env.Reclaim = reclaimHeld
 		if estimated {
 			// A size we were told, not one we measured: the space rule applies, and the status says so.
 			st.Notes = append(st.Notes, "headroom uses the declared size "+bytesHuman(scale)+" (estimated)")

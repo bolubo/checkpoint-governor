@@ -193,11 +193,16 @@ func runRun(args []string, out io.Writer) int {
 
 	host, _ := os.Hostname()
 	probeCfg = probeCfg.WithWorld(*dir)
+	// The world's unit id is the one this run was given, not the directory's basename: an observer
+	// publishes `namespace/pod`, and a probe that hashes the basename looks up a unit nobody wrote.
+	// That mismatch made `risk.preempt` blind exactly when a reclaim was waiting for us (0030).
+	probeCfg.UnitID = name
 	l, err := loop.Open(loop.Config{
 		Dir:     *dir,
 		UnitID:  name,
 		Permit:  permitFor(probeCfg),
 		CauseID: causeFor(probeCfg),
+		Reclaim: reclaimFor(probeCfg),
 		Holder:  fmt.Sprintf("%s-%d", host, os.Getpid()),
 		Bounds: policy.Bounds{
 			MinCopies: *copies,
@@ -396,22 +401,40 @@ func permitFor(cfg adapters.Config) func(time.Time) (permit.Verdict, time.Time) 
 	}
 }
 
+// heldReclaim is the one read both the cause id and the executor's "this is a gate deadline"
+// question use. It returns the event id (`reclaim:<requestId>`), not the bare request id, because
+// the ledger compares it with what it already paid for.
+func heldReclaim(cfg adapters.Config, now time.Time) (string, bool) {
+	rec, held, err := adapters.ReadHeldReclaim(cfg.WorldDir, cfg.Cluster, cfg.UnitID, now)
+	if err != nil || !held {
+		return "", false
+	}
+	return "reclaim:" + rec.RequestID, true
+}
+
+// reclaimFor tells the loop that a gate is waiting on this unit. A held reclaim is a new event with
+// a deadline we do not own, so the loop must be able to ask now and the executor must not apply the
+// ordinary cooldown to the write it asks for (0030).
+func reclaimFor(cfg adapters.Config) func(time.Time) (string, bool) {
+	return func(now time.Time) (string, bool) { return heldReclaim(cfg, now) }
+}
+
 // causeFor names the event that puts this unit at risk, for the one-decision-per-event rule (0022).
 //
-// It reads one cluster-level fact — "higher-priority work is waiting for room" — and not the scheduler's
-// decision, which this product does not integrate with and cannot see. While the same work waits the id
-// is the same, so the unit knows the event has already been paid for.
+// It reads one cluster-level fact — "higher-priority work is waiting for room" — and not the
+// scheduler's decision, which this product does not integrate with and cannot see. While the same
+// work waits the id is the same, so the unit knows the event has already been paid for.
 //
-// Empty means the observer did not name one, and the gate then writes as it always did: an event that
-// cannot be identified must never be the reason a save does not happen.
+// Empty means the observer did not name one, and the gate then writes as it always did: an event
+// that cannot be identified must never be the reason a save does not happen.
 func causeFor(cfg adapters.Config) func(time.Time) string {
 	return func(now time.Time) string {
 		// A held reclaim is an event of its own, not a repeat of the waiting work the observer already
 		// named. It asks for a seal *now*, on behalf of an arrival that is deliberately absent from the
 		// world, and reusing the old event id would let the ledger dedupe the only write the gate is
 		// waiting for (0030).
-		if rec, held, err := adapters.ReadHeldReclaim(cfg.WorldDir, cfg.Cluster, cfg.UnitID, now); err == nil && held {
-			return "reclaim:" + rec.RequestID
+		if id, held := heldReclaim(cfg, now); held {
+			return id
 		}
 		s, err := adapters.ReadSummary(cfg.WorldDir, cfg.Cluster)
 		if err != nil {

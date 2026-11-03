@@ -29,7 +29,9 @@ docker build -q -t gate-job:local "$ROOT/build" >/dev/null
 kind load docker-image gate-job:local --name "$CLUSTER" >/dev/null
 
 echo "== stage the node"
-docker exec "$NODE" sh -c 'pkill -f ckpt-observer 2>/dev/null || true'
+# The pattern in brackets keeps the command line of this very shell from matching itself: pkill -f
+# would kill the shell that is running it, and the script would stop with SIGTERM before starting.
+docker exec "$NODE" sh -c 'ps -ef | awk "/[c]kpt-observer/ {print \$2}" | xargs -r kill 2>/dev/null || true'
 docker exec "$NODE" sh -c 'rm -rf /g1; mkdir -p /g1/bin /g1/world /g1/ckpt /g1/manifests'
 docker cp "$ROOT/bin/ckpt-observer" "$NODE:/g1/bin/"
 docker cp "$ROOT/bin/ckptgate" "$NODE:/g1/bin/"
@@ -50,10 +52,22 @@ VICTIM=$(docker exec "$NODE" sh -c "$KC kubectl get pods -l job-name=victim -o j
 echo "victim=$VICTIM"
 
 echo "== the gate"
-docker exec "$NODE" sh -c "$KC /g1/bin/ckptgate submit --manifest=/g1/manifests/arrival.yaml --world=/g1/world --cluster=a --queue=lab --ckpt-root=/g1/ckpt --deadline=90s --kubeconfig=/etc/kubernetes/admin.conf"
+docker exec "$NODE" sh -c "$KC /g1/bin/ckptgate submit --manifest=/g1/manifests/arrival.yaml --world=/g1/world --cluster=a --queue=lab --ckpt-root=/g1/ckpt --deadline=90s --kubeconfig=/etc/kubernetes/admin.conf" | tee /root/tmp/gate.out
 
 echo "== what happened"
 docker exec "$NODE" sh -c "$KC kubectl get jobs; kubectl get pods -o wide | head -8"
-docker exec "$NODE" sh -c "cat /g1/ckpt/$VICTIM/.ckpt-governor/step; echo"
-docker exec "$NODE" sh -c "find /g1/ckpt/$VICTIM -name manifest.json -printf '%TY-%Tm-%TdT%TH:%TM:%TS %p\n' | tail -2"
-docker exec "$NODE" sh -c "$KC kubectl get pod $VICTIM -o jsonpath='{.metadata.deletionTimestamp}'; echo"
+# Wait for the scheduler to act on the arrival, then read the victim's last step and the newest
+# checkpoint's step. lost = steps trained after the seal and before the death.
+i=0
+while [ $i -lt 60 ]; do
+  if docker exec "$NODE" sh -c "$KC kubectl get pod $VICTIM -o jsonpath='{.metadata.deletionTimestamp}' 2>/dev/null" | grep -q 2; then break; fi
+  sleep 1; i=$((i+1))
+done
+sleep 5
+STEP=$(docker exec "$NODE" sh -c "cat /g1/ckpt/$VICTIM/.ckpt-governor/step 2>/dev/null" || true)
+SEAL=$(docker exec "$NODE" sh -c "f=\$(find /g1/ckpt/$VICTIM -name manifest.json | tail -1); grep -o '\"step\": *[0-9]*' \"\$f\" | tail -1 | grep -o '[0-9]*'" || true)
+WAITED=$(grep -o 'after [0-9.]*s' /root/tmp/gate.out | tail -1 | grep -o '[0-9.]*s' || true)
+echo "step at death=$STEP · newest checkpoint step=$SEAL · gate waited ${WAITED}"
+if [ -n "$STEP" ] && [ -n "$SEAL" ]; then
+  echo "intruder waited ${WAITED} · victim lost $((STEP - SEAL)) steps"
+fi

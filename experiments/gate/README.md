@@ -47,25 +47,29 @@ for about 1.5 s, so the numbers below are not a model.
 
 ```
                                           no gate      gate
-arrival reaches Kueue                     10:50:22     10:46:41
-victim's newest checkpoint at death       step 1       step 82
-victim's step at death                    14           82
-lost                                      13 steps     0 steps
+victim's newest checkpoint at death       step 7       step 7
+victim's step at death                    13           7
+lost                                      6 steps      0 steps
 ```
 
 G1:
 
 ```
-gate       sealed at step 82 after 55.4s: releasing the arrival
+gate       sealed at step 7 after 5s: releasing the arrival
 submitted  default/arrival
+intruder waited 5s · victim lost 0 steps
 ```
 
 G2:
 
 ```
-gc         default/victim-qjkml held for default/arrival: past its deadline, never released
+gc         default/victim-qk5vw held for default/arrival: past its deadline, never released
 gc         1 marked uncovered
 ```
+
+The 5 s wait is the probe cadence plus one write. The first run of this harness waited 55 s because
+the probes hashed the checkpoint directory's basename instead of `--unit`, and the 60 s cooldown
+applied to a new reclaim; both are fixed.
 
 ## What the harness does not prove
 
