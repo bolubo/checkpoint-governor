@@ -198,7 +198,7 @@ e2e:
 prepush:
 	sh hack/prepush.sh
 
-ci: fast e2e exp demo install-smoke spot resume py drill
+ci: fast gate e2e exp demo install-smoke spot resume py drill
 
 verify: check e2e parity spot resume py drill
 	$(GO) test ./internal/loop ./cmd/ckptctl

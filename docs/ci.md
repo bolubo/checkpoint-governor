@@ -40,6 +40,13 @@ Two honesty notes, because the claim should be falsifiable:
   every push to `main` by another session made our PR `BEHIND`, which GitHub shows next to a green check.
   That was fixed on the repository (strict off), not in the workflow.
 
+The second "always red" (2026-11-03) was a copy, not a clock. `TestResumabilityNeverChangesADecision`
+copies a fixture with `os.CopyFS`, which writes bytes but not mtimes; on a slow runner a shard can land
+after its manifest, the seal rule reads that as `seal_stale`, and one arm is judged broken while the
+other is sealed. The test then compares a repair with a calm skip. `copiedFixture` now writes the seal
+order down, and `TestACopiedFixtureKeepsTheSealOrder` pins it. Same class: a test-design defect that
+only a loaded runner exposes.
+
 ## What the gate is now
 
 One required check, `verify`, and it does not always do the same work:
@@ -48,7 +55,7 @@ One required check, `verify`, and it does not always do the same work:
 |---|---|---|
 | only Markdown / `docs/` | `make docs`: compile one package, two pins | one step; 35s measured |
 | Go, shell, tests | `make fast`: format check, vet, build, every unit test | 110–115s |
-| behaviour (Go, `experiments/`, `cmd/`) | also `e2e`, `exp`, `demo`, `install-smoke`, `spot`, `resume`, `py`, `drill` | 184s |
+| behaviour (Go, `experiments/`, `cmd/`, `contrib/gate/`) | also `gate`, `e2e`, `exp`, `demo`, `install-smoke`, `spot`, `resume`, `py`, `drill` | 184s + the gate module's first module-cache download |
 | `Dockerfile`, `deploy/` | also `docker build` | +40s |
 | a tag | `release.yml`, not this workflow | — |
 | a manual dispatch | everything, including the image | — |

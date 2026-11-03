@@ -23,3 +23,6 @@ experiments/real/results/
 # S1/S2 download these; fetch.py reproduces both.
 experiments/real/models/
 experiments/real/data/
+
+# `go build .` in the gate module writes the binary under its directory name.
+contrib/gate/gate

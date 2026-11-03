@@ -93,6 +93,12 @@ jobs:
         if: steps.scope.outputs.code == 'true'
         run: make fast
 
+      # The gate module has its own go.mod (client-go stays out of the core). Build and test it here
+      # too, or a change to contrib/gate could merge without the suite ever seeing it.
+      - name: make gate
+        if: steps.scope.outputs.code == 'true'
+        run: make gate
+
       # The shipped binary, driven the way a user drives it: no cluster, half a second.
       - name: make e2e
         if: steps.scope.outputs.code == 'true'
