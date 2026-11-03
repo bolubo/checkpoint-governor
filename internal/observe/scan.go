@@ -132,6 +132,9 @@ func scan(req Request, cache *manifestCache) (policy.Snapshot, Report, error) {
 
 	copies := make([]assemble.Copy, 0, len(entries))
 	alive := make(map[string]bool, len(entries))
+	// The directory a step lives in: a `gen-<n>` directory's number is not its step, so the step alone
+	// cannot be turned back into a name.
+	dirOf := make(map[int64]string, len(entries))
 	var unsealed []stepDir
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -142,6 +145,7 @@ func scan(req Request, cache *manifestCache) (policy.Snapshot, Report, error) {
 		}
 		alive[filepath.Join(req.Dir, e.Name(), ManifestName)] = true
 		d := readStepDir(req.Dir, e.Name(), cache)
+		dirOf[d.step] = d.name
 		rep.ChangedAt[d.name] = d.changedAt
 		rep.Reads += d.reads
 		rep.Stats += d.stats
@@ -196,7 +200,10 @@ func scan(req Request, cache *manifestCache) (policy.Snapshot, Report, error) {
 	var lastSeal time.Time
 	if newest != nil {
 		checkpointBytes = newest.Bytes
-		dir := dirName(newest.Step)
+		dir := dirOf[newest.Step]
+		if dir == "" {
+			dir = dirName(newest.Step)
+		}
 		lastSeal = seenAt(req.Seen, dir, ManifestName)
 		if lastSeal.IsZero() {
 			// First round: nothing has been recorded yet, and the manifest's own modification time

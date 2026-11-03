@@ -63,6 +63,11 @@ mkdir -p "$PREFIX"
 mv "$tmp/ckptctl_linux_${arch}" "$PREFIX/ckptctl"
 mv "$tmp/ckpttrainer_linux_${arch}" "$PREFIX/ckpttrainer"
 chmod 0755 "$PREFIX/ckptctl" "$PREFIX/ckpttrainer"
+# The gate is optional: a tarball from before it existed still installs the two core binaries.
+if [ -f "$tmp/ckptgate_linux_${arch}" ]; then
+	mv "$tmp/ckptgate_linux_${arch}" "$PREFIX/ckptgate"
+	chmod 0755 "$PREFIX/ckptgate"
+fi
 
 say "installed $( "$PREFIX/ckptctl" version) → $PREFIX"
 case ":$PATH:" in

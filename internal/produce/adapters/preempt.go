@@ -69,6 +69,13 @@ func judgePreemption(v UnitView, now time.Time, declared bool) produce.Reading {
 				Err: fmt.Errorf("preemption is declared for this deployment, and the observer has written nothing")}
 		}
 		return produce.Reading{State: produce.Absent, At: now}
+	case v.Announced:
+		// An announcement, from either writer: the platform's deletion timestamp or eviction event, or
+		// the gate's held reclaim (decision 0030). Both are a decision already made, and the gate writes
+		// it before the platform acts instead of after. It is read before "does this observer track
+		// units" on purpose: a gate hold is about this unit by name, and losing that because the
+		// observer publishes no unit column would be blindness about a fact we hold.
+		return produce.Reading{State: produce.Fresh, Value: true, At: now}
 	case !v.Tracking:
 		// The observer reports nodes but not units, so no announcement can reach us. Same split: a
 		// declared channel that tracks nothing is blind, not calm.
@@ -77,9 +84,6 @@ func judgePreemption(v UnitView, now time.Time, declared bool) produce.Reading {
 				Err: fmt.Errorf("preemption is declared, and the observer reports nodes but not units")}
 		}
 		return produce.Reading{State: produce.Absent, At: now}
-	case v.Announced:
-		// Deletion timestamp or eviction event: the platform has already decided.
-		return produce.Reading{State: produce.Fresh, Value: true, At: now}
 	case !v.UnitPresent:
 		return produce.Reading{State: produce.Unknown, At: now,
 			Err: fmt.Errorf("the observer tracks units but has not placed this one")}

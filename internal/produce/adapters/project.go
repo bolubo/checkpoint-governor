@@ -51,9 +51,18 @@ type UnitView struct {
 	QueueKnown        bool
 
 	// Unit facts.
-	Priority  int32
-	QoS       string
-	Announced bool // the platform has decided: deletionTimestamp or evicted
+	Priority int32
+	QoS      string
+	// Announced means the platform has decided this unit loses its room: deletionTimestamp, evicted,
+	// or a reclaim the gate is holding. The last one is an announcement written *before* the
+	// platform acts, which is the whole point of the gate (decision 0030).
+	Announced bool
+	// Reclaim is the held record behind an Announced answer, when the gate is what said it. Nil means
+	// the announcement came from the platform itself, or there was none.
+	Reclaim *ReclaimRecord
+	// Permit is the fleet's verdict for this unit (0021). Nil means permission — nobody was asked, or
+	// the world predates the field — and never means "held".
+	Permit *UnitPermit
 
 	// Capabilities, resolved: the operator's declaration first, then the summary, then assumed on.
 	Capabilities map[string]Capability
@@ -105,10 +114,21 @@ func Project(worldDir, cluster, unitID string, declared Deployment, now time.Tim
 		v.QoS = u.QoS
 		v.Announced = u.Evicted || (u.DeletionTimestamp != nil && !u.DeletionTimestamp.IsZero())
 		v.HigherPriorityWaiting = u.HigherPriorityWaiting
+		v.Permit = u.Permit
 	case os.IsNotExist(err):
 		// Not an error: this deployment may not track units at all.
 	default:
 		return v, err
+	}
+
+	// A held reclaim is a second source for the announcement, and it is read even when the unit is not
+	// placed: the gate decided on this unit before the platform wrote anything about it. Absent is
+	// silent; corrupt is an error, for the same reason a corrupt summary is.
+	if rec, held, err := ReadHeldReclaim(worldDir, cluster, unitID, now); err != nil {
+		return v, err
+	} else if held {
+		v.Reclaim = &rec
+		v.Announced = true
 	}
 
 	if v.Node == "" {

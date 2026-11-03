@@ -87,6 +87,10 @@ kubectl logs -l app=checkpoint-governor     # watching 2 units · 0 blind
 One process over a checkpoint volume; a child directory is a unit when it holds `.ckpt-governor/`.
 Volume, tag and limits are in `deploy/README.md`.
 
+A small team that submits higher-priority work through `contrib/gate` gets lead time instead of
+notice: the arrival waits until the victim has sealed (`docs/gate.md`). Direct submissions keep the
+announcement-only path.
+
 ## What it does not do
 
 - It is not monitoring software: `ckptctl serve` exports numbers and decides nothing.

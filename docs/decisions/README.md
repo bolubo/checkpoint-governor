@@ -36,6 +36,7 @@ answers "why is it this way", so a later change either follows it or replaces it
 | 0027 | [The platform is the customer](0027-the-platform-is-the-customer.md) | **superseded by 0028** — kept for the installer/payer/beneficiary analysis, not for its sequencing |
 | 0028 | [The direction is a library](0028-the-direction-is-a-library.md) | the product is a policy library in the training loop, grown through integrations; the default is zero periodic writes |
 | 0029 | [One version number](0029-one-version-number.md) | `vX.Y.Z` on the code, the tag and the wheel; `v0.21.0` is the current number, and the two crossed schemes before it are closed |
+| 0030 | [The reclaim is gated](0030-the-reclaim-is-gated.md) | a held reclaim is an announcement with lead time: the gate delays the arrival, not the victim, and the algorithm learns nothing new |
 
 ## Folded records
 

@@ -405,7 +405,14 @@ func permitFor(cfg adapters.Config) func(time.Time) (permit.Verdict, time.Time) 
 // Empty means the observer did not name one, and the gate then writes as it always did: an event that
 // cannot be identified must never be the reason a save does not happen.
 func causeFor(cfg adapters.Config) func(time.Time) string {
-	return func(time.Time) string {
+	return func(now time.Time) string {
+		// A held reclaim is an event of its own, not a repeat of the waiting work the observer already
+		// named. It asks for a seal *now*, on behalf of an arrival that is deliberately absent from the
+		// world, and reusing the old event id would let the ledger dedupe the only write the gate is
+		// waiting for (0030).
+		if rec, held, err := adapters.ReadHeldReclaim(cfg.WorldDir, cfg.Cluster, cfg.UnitID, now); err == nil && held {
+			return "reclaim:" + rec.RequestID
+		}
 		s, err := adapters.ReadSummary(cfg.WorldDir, cfg.Cluster)
 		if err != nil {
 			return ""

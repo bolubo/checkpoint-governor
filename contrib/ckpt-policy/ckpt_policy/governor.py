@@ -78,6 +78,10 @@ class Governor:
         self.writer = writer
         self.rank0 = rank0
         self._served: set[int] = set()
+        # A request is identified by its `requestId` (decision 0017), because a plan for a first
+        # checkpoint carries generation 0: there is no copy yet to number.
+        self._served_requests: set[str] = set()
+        self._pending_request: str = ""
         self._stopping_at: float | None = None
         self._grace_seconds: int = 0
         self._last_write = time.monotonic()
@@ -151,6 +155,9 @@ class Governor:
         this, the same generation is asked for on every step. It records, it does not write.
         """
         self._served.add(int(generation))
+        if self._pending_request:
+            self._served_requests.add(self._pending_request)
+            self._pending_request = ""
 
     def close(self, timeout: float = 5.0) -> None:
         """Stop the engine this client started. Safe to call twice; a client that never started one
@@ -189,7 +196,12 @@ class Governor:
         self._last_step = now
 
     def requested(self) -> int:
-        """The generation the governor asked for, or 0. A request is acted on at most once."""
+        """The generation the governor asked for, or 0. A request is acted on at most once.
+
+        Dedupe is by `requestId` (decision 0017), not by the generation. A plan for a first checkpoint
+        carries `generation: 0` — there is no copy yet to number — and a client that read `0` as
+        "nothing was asked" would ignore the first write of every job.
+        """
         plan = self._plan()
         if not plan:
             return 0
@@ -199,9 +211,15 @@ class Governor:
             return 0
         if int(plan.get("expiresAt") or 0) <= int(time.time()):
             return 0  # a plan that says nothing about liveness is not a request
+        key = str(plan.get("requestId") or "")
         gen = int(plan.get("generation") or 0)
-        if gen <= 0 or gen in self._served:
+        if gen <= 0:
+            gen = newest_generation(self.root) + 1
+        if key and key in self._served_requests:
             return 0
+        if gen in self._served:
+            return 0
+        self._pending_request = key
         return gen
 
     def generation(self) -> int:
@@ -223,6 +241,9 @@ class Governor:
                      world=self.world.as_dict(), state=self.saves.as_dict(),
                      partial=partial, loader=loader)
         self._served.add(generation)
+        if self._pending_request:
+            self._served_requests.add(self._pending_request)
+            self._pending_request = ""
         self._last_write = time.monotonic()
         return manifest
 

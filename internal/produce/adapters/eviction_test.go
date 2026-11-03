@@ -207,6 +207,69 @@ func TestLikelyNeedsAllThreeTerms(t *testing.T) {
 	}
 }
 
+// The fleet's permit is authoritative for the reclaim cause: it sees the whole node and has already
+// picked the units the arrival would take. The inference must not second-guess it with a ratio, and a
+// cause this build does not understand must fall through to the old conjunction, not silence it.
+func TestAReclaimPermitBeatsTheInference(t *testing.T) {
+	// A calm node: every ratio term of the old conjunction is false.
+	base := UnitView{SummaryPresent: true, Tracking: true, UnitPresent: true,
+		QueueKnown: true, ShortfallMilli: 0, PreemptionAllowed: false, HigherPriorityWaiting: 0}
+
+	cases := []struct {
+		name   string
+		permit *UnitPermit
+		want   bool
+		signal string
+	}{
+		{"selected", &UnitPermit{Verdict: "granted", Cause: "reclaim", Rank: 1}, true,
+			"the reclaim selects this unit (rank 1)"},
+		{"another unit", &UnitPermit{Verdict: "held", Cause: "reclaim", Rank: 2}, false,
+			"the reclaim selects another unit on this node"},
+		{"no permit", nil, false, ""},
+		{"unknown cause falls through", &UnitPermit{Verdict: "granted", Cause: "drain"}, false, ""},
+	}
+	for _, c := range cases {
+		v := base
+		v.Permit = c.permit
+		r := judgeEviction(v, 0.9, (evictionLikely{}).signals(v), nowFn())
+		if r.State != produce.Fresh || r.Value != c.want {
+			t.Errorf("%s: reading = %s/%v, want fresh/%v", c.name, r.State, r.Value, c.want)
+		}
+		if c.signal == "" {
+			continue
+		}
+		world := writeWorldWithPermit(t, c.permit)
+		sig, err := EvictionSignals(world.WorldDir, "a", world.UnitID, Deployment{}, 0.9, nowFn())
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+		}
+		if len(sig) != 1 || sig[0] != c.signal {
+			t.Errorf("%s: signals = %v, want %q", c.name, sig, c.signal)
+		}
+	}
+}
+
+// writeWorldWithPermit builds the calm world above with one unit and the given permit, so the display
+// path (`EvictionSignals`, which projects again) sees exactly what the probe saw.
+func writeWorldWithPermit(t *testing.T, p *UnitPermit) Config {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := Config{}.WithWorld(dir)
+	now := nowFn()
+	if err := WriteSummary(cfg.WorldDir, WorldSummary{
+		Schema: 1, Cluster: "a", At: now, StaleAfterSeconds: 30,
+		Nodes: []NodeState{{Name: "worker-1", Allocatable: Resources{CPUMilli: 24000}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteUnit(cfg.WorldDir, "a", UnitRecord{
+		Cluster: "a", UnitID: cfg.UnitID, At: now, Node: "worker-1", Priority: 1000, Permit: p,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
 // A frozen observer is blindness, not calm.
 func TestEvictionIsUnknownWhenTheObserverIsStale(t *testing.T) {
 	cfg := writeWorldFor(t, worldOpts{cpuPct: 10, memPct: 10, tracking: true, age: 10 * time.Minute})

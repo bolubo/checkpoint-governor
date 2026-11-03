@@ -52,6 +52,20 @@ class TestRequested(unittest.TestCase):
             plan(root, expiresAt=int(time.time()) - 1)
             self.assertEqual(g.requested(), 0)
 
+    def test_a_first_request_names_no_generation_and_is_acted_on(self):
+        """A plan for a first checkpoint says generation 0: there is no copy yet to number."""
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            plan(root, generation=0, requestId="r-first")
+            self.assertTrue(g.should_save(), "generation 0 is a request, not a refusal")
+            self.assertEqual(g.generation(), 1, "the client numbers the first copy")
+            gen_dir = os.path.join(root, "gen-0001")
+            os.makedirs(gen_dir)
+            with open(os.path.join(gen_dir, "rank-00.bin"), "wb") as f:
+                f.write(b"weights")
+            g.sealed(1, 512, ["rank-00.bin"])
+            self.assertFalse(g.should_save(), "the same request was asked for twice")
+
     def test_a_request_is_acted_on_at_most_once(self):
         with tempfile.TemporaryDirectory() as root:
             g = Governor(root)

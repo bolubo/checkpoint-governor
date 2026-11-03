@@ -2,6 +2,7 @@ package observe
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -68,6 +69,57 @@ func copyAt(s *policy.Snapshot, step int64) *policy.Copy {
 		}
 	}
 	return nil
+}
+
+// writeGenCheckpoint writes a sealed checkpoint under the generation layout: the directory is named
+// by generation, and the manifest carries the training step.
+func writeGenCheckpoint(t *testing.T, root string, gen, step int64, sizes ...int64) {
+	t.Helper()
+	dir := filepath.Join(root, fmt.Sprintf("gen-%04d", gen))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	shards := make([]map[string]any, 0, len(sizes))
+	for rank, size := range sizes {
+		// The documented dialect: the manifest names the file, and the name is not `rank-<n>.bin`.
+		name := fmt.Sprintf("rank-%02d.pt", rank)
+		if err := os.WriteFile(filepath.Join(dir, name), make([]byte, size), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		shards = append(shards, map[string]any{"name": name, "size": size, "sha256": "unused"})
+	}
+	raw, err := json.Marshal(map[string]any{"step": step, "shards": shards})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ManifestName), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A generation directory is named by its generation, not by the training step: the step lives in the
+// manifest. Reading the directory's number as a step calls every `gen-` copy broken — measured on a
+// real 5.5 GiB write, where the engine asked for a repair twelve seconds after a clean seal, and
+// `ckptctl resumable` said the copy was fine.
+func TestScanReadsAGenerationDirectoryByItsManifestStep(t *testing.T) {
+	dir := t.TempDir()
+	writeGenCheckpoint(t, dir, 1, 121, 100)
+
+	req := request(t, dir)
+	s, rep, err := Scan(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Copies) != 1 {
+		t.Fatalf("copies = %d, want 1 (%v)", len(s.Copies), rep.Notes)
+	}
+	c := copyAt(&s, 121)
+	if c == nil || c.State != policy.CopySealed || c.Bytes != 100 {
+		t.Fatalf("gen-0001 (step 121) = %+v, want sealed with 100 bytes", c)
+	}
+	if s.Step != 121 {
+		t.Fatalf("step = %d, want 121 (from the manifest)", s.Step)
+	}
 }
 
 func TestScanReadsASealedCheckpoint(t *testing.T) {

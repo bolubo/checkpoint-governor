@@ -1709,11 +1709,14 @@ func wordsFor(d policy.Decision, action policy.Action) (string, string) {
 	// A condition that could not be read is not the same fact as one that is true, and the policy
 	// already writes the difference into the decision: "cannot read risk.preempt: …". The line
 	// keeps that wording instead of repeating the sentence of a condition we never read.
-	blind := strings.TrimPrefix(d.Why, "cannot read ")
+	//
+	// The test is on the whole prefix, not on "<code>:" after the word is removed: a fresh firing
+	// writes "<code>: <why>" too, and stripping first made every real save read "cannot read".
 	for _, r := range d.Reasons {
 		if c, ok := policy.ConditionNamed(r.Code); ok {
-			if strings.HasPrefix(blind, r.Code+":") {
-				return r.Code, "cannot read: " + strings.TrimSpace(strings.TrimPrefix(blind, r.Code+":"))
+			blind := "cannot read " + r.Code + ":"
+			if strings.HasPrefix(d.Why, blind) {
+				return r.Code, "cannot read: " + strings.TrimSpace(strings.TrimPrefix(d.Why, blind))
 			}
 			return r.Code, c.Why
 		}

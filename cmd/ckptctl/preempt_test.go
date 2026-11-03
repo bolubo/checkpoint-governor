@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,6 +34,66 @@ func TestAnAnnouncementDecidesOnItsOwn(t *testing.T) {
 		t.Fatalf("the decision does not name the announcement: %+v", d.Reasons)
 	}
 	fmt.Println("preempt 1 after deletionTimestamp → save")
+}
+
+// The gate's record reaches both ends of the pipeline: the loop decides on it, and `explain` names it.
+// The world has no pressure and no deletion timestamp, so this is the whole case for decision 0030.
+func TestAHeldReclaimReachesTheDecisionAndTheExplanation(t *testing.T) {
+	dir := t.TempDir()
+	writeAnnouncedWorld(t, dir, false, 10)
+	cfg := adapters.Config{}.WithWorld(dir)
+	now := time.Now().UTC()
+	if err := adapters.WriteReclaim(cfg.WorldDir, "a", adapters.ReclaimRecord{
+		Cluster: "a", UnitID: cfg.UnitID, RequestID: "r-1", Intruder: "intruder",
+		State: adapters.ReclaimHeld, Since: now, Deadline: now.Add(5 * time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if code := runRun([]string{"--dir", dir, "--once", "--no-us=none"}, io.Discard); code != 0 {
+		t.Fatalf("run exited %d", code)
+	}
+	d, ok := advise.LastDecision(dir)
+	if !ok {
+		t.Fatal("no plan was published")
+	}
+	if d.Action != policy.ActionSave || len(d.Reasons) == 0 || d.Reasons[0].Code != "risk.preempt" {
+		t.Fatalf("decision = %s/%s %+v, want save/risk naming risk.preempt", d.Action, d.Reason, d.Reasons)
+	}
+
+	var out strings.Builder
+	if code := runExplain([]string{"--dir", dir}, &out); code != 0 {
+		t.Fatalf("explain exited %d", code)
+	}
+	text := out.String()
+	for _, want := range []string{"basis      announcement: the reclaim gate is holding intruder", "(reclaim r-1)"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("explain is missing %q:\n%s", want, text)
+		}
+	}
+	fmt.Println("reclaim held → save/risk → explain names the hold")
+}
+
+// A reclaim is a new event even when the waiting work is unchanged: the gate is asking for a seal
+// now, and the old event id would dedupe that write as already paid (0030).
+func TestAHeldReclaimIsANewEvent(t *testing.T) {
+	dir := t.TempDir()
+	writeAnnouncedWorld(t, dir, false, 10)
+	cfg := adapters.Config{}.WithWorld(dir)
+	now := time.Now().UTC()
+
+	if got := causeFor(cfg)(now); got != "" {
+		t.Fatalf("a quiet world named event %q", got)
+	}
+	if err := adapters.WriteReclaim(cfg.WorldDir, "a", adapters.ReclaimRecord{
+		Cluster: "a", UnitID: cfg.UnitID, RequestID: "r-1", Intruder: "intruder",
+		State: adapters.ReclaimHeld, Since: now, Deadline: now.Add(time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := causeFor(cfg)(now); got != "reclaim:r-1" {
+		t.Fatalf("event = %q, want reclaim:r-1", got)
+	}
 }
 
 // The same world without the timestamp is quiet: nothing is at risk, so nothing is written.

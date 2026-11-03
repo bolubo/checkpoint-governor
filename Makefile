@@ -11,7 +11,7 @@ IMAGE ?= ghcr.io/bolubo/checkpoint-governor
 # How long the real-clock smoke runs (make smoke MINUTES=2 for a quick check).
 MINUTES ?= 10
 
-.PHONY: all check fmt fmt-check vet build test docs fast flake verify parity ci e2e exp clean dist release install install-smoke release-notes spot prepush resume py drill contrast contrast-image waste wheel hf
+.PHONY: all check fmt fmt-check vet build test docs fast flake verify parity ci e2e exp clean dist release install install-smoke release-notes spot prepush resume py drill contrast contrast-image waste wheel hf observer gate
 
 all: check
 
@@ -34,6 +34,12 @@ observer:
 
 observer-against: 
 	cd contrib/observer && $(GO) run . --world-dir=$(WORLD) --cluster=$(CLUSTER) --once
+
+# The gate is its own module for the same reason the observer is: client-go stays out of the core
+# binary. It is built and tested on demand, like the observer, so a laptop without the module cache
+# still passes `make fast`.
+gate:
+	cd contrib/gate && $(GO) build ./... && $(GO) test ./...
 
 # The demo: three acts, fifteen seconds, ending with the receipt. See docs/product-v1.md §5.
 demo:
@@ -63,6 +69,7 @@ scenarios:
 # The shortest path for someone who already has Go: the two binaries on their PATH.
 install:
 	$(GO) install -ldflags "$(LDFLAGS)" ./cmd/ckptctl ./cmd/ckpttrainer
+	cd contrib/gate && $(GO) install -ldflags "$(LDFLAGS)" .
 
 # The shortest path for someone who does not: install.sh fetches a release tarball, verifies its
 # checksum and installs the two binaries. This target proves the whole path offline by pointing the
@@ -71,6 +78,7 @@ install-smoke: dist
 	PREFIX=/tmp/ckptctl-smoke CKPTCTL_RELEASE_BASE=file://$(CURDIR)/dist VERSION=$(VERSION) \
 	  sh install.sh
 	/tmp/ckptctl-smoke/ckptctl version
+	/tmp/ckptctl-smoke/ckptgate version
 	@echo "install-smoke: ok"
 
 # The release notes a tag publishes: the CHANGELOG section for that version, so the notes and the
@@ -85,7 +93,8 @@ dist:
 	for arch in amd64 arm64; do \
 	  GOOS=linux GOARCH=$$arch CGO_ENABLED=0 $(GO) build -trimpath -ldflags "$(LDFLAGS) -s -w" -o dist/ckptctl_linux_$$arch ./cmd/ckptctl; \
 	  GOOS=linux GOARCH=$$arch CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-s -w" -o dist/ckpttrainer_linux_$$arch ./cmd/ckpttrainer; \
-	  /bin/tar -czf dist/checkpoint-governor_$(VERSION)_linux_$$arch.tar.gz -C dist ckptctl_linux_$$arch ckpttrainer_linux_$$arch; \
+	  (cd contrib/gate && GOOS=linux GOARCH=$$arch CGO_ENABLED=0 $(GO) build -trimpath -ldflags "$(LDFLAGS) -s -w" -o ../../dist/ckptgate_linux_$$arch .); \
+	  /bin/tar -czf dist/checkpoint-governor_$(VERSION)_linux_$$arch.tar.gz -C dist ckptctl_linux_$$arch ckpttrainer_linux_$$arch ckptgate_linux_$$arch; \
 	done
 	cd dist && /usr/bin/sha256sum checkpoint-governor_*.tar.gz > SHA256SUMS
 	@echo "dist: $$(ls dist/*.tar.gz | wc -l) archives, $$(wc -l < dist/SHA256SUMS) checksums"

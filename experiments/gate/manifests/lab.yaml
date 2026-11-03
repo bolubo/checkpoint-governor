@@ -1,0 +1,119 @@
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: lab-victim
+value: 50
+globalDefault: false
+description: The unit the reclaim is allowed to take.
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: victim
+  namespace: default
+  labels: {kueue.x-k8s.io/queue-name: lab}
+spec:
+  suspend: true
+  backoffLimit: 0
+  template:
+    spec:
+      priorityClassName: lab-victim
+      restartPolicy: Never
+      containers:
+        - name: victim
+          image: gate-job:local
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests: {cpu: "2000m", memory: "64Mi"}
+          volumeMounts:
+            - {name: g1, mountPath: /g1}
+            - {name: ckpt, mountPath: /ckpt}
+      volumes:
+        - name: g1
+          hostPath: {path: /g1}
+        - name: ckpt
+          hostPath: {path: /g1/ckpt}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: holder-a
+  namespace: default
+  labels: {kueue.x-k8s.io/queue-name: lab}
+spec:
+  suspend: true
+  backoffLimit: 0
+  template:
+    spec:
+      priorityClassName: lab-low
+      restartPolicy: Never
+      containers:
+        - name: holder
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "sleep 3600"]
+          resources:
+            requests: {cpu: "500m", memory: "64Mi"}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: holder-b
+  namespace: default
+  labels: {kueue.x-k8s.io/queue-name: lab}
+spec:
+  suspend: true
+  backoffLimit: 0
+  template:
+    spec:
+      priorityClassName: lab-low
+      restartPolicy: Never
+      containers:
+        - name: holder
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "sleep 3600"]
+          resources:
+            requests: {cpu: "500m", memory: "64Mi"}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: holder-c
+  namespace: default
+  labels: {kueue.x-k8s.io/queue-name: lab}
+spec:
+  suspend: true
+  backoffLimit: 0
+  template:
+    spec:
+      priorityClassName: lab-low
+      restartPolicy: Never
+      containers:
+        - name: holder
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "sleep 3600"]
+          resources:
+            requests: {cpu: "500m", memory: "64Mi"}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: holder-d
+  namespace: default
+  labels: {kueue.x-k8s.io/queue-name: lab}
+spec:
+  suspend: true
+  backoffLimit: 0
+  template:
+    spec:
+      priorityClassName: lab-low
+      restartPolicy: Never
+      containers:
+        - name: holder
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "sleep 3600"]
+          resources:
+            requests: {cpu: "500m", memory: "64Mi"}

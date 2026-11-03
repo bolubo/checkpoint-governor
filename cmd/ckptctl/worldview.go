@@ -63,7 +63,11 @@ func worldBlock(out io.Writer, dir string, now time.Time) {
 	if v.Stale {
 		fmt.Fprintln(out, "           STALE: past the limit the observer declared — decisions cannot use these numbers")
 	}
-	if v.Announced {
+	if v.Reclaim != nil {
+		// The gate's record is the announcement with lead time, and it says who it is holding: a
+		// person reading `explain` must be able to see that a write is being asked for now.
+		fmt.Fprintf(out, "basis      announcement: %s\n", v.Reclaim.Line())
+	} else if v.Announced {
 		fmt.Fprintln(out, "basis      announcement: the platform has already decided (deletion timestamp or eviction event)")
 	} else if fired, _ := adapters.EvictionSignals(cfg.WorldDir, cfg.Cluster, cfg.UnitID, cfg.Deployment, cfg.EvictionLineOrDefault(), now); len(fired) > 0 {
 		fmt.Fprintf(out, "basis      inference: %s (this is a guess, and a capability can turn it off)\n",

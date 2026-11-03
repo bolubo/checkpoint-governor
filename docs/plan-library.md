@@ -231,6 +231,59 @@ anyway, and each one is checked by a link test rather than by memory.
       `docs/operator-notes.md`"; `docs/index.md` lists the page under "If you are operating it";
       `make docs` = 47 pages, 52 local links, 0 dead.
 
+## P8 — The reclaim is gated (decision 0030)
+
+The S3-A measurement changed the shape of the preemption feature, not its purpose: Kueue preempts in
+0.2 s, so an inference cannot beat the scheduler. The arrival can be delayed. P8 is that change.
+
+- [x] **8.0 The record.** `docs/decisions/0030-the-reclaim-is-gated.md`, one row in
+      `docs/decisions/README.md`, no dead links.
+  **done when** `make docs` passes with 0030 listed.
+  **observed** the decision is listed and `make docs` passes.
+- [x] **8.1 `risk.preempt` gets a second source.** A held reclaim is an announcement with lead time;
+      the algorithm still sees one boolean.
+  **done when** `go test ./internal/produce/adapters -run Reclaim` passes and `ckptctl explain` prints
+      the hold.
+  **observed** `TestHeldReclaimIsAnAnnouncement`, `TestReclaimStatesThatAreNotHeldDoNotAnnounce`,
+      `TestAHoldIsReadEvenWhenTheUnitIsNotPlaced`, `TestACorruptReclaimFailsTheProjection`; a
+      one-shot `run` on a hand-written record decides `save/risk` and prints
+      `basis announcement: the reclaim gate is holding intruder for this unit until … (reclaim r-1)`.
+- [x] **8.2 `risk.eviction-likely` reads the fleet's permit.** With a reclaim permit
+      (`verdict: granted`, `cause: reclaim`) the verdict replaces the guess; deployments without one
+      keep the measured conjunction.
+  **done when** the permit matrix test passes and the kueue sweep stays green.
+  **observed** `TestAReclaimPermitBeatsTheInference` covers selected, another unit, no permit and an
+      unknown cause.
+- [x] **8.3 `contrib/gate`.** One command that holds the arrival, writes the record and permit, waits
+      for the seal, then creates the job; `gc` marks an abandoned hold `uncovered`.
+  **done when** `make gate` builds and tests the module, and the selector tests pass.
+  **observed** `make gate` green; `TestNeedOfSumsContainersAndTakesTheLargestInit`,
+      `TestShortfallForRefusesCasesThatAreNotReclaims`, `TestShortfallForUsesTheCohortAndTheNode`,
+      `TestCandidatesArePlacedLowerPriorityAndSized`, `TestNewestManifestOnlyCountsASealAfterTheHold`,
+      `TestFindUnitDirUsesThePublishedUnitID`.
+- [x] **8.4 G1, on kind + Kueue.** `held → victim sealed → released → created`, and the victim exits
+      with `lost 0`.
+  **done when** the harness prints `intruder waited X s · victim lost 0 steps` and the job appears
+      only after the victim's manifest changed.
+  **observed** `gate sealed at step 82 after 55.4s: releasing the arrival` · `submitted default/arrival`
+      · victim `Terminating`, arrival `Suspended → Running` · newest manifest `gen-0082` and step file
+      82 → **lost 0 steps**. Harness: `experiments/gate/`.
+- [x] **8.5 G2, fail-open.** `kill -9` the gate during a hold; nothing is blocked, and `gc` marks the
+      record `uncovered`.
+  **done when** a direct submission after the kill preempts as before, and `ckptgate gc` prints
+      `held for … past its deadline, never released`.
+  **observed** `gc: 1 marked uncovered`; the job was never created, so the queue was not blocked;
+      a direct submission after the kill preempted the victim, whose last checkpoint was step 1 and
+      whose step at death was 14 — **lost 13 steps**.
+- [x] **8.6 The page.** `docs/gate.md`, one screen for a small team, and one README line.
+  **done when** `make docs` passes and the page states what the gate does not promise.
+  **observed** the page and index row exist; the README names the path in one paragraph.
+- [x] **8.7 Packaging.** `ckptgate` in `install.sh` and `dist`, with the 0029 version.
+  **done when** `make dist` contains the binary and `install-smoke` prints its version.
+  **observed** `dist: 4 archives, 4 checksums` · `install-smoke` prints `ckptctl v0.21.0` and
+      `ckptgate v0.21.0` · `make install` installs the third binary too. `install.sh` treats it as
+      optional, so a tarball from before it existed still installs the two core binaries.
+
 ## What is demoted or removed (do these as part of P0/P1, not later)
 
 | Thing | Action | Done when | State |

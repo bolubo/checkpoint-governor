@@ -22,6 +22,10 @@ const evictionLikelyLine = 0.90
 // queue is allowed to take it. The previous rule was an OR of four signals, so it fired whenever
 // anything looked tight — including the case where a higher-priority job waits and nothing is taken,
 // which is half the grid.
+//
+// When the world carries a reclaim permit (0021), that verdict replaces the inference for this cause:
+// a fleet that sees the whole node has already selected the units the arrival would take, and a ratio
+// cannot improve on an answer (0030). Deployments without a permit keep the measured conjunction.
 type evictionLikely struct {
 	every      time.Duration
 	line       float64
@@ -72,6 +76,13 @@ func judgeEviction(v UnitView, line float64, fired []string, now time.Time) prod
 	case v.Stale:
 		return produce.Reading{State: produce.Unknown, At: now,
 			Err: fmt.Errorf("the world is %s old, past its own limit", v.Age.Round(time.Second))}
+	case v.Permit != nil && v.Permit.Cause == "reclaim":
+		// The fleet has answered the question this inference approximates. Its verdict is about this
+		// unit and the whole node, so a guess from a ratio cannot improve on it: `granted` means the
+		// reclaim selects this unit to spend the write, and anything else means it selected another.
+		// Only the reclaim cause is read here; a cause this condition does not understand falls
+		// through to the measured conjunction rather than silencing it (decision 0030).
+		return produce.Reading{State: produce.Fresh, Value: v.Permit.Verdict == "granted", At: now}
 	case !v.QueueKnown && !v.RatiosKnown:
 		return produce.Reading{State: produce.Unknown, At: now,
 			Err: fmt.Errorf("no allocation ratio is readable on %s and the cluster publishes no queue numbers", v.Node)}
@@ -98,6 +109,14 @@ func likely(v UnitView, line float64) bool {
 // signals names what fired, which is the guardrail "a 1 must be able to say what it saw".
 func (p evictionLikely) signals(v UnitView) []string {
 	var out []string
+	if v.Permit != nil && v.Permit.Cause == "reclaim" {
+		// What fired is the verdict itself. Naming the rank keeps the sentence specific: "another
+		// unit" is not a fact about this one.
+		if v.Permit.Verdict == "granted" {
+			return []string{fmt.Sprintf("the reclaim selects this unit (rank %d)", v.Permit.Rank)}
+		}
+		return []string{"the reclaim selects another unit on this node"}
+	}
 	if v.HigherPriorityWaiting > 0 {
 		out = append(out, fmt.Sprintf("%d higher-priority waiting", v.HigherPriorityWaiting))
 	}

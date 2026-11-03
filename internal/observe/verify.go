@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Verification is the result of reading a checkpoint back.
@@ -21,12 +22,43 @@ type Verification struct {
 	Bytes int64
 }
 
+// dirOfStep is the directory a step lives in. `step-<N>` answers by name; a generation directory
+// carries its step in the manifest, so the generation number cannot be turned into a name. The lookup
+// costs one ReadDir, which is nothing beside reading the bytes back.
+func dirOfStep(root string, step int64) string {
+	byName := dirName(step)
+	if _, err := os.Stat(filepath.Join(root, byName, ManifestName)); err == nil {
+		return byName
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return byName
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), "gen-") {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(root, e.Name(), ManifestName))
+		if err != nil {
+			continue
+		}
+		var m manifest
+		if json.Unmarshal(raw, &m) != nil {
+			continue
+		}
+		if m.Step == step {
+			return e.Name()
+		}
+	}
+	return byName
+}
+
 // Verify reads one checkpoint and compares every shard with the digest in the manifest.
 //
 // It is O(bytes) by nature — the only measurement in the product that is — so it is called from a
 // sampled loop, never from a scan, and never while a write is in flight.
 func Verify(dir string, step int64) (Verification, error) {
-	name := dirName(step)
+	name := dirOfStep(dir, step)
 	raw, err := os.ReadFile(filepath.Join(dir, name, ManifestName))
 	if err != nil {
 		return Verification{}, err
@@ -37,12 +69,12 @@ func Verify(dir string, step int64) (Verification, error) {
 	}
 
 	var v Verification
-	for _, s := range m.Shards {
+	for i, s := range m.Shards {
 		if s.SHA256 == "" {
 			continue
 		}
 		v.Checked = true
-		path := filepath.Join(dir, name, shardName(s.Rank))
+		path := filepath.Join(dir, name, s.fileName(i))
 		sum, n, err := digest(path)
 		if err != nil {
 			return v, err

@@ -24,20 +24,54 @@ const ManifestName = "manifest.json"
 // belongs to the background verification loop. The structure check is O(shards) and is what makes
 // "sealed" mean something on the hot path.
 type manifest struct {
-	Step   int64 `json:"step"`
-	Shards []struct {
-		Rank   int    `json:"rank"`
-		Bytes  int64  `json:"bytes"`
-		SHA256 string `json:"sha256"`
-	} `json:"shards"`
+	Generation int64           `json:"generation"`
+	Step       int64           `json:"step"`
+	Shards     []manifestShard `json:"shards"`
 }
 
-// stepDir is one `step-<N>` directory as read from disk.
+// manifestShard is one row of the manifest. The documented contract names the file and its size
+// (decision 0025); the older writer used `rank`/`bytes` and implied `rank-<n>.bin`. One verifier reads
+// both, because both dialects exist in this repository's history.
+type manifestShard struct {
+	Name   string `json:"name"`
+	Size   int64  `json:"size"`
+	SHA256 string `json:"sha256"`
+
+	Rank  *int  `json:"rank"`
+	Bytes int64 `json:"bytes"`
+}
+
+// fileName is the shard's path inside the copy: the manifest's own name when it has one, and the
+// rank it names otherwise. A reader that reconstructs `rank-<n>.bin` from an index cannot read a writer
+// that names its shards anything else — the measured case was `rank-0.pt`.
+func (s manifestShard) fileName(index int) string {
+	if s.Name != "" {
+		return s.Name
+	}
+	rank := index
+	if s.Rank != nil {
+		rank = *s.Rank
+	}
+	return shardName(rank)
+}
+
+// length is the shard's size in bytes, in either dialect.
+func (s manifestShard) length() int64 {
+	if s.Name != "" {
+		return s.Size
+	}
+	return s.Bytes
+}
+
+// stepDir is one `step-<N>` or `gen-<n>` directory as read from disk.
 type stepDir struct {
-	name   string
-	step   int64
-	bytes  int64
-	sealed bool
+	name string
+	step int64
+	// generation says the directory is named by generation, not by step: its step comes from the
+	// manifest, because the directory's number is not a step at all.
+	generation bool
+	bytes      int64
+	sealed     bool
 	// changedAt is the newest modification inside the directory. It answers "is this write still
 	// moving", which total elapsed time cannot: a large checkpoint on a busy disk is slow, not dead.
 	changedAt time.Time
@@ -60,9 +94,10 @@ type stepDir struct {
 func readStepDir(root, name string, cache *manifestCache) stepDir {
 	step, ok := parseStepName(name)
 	if !ok {
-		return stepDir{name: name, reason: "the name is not step-<N>"}
+		return stepDir{name: name, reason: "the name is not step-<N> or gen-<n>"}
 	}
-	d := stepDir{name: name, step: step, changedAt: newestChange(filepath.Join(root, name))}
+	gen := strings.HasPrefix(name, "gen-")
+	d := stepDir{name: name, step: step, generation: gen, changedAt: newestChange(filepath.Join(root, name))}
 
 	// One open, one fstat, one read: the manifest's time is needed for the stale-seal rule, and a
 	// second stat for it would be a system call spent on nothing.
@@ -107,7 +142,19 @@ func readStepDir(root, name string, cache *manifestCache) stepDir {
 		cache.put(filepath.Join(root, name, ManifestName), manifestInfo, m)
 	}
 
-	if m.Step != step {
+	// A `step-<N>` directory promises its step in its name, so a manifest that disagrees is broken.
+	// A `gen-<n>` directory is named by generation — the number is not a step — so the manifest is the
+	// only place its step can come from. Comparing the two called every generation-layout copy broken
+	// (measured: `gen-0001` holding step 121 was read as "step 1", and the engine asked for a repair
+	// twelve seconds after a clean seal).
+	if gen {
+		if m.Step <= 0 {
+			d.reason = "the manifest names no step"
+			d.code = FailManifest
+			return d
+		}
+		d.step = m.Step
+	} else if m.Step != step {
 		d.reason = fmt.Sprintf("the manifest says step %d and the directory says %d", m.Step, step)
 		d.code = FailStepName
 		return d
@@ -119,17 +166,18 @@ func readStepDir(root, name string, cache *manifestCache) stepDir {
 	}
 
 	var total int64
-	for _, s := range m.Shards {
-		path := filepath.Join(root, name, shardName(s.Rank))
+	for i, s := range m.Shards {
+		file := s.fileName(i)
+		path := filepath.Join(root, name, file)
 		d.stats++
 		info, err := os.Stat(path)
 		if err != nil {
-			d.reason = fmt.Sprintf("shard %d is missing", s.Rank)
+			d.reason = file + " is missing"
 			d.code = FailShardGone
 			return d
 		}
-		if info.Size() != s.Bytes {
-			d.reason = fmt.Sprintf("shard %d is %d bytes and the manifest says %d", s.Rank, info.Size(), s.Bytes)
+		if info.Size() != s.length() {
+			d.reason = fmt.Sprintf("%s is %d bytes and the manifest says %d", file, info.Size(), s.length())
 			d.code = FailShardShort
 			return d
 		}
@@ -137,11 +185,11 @@ func readStepDir(root, name string, cache *manifestCache) stepDir {
 		// place. Sizes can match while the bytes belong to two different attempts, so this cannot be
 		// caught by counting bytes — only by the order the writer left behind.
 		if info.ModTime().After(manifestInfo.ModTime()) {
-			d.reason = fmt.Sprintf("shard %d changed after the manifest was sealed", s.Rank)
+			d.reason = fmt.Sprintf("%s changed after the manifest was sealed", file)
 			d.code = FailSealStale
 			return d
 		}
-		total += s.Bytes
+		total += s.length()
 	}
 
 	d.sealed = true
