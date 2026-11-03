@@ -268,3 +268,7 @@ reads, publication and controller work add more. `internal/produce/sampler.go` o
 probe is due, and schedules the next read from that round's time, so a delayed round reads later than
 the table says. A polling interval alone does not guarantee a completed checkpoint in time, and a death
 with no announcement has no detection guarantee at all.
+
+Turning these cadences and one checkpoint's write cost into the deadline a platform must grant is
+`docs/operator-notes.md`. That page is for the operator; the numbers a user configures stay periods (a
+duration, or `none`), which is what `no-us` and `with-us` mean.
