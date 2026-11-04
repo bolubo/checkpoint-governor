@@ -1,11 +1,21 @@
 """A Hugging Face Trainer callback, without importing transformers at module load.
 
-    args = TrainingArguments(save_strategy="no", enable_jit_checkpoint=True, logging_steps=10)
+    args = TrainingArguments(
+        save_strategy="steps", save_steps=10_000,   # the alarm is off; the saver stays
+        save_total_limit=2,                         # retention: the framework's
+        eval_strategy="steps", eval_steps=10,       # best tracking: the framework's
+        load_best_model_at_end=True,
+        logging_steps=10,
+        enable_jit_checkpoint=True,
+    )
     trainer = Trainer(..., args=args, callbacks=[GovernorCallback(g)])
 
 The callback answers one question per step: `control.should_save = governor.should_save()`. The Trainer
 then writes its own checkpoint at the next logging step, so the request is honored within `logging_steps`
 — that is the latency bound, and it is why the recipe sets it small.
+
+The saver is never removed: retention, the latest pointer and best tracking stay the framework's. Ours
+is only the timing.
 
 The announced stop is `enable_jit_checkpoint=True`, which is HF's own SIGTERM save and off by default.
 The final write is the job's own save routine; this callback records `ending` so the engine knows the job

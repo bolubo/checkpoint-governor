@@ -80,25 +80,41 @@ def arm_cadence(steps):
 
 
 def arm_policy(steps):
-    """The policy: the framework's cadence off, the callback on, one end write."""
+    """The policy: the framework's own saver kept, its cadence turned off, the callback on.
+
+    The saver is not removed. `save_strategy="steps"` with a `save_steps` the run never reaches turns
+    the alarm off, while `save_total_limit` (retention) and `load_best_model_at_end` (best tracking)
+    keep doing exactly what they did before we were installed.
+    """
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "contrib", "ckpt-policy"))
     from ckpt_policy import Governor
     from ckpt_policy.hf import GovernorCallback
 
     out = tempfile.mkdtemp(prefix="hf-policy-")
-    g = Governor(out, start_engine=True, engine_every="200ms")
+    g = Governor(out, start_engine=True, engine_every="200ms", engine_window="2s")
     try:
-        args = TrainingArguments(
-            output_dir=out, max_steps=steps, save_strategy="no", logging_steps=10,
+        kw = dict(
+            output_dir=out, max_steps=steps,
+            save_strategy="steps", save_steps=10_000,   # the alarm is off; only our requests save
+            save_total_limit=2,                         # the framework's retention stays
+            eval_strategy="steps", eval_steps=10,       # best tracking needs an evaluation at the
+            load_best_model_at_end=True,                # same boundary a request is honoured
+            logging_steps=10,
             report_to=[], use_cpu=True,
         )
+        try:
+            args = TrainingArguments(**kw)
+        except TypeError:  # older transformers name the key `evaluation_strategy`
+            kw["evaluation_strategy"] = kw.pop("eval_strategy")
+            args = TrainingArguments(**kw)
         trainer = Trainer(model=TinyModel(), args=args, train_dataset=TinyDataset(steps),
-                          data_collator=collate, callbacks=[GovernorCallback(g)])
+                          eval_dataset=TinyDataset(100), data_collator=collate,
+                          callbacks=[GovernorCallback(g)])
         with contextlib.redirect_stdout(io.StringIO()):
             trainer.train()
         final = os.path.join(out, "final")
         trainer.save_model(final)      # the job's own end write; weights only (see the page)
-        return out, checkpoints(out), final
+        return out, checkpoints(out), final, trainer
     finally:
         g.close()
 
@@ -109,13 +125,24 @@ def main():
     print()
 
     cadence_dir, cadence = arm_cadence(steps)
-    policy_dir, policy, final = arm_policy(steps)
+    policy_dir, policy, final, trainer = arm_policy(steps)
 
     print(f"framework default (save every 500 steps)   {len(cadence)} checkpoint(s)   {cadence_dir}")
     print(f"ckpt-policy, unconfigured                  {len(policy)} checkpoint(s)   {policy_dir}")
     print(f"end write                                   {os.path.isdir(final)}             {final}")
     print()
-    print("the point: the policy arm wrote no checkpoints while training, because nothing was at risk")
+
+    # What the framework did for us before we were installed, and still does: retention (the
+    # configured limit), the latest pointer, and the best checkpoint. None of these is ours.
+    latest = os.path.basename(policy[-1]) if policy else "(none)"
+    best = getattr(trainer.state, "best_model_checkpoint", None)
+    print("guarantees kept by using the framework's own saver")
+    print(f"  retention   {len(policy)} checkpoint(s), save_total_limit=2")
+    print(f"  latest      {latest}")
+    print(f"  best        {os.path.basename(best) if best else '(none)'}")
+    print()
+    print("the point: the policy arm wrote no checkpoints while calmer than the window, and every write "
+          "it did make went through the framework's own saver")
     return 0
 
 
