@@ -96,8 +96,19 @@ TRIALS=3 sh experiments/real/s3_memory.sh
 N=3: the condition is **1**, the first write lands at step 496-498, the next attempt a few steps later
 is refused by the 60s cooldown, and at 40s the step is 540-541 while the newest copy is at 496-498
 (lost 42-45); `oom_kill` 0 because the hog holds 1.94/2 GiB. The condition is **persistent**, not an
-event; the copy is the protection, and the cooldown is the retry. A real OOM death and a shorter retry
-for a persistent pressure are a design question, not measured here.
+event; the copy is the protection, and the cooldown is the retry.
+
+A real OOM death, after the write the probe asked for (the hog creeps past the limit instead of
+crossing it in one allocation):
+
+```sh
+OOM=1 HOG=2000 CREEP=2 CREEP_MS=500 TRIALS=3 sh experiments/real/s3_memory.sh
+```
+
+N=3: `oom_kill` **1/1/1**, the first write at step 494/494/495, the job and the controller **both
+alive** afterwards (the kernel killed the hog, not the job), and the distance from the write to the
+OOM 148-203 steps (3.0-4.1 s). A persistent pressure keeps the 60 s retry: it is a cost bound, and
+re-deciding every round would turn one alarm into a write storm.
 
 The normal end of a run:
 

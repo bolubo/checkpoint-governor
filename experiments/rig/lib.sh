@@ -21,7 +21,16 @@ TMP=$(mktemp -d)
 BIN="$TMP/bin"
 mkdir -p "$BIN"
 
-cleanup() { rm -rf "$TMP"; }
+# A scenario that mounts a real volume registers it here, so an assertion that exits early still
+# detaches the loop device before the temporary tree is removed. Both lists are space-separated.
+DISK_MOUNTS=""
+DISK_LOOPS=""
+
+cleanup() {
+	for m in $DISK_MOUNTS; do umount "$m" 2>/dev/null || true; done
+	for l in $DISK_LOOPS; do losetup -d "$l" 2>/dev/null || true; done
+	rm -rf "$TMP"
+}
 trap cleanup EXIT INT TERM
 
 # build caches the binaries under experiments/rig/.bin and rebuilds only when a source file is newer.

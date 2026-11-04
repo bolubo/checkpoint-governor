@@ -11,6 +11,13 @@
 # The condition is persistent, not an event. The first write lands; the next attempt a few steps
 # later is refused by the 60s cooldown, and the copy stays where it was. That is the number this
 # script reports, not a death.
+#
+#   OOM=1 HOG=2000 CREEP=2 CREEP_MS=500 sh experiments/real/s3_memory.sh
+#
+# With OOM=1 the hog fills to HOG and then adds CREEP MiB every CREEP_MS until the kernel kills it:
+# pressure that stays at the line before the death, so the probe's write lands first and the OOM is a
+# real one. The row carries memory.events' oom_kill count and whether the job and the controller were
+# still alive. The limit is still the safety: the host is never the victim.
 set -eu
 cd "$(dirname "$0")/../.."
 ROOT=${ROOT:-/root/tmp/s3mem}
@@ -23,6 +30,9 @@ WRITE_MS=${WRITE_MS:-40}
 SHARD=${SHARD:-1048576}
 LIMIT=${LIMIT:-2g}
 HOG=${HOG:-1940}
+OOM=${OOM:-0}
+CREEP=${CREEP:-0}
+CREEP_MS=${CREEP_MS:-500}
 
 mkdir -p "$ROOT/bin" "$ROOT/build"
 CGO_ENABLED=0 "$GO" build -trimpath -o "$ROOT/bin/ckptctl" ./cmd/ckptctl
@@ -36,7 +46,7 @@ mkdir -p /ckpt
 /usr/local/bin/ckptctl run --dir=/ckpt --unit=mem --no-us=none --every=$EVERY > /ckpt/ctl.log 2>&1 &
 /usr/local/bin/ckpttrainer --dir=/ckpt --steps=1000000 --step-ms=$STEP_MS --write-ms=$WRITE_MS --shard-bytes=$SHARD --ranks=2 > /ckpt/train.log 2>&1 &
 sleep 2
-/usr/local/bin/memhog $HOG > /ckpt/mem.log 2>&1 &
+/usr/local/bin/memhog $HOG $CREEP $CREEP_MS > /ckpt/mem.log 2>&1 &
 wait
 EOF
 chmod +x "$ROOT/build/start.sh"
@@ -49,7 +59,7 @@ ENTRYPOINT ["/start.sh"]
 EOF
 "$DOCKER" build -q -t memjob:local "$ROOT/build" >/dev/null
 
-printf 'run  current/limit  oom  action/why  step  seal  lost\n'
+printf 'run  current/limit  oom  alive  action/why  step  seal  lost\n'
 for i in $(seq 1 "$TRIALS"); do
 	dir="$ROOT/job-$i"
 	rm -rf "$dir"; mkdir -p "$dir"
@@ -62,16 +72,35 @@ for i in $(seq 1 "$TRIALS"); do
 		if find "$dir" -name manifest.json -print -quit 2>/dev/null | grep -q .; then break; fi
 		sleep 1; j=$((j + 1))
 	done
+	step_oom=""
+	if [ "$OOM" = "1" ]; then
+		# The write the probe asked for is on disk; now let the hog cross the limit, so a real death
+		# happens *after* it. oom_kill is the kernel's own count, not our reading of it. The step is
+		# read at the moment the count changes, so the loss is measured at the death and not after a
+		# job that survived it kept training.
+		k=0
+		while [ "$k" -lt 60 ]; do
+			o=$("$DOCKER" exec "$name" sh -c 'awk "/oom_kill /{print \$2}" /sys/fs/cgroup/memory.events' 2>/dev/null || echo 0)
+			case "$o" in ''|*[!0-9]*) o=0 ;; esac
+			if [ "$o" -gt 0 ]; then
+				step_oom=$(cat "$dir/.ckpt-governor/step" 2>/dev/null || echo 0)
+				break
+			fi
+			sleep 1; k=$((k + 1))
+		done
+	fi
 	sizes=$("$DOCKER" exec "$name" sh -c 'cat /sys/fs/cgroup/memory.current; cat /sys/fs/cgroup/memory.max' 2>/dev/null || true)
 	cur=$(printf '%s\n' "$sizes" | sed -n 1p)
 	lim=$(printf '%s\n' "$sizes" | sed -n 2p)
 	oom=$("$DOCKER" exec "$name" sh -c 'awk "/oom_kill /{print \$2}" /sys/fs/cgroup/memory.events' 2>/dev/null || echo -)
+	alive=$("$DOCKER" exec "$name" sh -c 'ps -o comm= 2>/dev/null | grep -E "ckptctl|ckpttrainer|memhog" | wc -l' 2>/dev/null || echo -)
 	action=$(grep -o '"action": "[^"]*"' "$dir/.ckpt-governor/state.json" 2>/dev/null | head -1 | cut -d'"' -f4)
 	why=$(grep -o '"why": "[^"]*"' "$dir/.ckpt-governor/state.json" 2>/dev/null | head -1 | cut -d'"' -f4)
 	step=$(cat "$dir/.ckpt-governor/step" 2>/dev/null || echo 0)
+	[ -n "$step_oom" ] && step=$step_oom
 	seal=$(find "$dir" -name manifest.json -printf '%p\n' 2>/dev/null | tail -1 | sed 's#.*/step-##; s#/manifest.json##')
 	[ -z "$seal" ] && seal=0
 	lost=$((step - seal))
-	printf '%s  %s/%s  %s  %s/%s  %s  %s  %s\n' "$i" "$cur" "$lim" "$oom" "$action" "$why" "$step" "$seal" "$lost"
+	printf '%s  %s/%s  %s  %s  %s/%s  %s  %s  %s\n' "$i" "$cur" "$lim" "$oom" "$alive" "$action" "$why" "$step" "$seal" "$lost"
 	"$DOCKER" stop "$name" >/dev/null 2>&1 || true
 done

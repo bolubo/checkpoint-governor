@@ -2,7 +2,7 @@
 
 [![ci](https://github.com/bolubo/checkpoint-governor/actions/workflows/ci.yml/badge.svg)](https://github.com/bolubo/checkpoint-governor/actions/workflows/ci.yml)
 
-Current release: [`v0.21.0`](docs/release-0.21.md) · [changelog](CHANGELOG.md). The Python package
+Current release: [`v0.22.0`](docs/release-0.22.md) · [changelog](CHANGELOG.md). The Python package
 carries the same number.
 
 A backstop for training runs: it watches the named conditions that come before a lost job, asks for a

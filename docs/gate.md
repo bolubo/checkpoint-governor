@@ -54,6 +54,24 @@ submitted  default/train-big
 `--dry-run` prints the first block and stops. `--node` pins the node when the gate's "emptiest node"
 heuristic is not what you want.
 
+## Where it runs
+
+The gate is a submission wrapper, not a daemon: it runs wherever the job would otherwise be
+submitted (a control box, a CI runner, an operator's laptop), with the world volume and the
+checkpoint root visible at the same paths the observer and the controllers use.
+
+```bash
+# same volume, same paths; the gate reads the world the observer writes
+ckptgate submit --manifest=job.yaml \
+  --world=/var/lib/ckpt/world --cluster=lab \
+  --queue=lab --ckpt-root=/checkpoints --deadline=2m
+```
+
+There is nothing to install on the training nodes and no CRD to add. If the submitter cannot see the
+checkpoint volume, the gate cannot match a unit and does not hold; mount the same volume (the
+observer already needs it), or run the wrapper on a node that has it. `--dry-run` is the first
+command to run on a new host: it prints the two blocks and changes nothing.
+
 ## What the victim sees
 
 The victim needs no new configuration. Its controller reads the reclaim record as an announcement —
