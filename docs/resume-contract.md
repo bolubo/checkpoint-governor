@@ -30,12 +30,28 @@ The writer leaves one small file beside the manifest, inside the generation dire
   "state": {"model": true, "optimizer": true, "scheduler": true,
             "rng": true, "dataloader": true, "scaler": false, "ema": false},
   "partial": ["dataloader"],
+  "requires": ["model", "optimizer", "scheduler", "rng"],
+  "target": ".",
+  "caveats": ["data-position-not-saved"],
   "loader": "python resume.py --steps 1"
 }
 ```
 
 - **`state` is what was saved**, one boolean per entry. A `false` is not a defect; it is a fact a resume
   has to be judged against.
+- **`requires` is what this job needs.** Absent means the full restore's five (model, optimizer,
+  scheduler, RNG, dataloader). A framework checkpoint declares four, because a framework re-iterates
+  the dataset instead of saving a data position. Judging it against a dataloader its writer never had
+  would refuse every copy it ever wrote.
+- **`target` is which artifact the declaration describes.** `"."` is the directory it sits in
+  (Hugging Face's `checkpoint-N/`); a file name is a sibling artifact (Lightning's `*.ckpt`, a Composer
+  episode). Absent means `"."`. A path is refused: the file describes one copy, not a search.
+- **`caveats` are facts that do not change the verdict.** Today the closed set is one entry,
+  `data-position-not-saved`: a restore replays or restarts the epoch.
+- **`min_reader` is the build this file needs.** A lower build refuses with the upgrade named, rather
+  than reading a newer file as an older one.
+- **`ext` is the only extension point.** Readers ignore its contents and record that it was there;
+  every other unknown field is still refused.
 - **`partial` is what the loader will skip.** Megatron's `--no-load-optim --no-load-rng` and TorchTitan's
   `exclude_from_loading` are legitimate modes; a partial restore is a *fine-tune*, and the verdict says
   so rather than pretending it is a resume.
@@ -54,17 +70,22 @@ a state the file actually holds, and one JSON value per file. A declaration that
 
 ### Can it be resumed
 
-Required for a full restore: model, optimizer, scheduler, RNG and dataloader position. `scaler` is
-required only for mixed precision, `ema` only when the run keeps one.
+Required for a full restore: model, optimizer, scheduler, RNG and dataloader position — unless the
+declaration says otherwise in `requires`. `scaler` is required only for mixed precision, `ema` only when
+the run keeps one. Only the declared set can make a copy unresumable: a `false` outside it is a fact,
+not a refusal.
 
 | evidence | verdict | exit |
 |---|---|---|
 | all present, same world | `resumable (gen 7, step 512, world 8/8, full state)` | 0 |
+| all **required** present, declaration names four | `resumable (step 1000, requires model, optimizer, scheduler, rng, caveat: the data position is not saved; a restore replays or restarts the epoch)` | 0 |
 | all present, world changed, declared reshardable | `resumable with resharding (8 → 16 ranks)` | 0 |
 | world changed, not reshardable | `not resumable: world changed 8 → 16, and this format is not reshardable` | 1 |
 | a required state absent | `not resumable: optimizer state absent` | 1 |
 | a required state skipped by the loader | `not resumable: declared partial (optimizer) — this is a fine-tune, not a resume` | 1 |
-| sealed, no declaration | `unknown: sealed, but nobody said what it holds` | 2 |
+| sealed, no declaration, no probe | `unknown: no declaration beside gen-0512 (and no probe_cmd to ask)` | 2 |
+| a directory with no completion mark | `unknown: checkpoint-1000 is not sealed` | 2 |
+| a probe that failed or timed out | `unknown: probe_cmd failed: …` | 2 |
 | nothing sealed yet | `unknown: nothing sealed yet` | 2 |
 | a declaration that does not parse, or a format we cannot judge | `unknown: …` | 2 |
 
@@ -121,6 +142,42 @@ receipt may print with the word.
   the checkpoint is **refused**, not passed: changing the evidence is not a test of it;
 - a loader that reports step 0 is `not restorable: the loader reported step 0 (declared 512)` — the
   machine-checkable form of "it resumed from scratch".
+
+### Which copy is judged
+
+A job directory may hold copies from several writers. `resumable`, `status` and the receipt all ask
+the same finder, so they cannot name different copies.
+
+| layout | how it is recognised | sealed when |
+|---|---|---|
+| `gen-N/` (this product) | directory, `manifest.json` | the manifest exists |
+| `step-N/` (the older writer) | directory, `manifest.json` | the manifest exists |
+| `checkpoint-N/` (Hugging Face) | directory name | `trainer_state.json` exists, or a declaration does |
+| `*.ckpt` (Lightning) | file suffix | the file is non-zero |
+| a Composer episode | `<file>.resume.json` beside it | the declaration exists and the artifact does |
+| a user layout | `layout.json`'s `glob` | a declaration, or a successful probe |
+
+Preference is fixed: `gen-*` first, then the highest step; at the same step, `checkpoint-*` beats
+`*.ckpt`, which beats a Composer episode. A directory without a completion mark and without a
+declaration is not sealed — it is a write in flight, and it is reported as `unknown: … is not sealed`
+rather than counted as the newest copy. Two layouts at the same step are resolved by the same rule,
+and `status` adds `note: step N exists as A and B; judged …` so the decision is not silent.
+
+When the finder cannot name the layout at all, the user makes it known with
+`.ckpt-governor/layout.json`:
+
+```json
+{
+  "glob": "weights-*",
+  "step_regex": "weights-(\\d+)",
+  "declaration": "resume.json",
+  "probe_cmd": "python probe.py --dir {dir}"
+}
+```
+
+`probe_cmd` is the last glue: it must print `{"state": {...}, "requires": [...]}`, it runs only because
+the user wrote it here, and it has five seconds. A probe that fails or times out is `unknown: probe_cmd
+failed: …` — never "not resumable".
 
 ## 3. What the receipt may say
 

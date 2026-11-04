@@ -8,11 +8,21 @@ it is given and records what they claim, exactly the way the Go writer does, so 
 import hashlib
 import json
 import os
+import re
 
 from .glue import write_atomic
 
 TAIL_BYTES = 1 << 20
 RESUME_SCHEMA = 1
+
+# `rank3-model.bin` names its writer; a name without it belongs to whoever wrote it (single-writer).
+_MEMBER = re.compile(r"rank(\d+)[-_.]")
+
+
+def member_of(name: str) -> int | None:
+    """Which rank a shard name names, or None when the writer left no such marker."""
+    m = _MEMBER.match(name)
+    return int(m.group(1)) if m else None
 
 
 def sha256_file(path: str) -> str:
@@ -36,17 +46,25 @@ def tail_sha256(path: str, size: int) -> str:
 
 def build_manifest(generation: int, step: int, sealed_at: str, writer: str, shards: list[str],
                    base: str) -> dict:
-    """One manifest for one generation. `shards` are paths relative to `base` (the generation dir)."""
+    """One manifest for one generation. `shards` are paths relative to `base` (the generation dir).
+
+    A shard named `rank3-model.bin` records `member: 3`: the completeness check then knows which ranks
+    are represented, instead of trusting a world size the writer only claimed.
+    """
     entries = []
     for name in shards:
         path = os.path.join(base, name)
         size = os.path.getsize(path)
-        entries.append({
+        entry = {
             "name": name,
             "size": size,
             "sha256": sha256_file(path),
             "tailSha256": tail_sha256(path, size),
-        })
+        }
+        member = member_of(name)
+        if member is not None:
+            entry["member"] = member
+        entries.append(entry)
     return {
         "generation": generation,
         "step": step,
@@ -64,7 +82,7 @@ def write_manifest(gen_dir: str, manifest: dict) -> None:
 
 def write_resume(gen_dir: str, *, generation: int, step: int, format: str, world: dict,
                  state: dict, partial=None, loader=None, requires=None, target=None,
-                 file_name: str = "resume.json") -> None:
+                 caveats=None, file_name: str = "resume.json") -> None:
     """The declaration, written beside the manifest. The reader treats it as untrusted input.
 
     `requires` is which states a resume of *this* job needs; absent means the reader's default five.
@@ -93,6 +111,8 @@ def write_resume(gen_dir: str, *, generation: int, step: int, format: str, world
         doc["requires"] = list(requires)
     if target:
         doc["target"] = target
+    if caveats:
+        doc["caveats"] = list(caveats)
     if loader:
         doc["loader"] = loader
     raw = (json.dumps(doc, indent=2) + "\n").encode("utf-8")

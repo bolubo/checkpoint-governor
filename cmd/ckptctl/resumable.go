@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/bolubo/checkpoint-governor/internal/layout"
 	"github.com/bolubo/checkpoint-governor/internal/resume"
 )
 
@@ -33,28 +34,51 @@ func runResumable(args []string, out io.Writer) int {
 		return 2
 	}
 
-	sealed, ok, err := resume.NewestSealed(*dir)
-	if err != nil {
-		fmt.Fprintf(out, "unknown: cannot list generations: %v\n", err)
+	asked := resume.World{Ranks: *world, TP: *tp, PP: *pp, DP: *dp}
+	cfg, _, cfgErr := layout.LoadConfig(*dir)
+	if cfgErr != nil {
+		fmt.Fprintf(out, "unknown: %v\n", cfgErr)
 		return 2
 	}
+
+	var v resume.Verdict
 	if *gen != 0 {
-		sealed, ok, err = resume.Generation(*dir, *gen)
+		// `--generation` names one of our own sealed copies. A framework checkpoint has no generation
+		// number to name; asking for one is a misreading, and saying so beats picking some copy.
+		res, err := layout.Scan(*dir, cfg)
+		if err != nil {
+			fmt.Fprintf(out, "unknown: cannot list copies: %v\n", err)
+			return 2
+		}
+		if !res.Found || res.Newest.Kind != layout.KindGen {
+			fmt.Fprintf(out, "unknown: --generation is only for gen-* copies (newest is %s, a %s)\n",
+				res.Newest.Artifact(), res.Newest.Kind)
+			return 2
+		}
+		sealed, ok, err := resume.Generation(*dir, *gen)
 		if err != nil {
 			fmt.Fprintf(out, "unknown: cannot list generations: %v\n", err)
 			return 2
 		}
+		if !ok {
+			fmt.Fprintf(out, "unknown: gen %d is not sealed\n", *gen)
+			return 2
+		}
+		v = layout.Judge(layout.Copy{Dir: sealed.Dir, Target: ".", Step: *gen, Kind: layout.KindGen, Sealed: true}, cfg, asked)
+	} else {
+		res, err := layout.Scan(*dir, cfg)
+		if err != nil {
+			fmt.Fprintf(out, "unknown: cannot list copies: %v\n", err)
+			return 2
+		}
+		if !res.Found && res.Unsealed == nil {
+			// No copy is not a bad copy: there is nothing to restore from yet, and saying "not
+			// resumable" would blame the writer for a write that has not started.
+			fmt.Fprintln(out, "unknown: nothing sealed yet")
+			return 2
+		}
+		v = res.Verdict(cfg, asked)
 	}
-	if !ok {
-		// No sealed copy is not a bad copy: there is nothing to restore from yet, and saying "not
-		// resumable" would blame the writer for a write that has not finished.
-		fmt.Fprintln(out, "unknown: nothing sealed yet")
-		return 2
-	}
-
-	f, declared, loadErr := resume.Load(sealed.Dir)
-	asked := resume.World{Ranks: *world, TP: *tp, PP: *pp, DP: *dp}
-	v := resume.Judge(f, declared, loadErr, asked)
 
 	if *asJSON {
 		raw, err := json.MarshalIndent(v, "", "  ")

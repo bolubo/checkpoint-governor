@@ -84,6 +84,11 @@ type Copy struct {
 	// "Incomplete" is a finer kind of broken (0026): the bytes are whole and the work cannot
 	// continue. It is carried on the copy because that is the fact it belongs to.
 	Missing []string
+	// Kind is which layout wrote this copy: "gen" for our own directories, "hf-checkpoint",
+	// "lightning-ckpt", "composer-ep" for a framework's. Empty means the observer listed it without
+	// saying, which is every copy that existed before this field. Retention only ever removes our
+	// own layouts, so the zero value keeps every old decision identical.
+	Kind string
 }
 
 // WriteKind is what a checkpoint write produces. Empty means full, so a producer that only writes

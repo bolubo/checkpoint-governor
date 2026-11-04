@@ -53,7 +53,8 @@ class GovernorCallback(_TrainerCallback):
         return control
 
     def on_train_end(self, args, state, control, **kwargs):
-        self.governor.ending()
+        if self.governor.rank0:
+            self.governor.ending()
         return control
 
     def on_save(self, args, state, control, **kwargs):
@@ -75,7 +76,8 @@ class GovernorCallback(_TrainerCallback):
             # and skipped. Saying so is a fact, and a restore is judged against it.
             "dataloader": False,
         }
-        if os.path.isdir(out):
+        if os.path.isdir(out) and self.governor.rank0:
             self.governor.declare(out, step=step, state=held, format="hf-trainer",
-                                  requires=["model", "optimizer", "scheduler", "rng"])
+                                  requires=["model", "optimizer", "scheduler", "rng"],
+                                  caveats=["data-position-not-saved"])
         return control

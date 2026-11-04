@@ -12,6 +12,7 @@ import (
 
 	"github.com/bolubo/checkpoint-governor/internal/observe"
 	"github.com/bolubo/checkpoint-governor/internal/policy"
+	"github.com/bolubo/checkpoint-governor/internal/resume"
 )
 
 func fixture(t *testing.T, name string) string {
@@ -33,7 +34,7 @@ func TestResumablePrintsTheVerdictAndTheExitCode(t *testing.T) {
 		{"reshardable", []string{"--world=16"}, "resumable with resharding (8 → 16 ranks)", 0},
 		{"full", []string{"--world=16"}, "not resumable: world changed 8 → 16", 1},
 		{"unknown-format", nil, `unknown: resume.json: format "nemo"`, 2},
-		{"no-resume", nil, "unknown: sealed, but nobody said what it holds", 2},
+		{"no-resume", nil, "unknown: no declaration beside gen-0512 (and no probe_cmd to ask)", 2},
 		{"invalid", nil, "unknown: resume.json:", 2},
 	}
 	for _, c := range cases {
@@ -48,6 +49,107 @@ func TestResumablePrintsTheVerdictAndTheExitCode(t *testing.T) {
 				t.Fatalf("output %q does not contain %q", out.String(), c.want)
 			}
 		})
+	}
+}
+
+// The command a user runs must answer for a framework's own layout, not only for `gen-*`. This is the
+// bug the product had: the copies were on disk and the receipt said nothing.
+func TestResumableReadsAFrameworkLayout(t *testing.T) {
+	t.Run("hugging face", func(t *testing.T) {
+		root := t.TempDir()
+		dir := filepath.Join(root, "checkpoint-1000")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "trainer_state.json"), []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := resume.Write(dir, resume.File{
+			Schema: resume.Schema, Generation: 1000, Step: 1000, Format: resume.FormatHFTrainer,
+			World:    resume.World{Ranks: 1},
+			State:    resume.State{Model: true, Optimizer: true, Scheduler: true, RNG: true},
+			Requires: []string{"model", "optimizer", "scheduler", "rng"},
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		var out bytes.Buffer
+		if code := runResumable([]string{"--dir=" + root}, &out); code != 0 {
+			t.Fatalf("exit %d, want 0: %s", code, out.String())
+		}
+		want := "resumable (step 1000, requires model, optimizer, scheduler, rng)"
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("output %q does not contain %q", out.String(), want)
+		}
+		// The receipt and the command ask the same finder, so they cannot describe two copies.
+		if line := ResumeLine(root); !strings.Contains(line, "resume: "+want) {
+			t.Fatalf("receipt line = %q, want it to agree with resumable", line)
+		}
+	})
+
+	t.Run("lightning", func(t *testing.T) {
+		root := t.TempDir()
+		if err := os.WriteFile(filepath.Join(root, "last.ckpt"), []byte("weights"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := resume.Write(root, resume.File{
+			Schema: resume.Schema, Generation: 7, Step: 7, Format: resume.FormatOther,
+			World:    resume.World{Ranks: 1},
+			State:    resume.State{Model: true, Optimizer: true, Scheduler: true, RNG: true},
+			Requires: []string{"model", "optimizer", "scheduler", "rng"},
+			Target:   "last.ckpt",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(filepath.Join(root, "resume.json"), filepath.Join(root, "last.ckpt.resume.json")); err != nil {
+			t.Fatal(err)
+		}
+
+		var out bytes.Buffer
+		if code := runResumable([]string{"--dir=" + root}, &out); code != 0 {
+			t.Fatalf("exit %d, want 0: %s", code, out.String())
+		}
+		if !strings.Contains(out.String(), "resumable (step 7, requires model") {
+			t.Fatalf("output %q does not name the step", out.String())
+		}
+		if line := ResumeLine(root); !strings.Contains(line, "resume: resumable (step 7, requires model") {
+			t.Fatalf("receipt line = %q, want it to agree with resumable", line)
+		}
+	})
+
+	t.Run("a copy without a declaration is unknown, not bad", func(t *testing.T) {
+		root := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(root, "checkpoint-1000"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "checkpoint-1000", "trainer_state.json"), []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		if code := runResumable([]string{"--dir=" + root}, &out); code != 2 {
+			t.Fatalf("exit %d, want 2: %s", code, out.String())
+		}
+		if !strings.Contains(out.String(), "unknown: no declaration beside checkpoint-1000") {
+			t.Fatalf("output %q does not name the missing declaration", out.String())
+		}
+	})
+}
+
+// `--generation` names one of our own sealed copies; a framework layout has no such number.
+func TestGenerationFlagIsOnlyForGenCopies(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "checkpoint-1000"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "checkpoint-1000", "trainer_state.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if code := runResumable([]string{"--dir=" + root, "--generation=1000"}, &out); code != 2 {
+		t.Fatalf("exit %d, want 2: %s", code, out.String())
+	}
+	if !strings.Contains(out.String(), "--generation is only for gen-* copies") {
+		t.Fatalf("output %q does not explain the flag", out.String())
 	}
 }
 

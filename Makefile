@@ -173,6 +173,10 @@ test:
 docs:
 	$(GO) test ./cmd/ckptctl -run 'TestDocsHaveNoDeadLinks|TestCommentsCiteDecisionsNotPagePaths'
 
+# The claim table: every outbound promise names a test that exists (hack/claims.tsv).
+test-claims:
+	sh hack/claims.sh
+
 # The 60-second loop a person runs while working, and exactly what CI runs for any change that is not
 # documentation: format (checked, not written), vet, build, every unit test, the docs pins.
 fast: fmt-check vet build test docs

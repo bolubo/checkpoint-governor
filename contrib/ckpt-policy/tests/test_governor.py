@@ -164,7 +164,7 @@ class TestResumedAndGlue(unittest.TestCase):
 class TestTheCallbackWritesOnlyGlue(unittest.TestCase):
     """The whole point of 0025: the bytes belong to the library. This test is the mechanical proof."""
 
-    ALLOWED = {"boot", "members", "expected-bytes", "step-baseline", "step", "step-rate",
+    ALLOWED = {"boot", "members", "ranks", "expected-bytes", "step-baseline", "step", "step-rate",
                "seconds-left", "stopping", "ending", "resumed-generation", "resumed-step",
                "load-seconds", "state.json"}
     ALLOWED_IN_GENERATION = {"manifest.json", "resume.json"}
@@ -562,8 +562,219 @@ class TestComposerCallback(unittest.TestCase):
             cb = composer_module.GovernorCallback(g)
             cb.batch_end(object(), None)
             self.assertEqual(len(strict_calls), 1, "the write still happened")
-            self.assertEqual(len(cb.notes), 1, "and the lost guarantee was named")
+            self.assertEqual(len(cb.notes), 2, "and both lost guarantees were named")
             self.assertIn("latest pointer are yours", cb.notes[0])
+            self.assertIn("no declaration was written", cb.notes[1])
+
+
+class TestDeclare(unittest.TestCase):
+    """`declare` writes the one statement a restore is judged against, in one of two places."""
+
+    def test_a_directory_gets_resume_json_with_a_dot_target(self):
+        with tempfile.TemporaryDirectory() as root:
+            ckpt = os.path.join(root, "checkpoint-1000")
+            os.makedirs(ckpt)
+            g = Governor(root)
+            g.declare(ckpt, step=1000, format="hf-trainer",
+                      state={"model": True, "optimizer": True, "scheduler": True,
+                             "rng": True, "dataloader": False},
+                      requires=["model", "optimizer", "scheduler", "rng"],
+                      caveats=["data-position-not-saved"])
+            with open(os.path.join(ckpt, "resume.json"), encoding="utf-8") as f:
+                doc = json.load(f)
+            self.assertEqual(doc["target"], ".")
+            self.assertEqual(doc["requires"], ["model", "optimizer", "scheduler", "rng"])
+            self.assertEqual(doc["caveats"], ["data-position-not-saved"])
+            self.assertFalse(doc["state"]["dataloader"])
+
+    def test_an_artifact_gets_a_declaration_beside_it(self):
+        with tempfile.TemporaryDirectory() as root:
+            ckpt = os.path.join(root, "last.ckpt")
+            with open(ckpt, "w", encoding="utf-8") as f:
+                f.write("weights")
+            g = Governor(root)
+            g.declare(ckpt, step=7)
+            path = ckpt + ".resume.json"
+            self.assertTrue(os.path.exists(path), path)
+            with open(path, encoding="utf-8") as f:
+                doc = json.load(f)
+            self.assertEqual(doc["target"], "last.ckpt")
+            self.assertEqual(doc["requires"], ["model", "optimizer", "scheduler", "rng"])
+
+    def test_an_older_reader_sees_the_same_schema(self):
+        """The file stays schema 1: a new field is optional, never a new version."""
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            g.declare(root, step=3)
+            with open(os.path.join(root, "resume.json"), encoding="utf-8") as f:
+                doc = json.load(f)
+            self.assertEqual(doc["schema"], 1)
+
+
+class _Args:
+    def __init__(self, output_dir, save_only_model=False):
+        self.output_dir = output_dir
+        self.save_only_model = save_only_model
+
+
+class _State:
+    global_step = 1000
+
+
+class _Control:
+    should_save = False
+
+
+class TestHuggingFaceDeclares(unittest.TestCase):
+    def test_on_save_says_four_states_and_no_data_position(self):
+        from ckpt_policy.hf import GovernorCallback
+
+        with tempfile.TemporaryDirectory() as root:
+            ckpt = os.path.join(root, "checkpoint-1000")
+            os.makedirs(ckpt)
+            cb = GovernorCallback(Governor(root))
+            cb.on_save(_Args(root), _State(), _Control())
+            with open(os.path.join(ckpt, "resume.json"), encoding="utf-8") as f:
+                doc = json.load(f)
+            self.assertEqual(doc["requires"], ["model", "optimizer", "scheduler", "rng"])
+            self.assertFalse(doc["state"]["dataloader"])
+            self.assertIn("data-position-not-saved", doc["caveats"])
+
+    def test_save_only_model_turns_optimizer_into_a_fact(self):
+        from ckpt_policy.hf import GovernorCallback
+
+        with tempfile.TemporaryDirectory() as root:
+            ckpt = os.path.join(root, "checkpoint-1000")
+            os.makedirs(ckpt)
+            cb = GovernorCallback(Governor(root))
+            cb.on_save(_Args(root, save_only_model=True), _State(), _Control())
+            with open(os.path.join(ckpt, "resume.json"), encoding="utf-8") as f:
+                doc = json.load(f)
+            for name in ("optimizer", "scheduler", "rng"):
+                self.assertFalse(doc["state"][name], name)
+
+
+class TestLightningDeclares(unittest.TestCase):
+    def test_the_saver_path_is_declared(self):
+        from ckpt_policy.lightning import GovernorCallback
+
+        class Saver:
+            dirpath = ""
+
+            def save_checkpoint(self, trainer):
+                with open(os.path.join(self.dirpath, "ckpt-step-5.ckpt"), "w", encoding="utf-8") as f:
+                    f.write("weights")
+
+        class Trainer:
+            global_step = 5
+            default_root_dir = ""
+
+        with tempfile.TemporaryDirectory() as root:
+            plan(root, generation=5)
+            g = Governor(root)
+            saver = Saver()
+            saver.dirpath = root
+            cb = GovernorCallback(g, saver=saver)
+            trainer = Trainer()
+            trainer.default_root_dir = root
+            cb.on_train_batch_end(trainer, None)
+            path = os.path.join(root, "ckpt-step-5.ckpt.resume.json")
+            self.assertTrue(os.path.exists(path), path)
+            with open(path, encoding="utf-8") as f:
+                doc = json.load(f)
+            self.assertEqual(doc["target"], "ckpt-step-5.ckpt")
+            self.assertEqual(doc["step"], 5)
+            self.assertEqual(doc["requires"], ["model", "optimizer", "scheduler", "rng"])
+
+
+class TestComposerDeclares(unittest.TestCase):
+    def _install_fake_composer(self, run_dir):
+        import types
+
+        mod = types.ModuleType("composer.utils.checkpoint")
+
+        def save_checkpoint(state, **kwargs):
+            name = kwargs["filename"].format(epoch=state.epoch, batch=state.batch, rank=state.rank)
+            with open(os.path.join(run_dir, name), "w", encoding="utf-8") as f:
+                f.write("shard")
+
+        mod.save_checkpoint = save_checkpoint
+        sys.modules["composer"] = types.ModuleType("composer")
+        sys.modules["composer.utils"] = types.ModuleType("composer.utils")
+        sys.modules["composer.utils.checkpoint"] = mod
+        return ["composer", "composer.utils", "composer.utils.checkpoint"]
+
+    def _state(self, run_dir, rank):
+        import types
+
+        state = types.SimpleNamespace(epoch=1, batch=7, rank=rank, run_dir=run_dir)
+        return state
+
+    def test_rank_zero_writes_one_declaration_beside_the_episode(self):
+        from ckpt_policy.composer import GovernorCallback
+
+        with tempfile.TemporaryDirectory() as root:
+            keys = self._install_fake_composer(root)
+            try:
+                plan(root, generation=9)
+                g = Governor(root)
+                cb = GovernorCallback(g)
+                cb.batch_end(self._state(root, 0), None)
+                path = os.path.join(root, "ep1-ba7-rank0.resume.json")
+                self.assertTrue(os.path.exists(path), path)
+                with open(path, encoding="utf-8") as f:
+                    doc = json.load(f)
+                self.assertEqual(doc["target"], "ep1-ba7-rank0")
+                self.assertEqual(doc["step"], 7)
+                self.assertEqual(doc["requires"], ["model", "optimizer", "scheduler", "rng"])
+            finally:
+                for key in keys:
+                    sys.modules.pop(key, None)
+
+    def test_a_non_leader_does_not_speak_for_the_episode(self):
+        from ckpt_policy.composer import GovernorCallback
+
+        with tempfile.TemporaryDirectory() as root:
+            keys = self._install_fake_composer(root)
+            try:
+                plan(root, generation=9)
+                g = Governor(root)
+                cb = GovernorCallback(g)
+                cb.batch_end(self._state(root, 1), None)
+                self.assertFalse(os.path.exists(os.path.join(root, "ep1-ba7-rank1.resume.json")))
+            finally:
+                for key in keys:
+                    sys.modules.pop(key, None)
+
+
+class TestRankOwnership(unittest.TestCase):
+    """The leader owns every team-level file; a rank owns only its own `ranks/<rank>/step`."""
+
+    def test_a_non_leader_writes_only_its_own_step(self):
+        with tempfile.TemporaryDirectory() as root:
+            lead = Governor(root, rank=0)
+            follower = Governor(root, rank=1)
+            lead.step(100)
+            follower.step(96)
+            self.assertEqual(glue(root, "step"), "100")
+            with open(os.path.join(root, BASE_DIR, "ranks", "1", "step"), encoding="utf-8") as f:
+                self.assertEqual(f.read().strip(), "96")
+            with open(os.path.join(root, BASE_DIR, "ranks", "0", "step"), encoding="utf-8") as f:
+                self.assertEqual(f.read().strip(), "100", "the leader reports its own step too")
+
+    def test_a_non_leader_is_refused_a_team_level_file(self):
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root, rank=1)
+            for call in (g.ending, g.on_sigterm, lambda: g.declare(root, step=1)):
+                with self.assertRaises(RuntimeError) as ctx:
+                    call()
+                self.assertIn("lead-only file", str(ctx.exception))
+
+    def test_rank0_is_the_lead_whatever_the_number(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.assertTrue(Governor(root, rank=0).rank0)
+            self.assertFalse(Governor(root, rank0=False).rank0)
+            self.assertEqual(Governor(root, rank0=False).rank, 1)
 
 
 if __name__ == "__main__":

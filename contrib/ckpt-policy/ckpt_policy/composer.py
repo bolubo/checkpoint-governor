@@ -13,6 +13,14 @@ written.
 """
 
 
+import os
+
+from .governor import FRAMEWORK_REQUIRES
+
+# A framework checkpoint has never held a data-loader position: the dataset is re-iterated and skipped.
+DATA_CAVEAT = ["data-position-not-saved"]
+
+
 class GovernorCallback:
     """Composer Callback-compatible by duck typing: `batch_end` and `fit_end` are the two hooks used."""
 
@@ -48,8 +56,32 @@ class GovernorCallback:
             self.notes.append(
                 "composer: this version's save_checkpoint does not accept "
                 "num_checkpoints_to_keep/latest_filename; retention and the latest pointer are yours")
+        # Only rank 0 says what the copy holds: the declaration describes the episode, and one file
+        # per shard would let a reader pick a rank's view as if it were the whole.
+        if getattr(state, "rank", 0) == 0:
+            path = self._artifact_path(state)
+            if path and os.path.exists(path):
+                self.governor.declare(path, step=int(getattr(state, "batch", 0) or 0),
+                                      format="other", requires=list(FRAMEWORK_REQUIRES),
+                                      caveats=DATA_CAVEAT)
+            else:
+                self.notes.append(
+                    "composer: cannot name the artifact this save wrote; no declaration was written")
         self.governor.served(gen)
         self.saves += 1
 
     def fit_end(self, state, logger):
-        self.governor.ending()
+        if self.governor.rank0:
+            self.governor.ending()
+
+    def _artifact_path(self, state):
+        """The file `save_checkpoint` wrote, from the template and the state's own numbers."""
+        try:
+            name = self.filename.format(
+                epoch=getattr(state, "epoch", 0),
+                batch=getattr(state, "batch", 0),
+                rank=getattr(state, "rank", 0),
+            )
+        except (KeyError, IndexError, ValueError):
+            return ""
+        return os.path.join(str(getattr(state, "run_dir", ".")), name)

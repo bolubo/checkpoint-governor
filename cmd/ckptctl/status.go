@@ -66,6 +66,9 @@ func runStatus(args []string, out io.Writer) int {
 	if line := ResumeLine(dir); line != "" {
 		fmt.Fprintln(out, line)
 	}
+	if note := ResumeNote(dir); note != "" {
+		fmt.Fprintln(out, note)
+	}
 
 	// What the policy could not measure is part of the answer: a person reading a plan has to know
 	// which of its inputs were absent.

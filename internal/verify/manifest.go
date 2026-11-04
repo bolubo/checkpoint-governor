@@ -41,6 +41,10 @@ type Shard struct {
 	Name   string `json:"name"`
 	Size   int64  `json:"size"`
 	SHA256 string `json:"sha256"`
+	// Member is which rank wrote this shard, when the writer knows. Zero is the single-writer answer
+	// and every manifest written before this field had one; a multi-rank copy declares `world.ranks`
+	// and can then be checked for every member's shard (0026).
+	Member int `json:"member,omitempty"`
 	// TailSHA256 is the hash of the **last** min(size, TailBytes) bytes.
 	//
 	// It exists because the cheap check needs something to compare against, and a kill leaves its damage

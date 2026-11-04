@@ -30,6 +30,14 @@ retention and the `latest-rank{rank}` pointer are not lost.
 | retention | `num_checkpoints_to_keep` passed through |
 | newest pointer | `latest_filename` passed through |
 
+## What it declares
+
+After every write, rank 0 writes `<artifact>.resume.json` beside the episode — `target` names the
+artifact, `requires` is the four framework states, and the caveat `data-position-not-saved` is
+recorded. Other ranks do not write a declaration: one file per shard would let a reader pick a rank's
+view as if it were the whole. If the installed Composer cannot name the file it wrote, the callback
+records that in `cb.notes` instead of writing a declaration about something else.
+
 ## What happens
 
 | event | who writes | when |
@@ -44,8 +52,8 @@ machine without Composer — the package keeps zero runtime dependencies.
 
 ## Two things to know
 
-1. **The file is Composer's layout, not our `gen-N`.** This integration decides *when*; `ckptctl
-   resumable` still applies to the layouts our writer produces.
+1. **The file is Composer's layout, not our `gen-N`.** The declaration beside the episode is what makes
+   `ckptctl resumable` able to answer for it; our own writer is not involved.
 2. **`CheckpointSaver`'s two guarantees are passed back explicitly.** If the installed Composer version's
    `save_checkpoint` does not accept `num_checkpoints_to_keep`/`latest_filename`, the callback still
    makes the write and records why in `cb.notes` — it never pretends the pointer was written.

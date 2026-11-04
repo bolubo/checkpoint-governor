@@ -9,16 +9,61 @@ import (
 func writeGlue(t *testing.T, dir, name, body string) {
 	t.Helper()
 	base := filepath.Join(dir, ".ckpt-governor")
-	if err := os.MkdirAll(base, 0o755); err != nil {
+	path := filepath.Join(base, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(base, name), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// A job that has written nothing has not been stopped and has not declared a size: every flag is
-// false, and no field pretends to be a measurement.
+// A gang: each rank's own step, the slowest one is the unit's progress, and a rank that started but
+// never reported is named — never a reason to skip a write.
+func TestGangProgressIsTheSlowestRank(t *testing.T) {
+	dir := t.TempDir()
+	writeGlue(t, dir, "ranks/0/step", "100")
+	writeGlue(t, dir, "ranks/1/step", "96")
+	writeGlue(t, dir, "ranks/2/step", "98")
+	g := ReadGlue(dir)
+	if len(g.Members) != 3 {
+		t.Fatalf("members = %+v", g.Members)
+	}
+	min, ok := g.Progress()
+	if !ok || min != 96 {
+		t.Fatalf("progress = %d, %v; want 96", min, ok)
+	}
+	if g.Spread() != 4 {
+		t.Fatalf("spread = %d, want 4", g.Spread())
+	}
+	if silent := g.Silent(); len(silent) != 0 {
+		t.Fatalf("silent = %v, want none", silent)
+	}
+
+	// A rank that exists with no step is silent, and the others still make progress.
+	if err := os.Remove(filepath.Join(dir, ".ckpt-governor", "ranks", "1", "step")); err != nil {
+		t.Fatal(err)
+	}
+	g = ReadGlue(dir)
+	if silent := g.Silent(); len(silent) != 1 || silent[0] != 1 {
+		t.Fatalf("silent = %v, want [1]", silent)
+	}
+	if min, ok := g.Progress(); !ok || min != 98 {
+		t.Fatalf("progress = %d, %v; want 98 (only reporting ranks)", min, ok)
+	}
+}
+
+// A single-writer job has no `ranks/` directory: every answer stays exactly as it was.
+func TestASingleWriterHasNoMembers(t *testing.T) {
+	g := ReadGlue(t.TempDir())
+	if len(g.Members) != 0 {
+		t.Fatalf("members = %+v, want none", g.Members)
+	}
+	if _, ok := g.Progress(); ok {
+		t.Fatal("a single writer reported gang progress")
+	}
+}
+
 func TestGlueIsEmptyWithoutFiles(t *testing.T) {
 	g := ReadGlue(t.TempDir())
 	if g.HasExpected || g.HasSeconds || g.StopRequested || g.MayExit {

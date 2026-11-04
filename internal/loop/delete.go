@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bolubo/checkpoint-governor/internal/layout"
 	"github.com/bolubo/checkpoint-governor/internal/policy"
 )
 
@@ -79,7 +80,17 @@ func retireBelow(dir string, oldest int64, keep int, copies []policy.Copy, now t
 func retirableBelow(oldest int64, keep int, copies []policy.Copy) []policy.Copy {
 	// A decision may say "keep the newest N" without naming a step (risk-v1 keeps the count and
 	// drops the step threshold). Zero means no step rule, not "keep everything".
-	ordered := append([]policy.Copy(nil), copies...)
+	//
+	// Retention touches our own directories only. A framework's checkpoint is not ours to remove:
+	// its retention rule is the framework's, and a copy we appended for judging must never be
+	// counted as one of ours when deciding what to keep (0026).
+	ordered := make([]policy.Copy, 0, len(copies))
+	for _, c := range copies {
+		if c.Kind != "" && c.Kind != layout.KindGen {
+			continue
+		}
+		ordered = append(ordered, c)
+	}
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Step > ordered[j].Step })
 	if len(ordered) == 0 {
 		return nil

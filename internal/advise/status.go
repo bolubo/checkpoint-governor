@@ -112,6 +112,16 @@ type Status struct {
 	// round that read it. A view must not probe the disk (0026), so the answer travels in the ledger.
 	ResumeStep    int64    `json:"resumeStep,omitempty"`
 	ResumeMissing []string `json:"resumeMissing,omitempty"`
+	// ResumeKind names the layout that wrote the copy the verdict is about, so a report can say
+	// "HF's checkpoint-1000" instead of a bare number (0026).
+	ResumeKind string `json:"resumeKind,omitempty"`
+	// Membership is what the ranks reported: how many exist, how many have said where they are, and
+	// the spread between the fastest and slowest. Zero total means a single writer, and the line is
+	// not printed at all.
+	MembersTotal     int   `json:"membersTotal,omitempty"`
+	MembersReporting int   `json:"membersReporting,omitempty"`
+	MembersSpread    int64 `json:"membersSpread,omitempty"`
+	MemberSilent     []int `json:"memberSilent,omitempty"`
 	// IncompleteAskedAt is the training step at which a repair was requested for an incomplete copy.
 	// A newer copy that is still incomplete is the difference between "try once" and "stop".
 	IncompleteAskedAt int64 `json:"incompleteAskedAt,omitempty"`
@@ -315,6 +325,13 @@ func (s *Status) Remember(r WriteRecord) {
 // Render writes the human view. Relative durations are computed here, from now, and nowhere else.
 func Render(w io.Writer, s Status, now time.Time, bound time.Duration) {
 	fmt.Fprintf(w, "unit %s   generation %d   phase %s\n", orDash(s.UnitID), s.Generation, orDash(string(s.Phase)))
+	if s.MembersTotal > 0 {
+		line := fmt.Sprintf("members         %d/%d · spread %d", s.MembersReporting, s.MembersTotal, s.MembersSpread)
+		for _, rank := range s.MemberSilent {
+			line += fmt.Sprintf(" · member %d silent", rank)
+		}
+		fmt.Fprintln(w, line)
+	}
 
 	if s.SealAt == 0 {
 		fmt.Fprintln(w, "newest sealed   none")

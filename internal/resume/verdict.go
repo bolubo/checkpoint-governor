@@ -17,6 +17,7 @@ const (
 	ReasonWorldChanged    Reason = "world-not-reshardable" // the world changed and the format cannot re-shard
 	ReasonUnstated        Reason = "unstated"              // sealed, and nobody said what it holds
 	ReasonInvalid         Reason = "invalid"               // the declaration cannot be believed
+	ReasonShardMissing    Reason = "shard-missing"         // a rank's shard never made it into the copy
 )
 
 // required is what a full restore needs, in the catalogue's order: the model, and the state that makes
@@ -37,6 +38,13 @@ type Verdict struct {
 	Asked World `json:"asked"`
 	// Missing is the required state the declaration lacks, in catalogue order. Empty when nothing is.
 	Missing []string `json:"missing,omitempty"`
+	// Requires is what a resume of this job needs, as the declaration said (or the default five).
+	// It is printed so "not resumable" can be read against the right ruler.
+	Requires []string `json:"requires,omitempty"`
+	// Caveats are facts that do not change the verdict but must be heard. Empty when there are none.
+	Caveats []string `json:"caveats,omitempty"`
+	// MissingRank is the rank whose shard the copy does not hold, when that is why it cannot resume.
+	MissingRank int `json:"missingRank,omitempty"`
 	// Declared is false when there was no declaration at all: the verdict is then about silence, not
 	// about a claim, and the wording says so.
 	Declared bool `json:"declared"`
@@ -68,6 +76,9 @@ func (v Verdict) Line() string {
 	}
 	switch v.Reason {
 	case ReasonOK:
+		if len(v.Requires) > 0 {
+			return "resumable (" + v.requiresClause() + ")"
+		}
 		return fmt.Sprintf("resumable (gen %d, step %d, world %d/%d, full state)",
 			v.Generation, v.Step, v.World.Ranks, want)
 	case ReasonResharding:
@@ -83,8 +94,31 @@ func (v Verdict) Line() string {
 	case ReasonWorldChanged:
 		return fmt.Sprintf("not resumable: world changed %d → %d, and this format is not reshardable",
 			v.World.Ranks, want)
+	case ReasonShardMissing:
+		return fmt.Sprintf("not resumable: rank %d shard missing", v.MissingRank)
 	default: // unstated, invalid
 		return "unknown: " + v.Detail
+	}
+}
+
+// requiresClause is the inside of `resumable (...)` when the declaration named its own requirements:
+// the step, what it needs, and every caveat. It is one sentence because a receipt line is one sentence.
+func (v Verdict) requiresClause() string {
+	out := fmt.Sprintf("step %d, requires %s", v.Step, strings.Join(v.Requires, ", "))
+	for _, name := range v.Caveats {
+		out += ", caveat: " + caveatSentence(name)
+	}
+	return out
+}
+
+// caveatSentence is the human form of a caveat code. Codes are the closed set the file may name; the
+// sentence is what a person reads, and it says what a restore will actually do.
+func caveatSentence(name string) string {
+	switch name {
+	case CaveatDataPositionNotSaved:
+		return "the data position is not saved; a restore replays or restarts the epoch"
+	default:
+		return name
 	}
 }
 
@@ -104,12 +138,17 @@ func Judge(decl File, declared bool, loadErr error, asked World) Verdict {
 			Detail: "sealed, but nobody said what it holds"}
 	}
 
+	ruler := requirements(decl)
 	v := Verdict{
 		Generation: decl.Generation,
 		Step:       decl.Step,
 		World:      decl.World,
 		Asked:      asked,
 		Declared:   true,
+		// Only a declaration that named its requirements is printed with them. An older file keeps
+		// the sentence it has always produced — the default ruler is internal, not new output.
+		Requires: append([]string(nil), decl.Requires...),
+		Caveats:  decl.Caveats,
 	}
 
 	changed := worldChanged(decl.World, asked)
@@ -118,13 +157,13 @@ func Judge(decl File, declared bool, loadErr error, asked World) Verdict {
 		return v
 	}
 
-	if skipped := firstRequired(decl.Partial); skipped != "" {
+	if skipped := firstRequired(decl.Partial, ruler); skipped != "" {
 		v.Reason = ReasonDeclaredPartial
 		v.Detail = skipped
 		return v
 	}
 
-	v.Missing = missingRequired(decl.State)
+	v.Missing = missingRequired(decl.State, ruler)
 	if len(v.Missing) > 0 {
 		v.Reason = ReasonStateAbsent
 		return v
@@ -158,8 +197,8 @@ func worldChanged(decl, asked World) bool {
 }
 
 // firstRequired returns the first required state the loader was told to skip, in catalogue order.
-func firstRequired(partial []string) string {
-	for _, name := range required {
+func firstRequired(partial, requires []string) string {
+	for _, name := range requires {
 		for _, p := range partial {
 			if p == name {
 				return name
@@ -170,12 +209,22 @@ func firstRequired(partial []string) string {
 }
 
 // missingRequired lists the required state the declaration does not hold, in catalogue order.
-func missingRequired(s State) []string {
+func missingRequired(s State, requires []string) []string {
 	var out []string
-	for _, name := range required {
+	for _, name := range requires {
 		if !s.holds(name) {
 			out = append(out, name)
 		}
 	}
 	return out
+}
+
+// requirements is the ruler this declaration is judged against: what it says the job needs, else the
+// five a full restore has always needed. The default exists so every declaration written before the
+// field existed still gets exactly the answer it got then.
+func requirements(decl File) []string {
+	if len(decl.Requires) > 0 {
+		return decl.Requires
+	}
+	return required
 }

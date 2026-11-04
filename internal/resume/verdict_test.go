@@ -66,6 +66,92 @@ func TestAVerdictNamesEveryMissingState(t *testing.T) {
 	}
 }
 
+// A declaration that names its own requirements is judged against them, and the sentence says which
+// ruler was used. This is the Hugging Face case: four states, because a Trainer never saves a data
+// position.
+func TestAFrameworkDeclarationIsJudgedAgainstTheRulerItNames(t *testing.T) {
+	f := resume.File{
+		Schema: resume.Schema, Generation: 1000, Step: 1000, Format: resume.FormatHFTrainer,
+		World:    resume.World{Ranks: 1},
+		State:    resume.State{Model: true, Optimizer: true, Scheduler: true, RNG: true},
+		Requires: []string{"model", "optimizer", "scheduler", "rng"},
+	}
+	v := resume.Judge(f, true, nil, resume.World{})
+	if !v.Resumable() {
+		t.Fatalf("four-of-four was %q: %s", v.Reason, v.Line())
+	}
+	want := "resumable (step 1000, requires model, optimizer, scheduler, rng)"
+	if v.Line() != want {
+		t.Fatalf("line = %q, want %q", v.Line(), want)
+	}
+	if strings.Contains(v.Line(), "dataloader") {
+		t.Fatalf("a state the job never required was reported: %q", v.Line())
+	}
+}
+
+// Only the required set can make a copy unresumable. A false state outside it is a fact the user may
+// want to know, but it is not a refusal — and saying so would be judging the writer by someone else's
+// ruler.
+func TestAStateOutsideRequiresDoesNotBlockAResume(t *testing.T) {
+	f := resume.File{
+		Schema: resume.Schema, Generation: 1, Step: 1, Format: resume.FormatHFTrainer,
+		World:    resume.World{Ranks: 1},
+		State:    resume.State{Model: true, Optimizer: false, Scheduler: true, RNG: true},
+		Requires: []string{"model", "scheduler", "rng"},
+	}
+	v := resume.Judge(f, true, nil, resume.World{})
+	if !v.Resumable() {
+		t.Fatalf("optimizer was not required, but the verdict was %q: %s", v.Reason, v.Line())
+	}
+
+	f.State.Optimizer, f.Requires = true, []string{"model", "optimizer"}
+	if v := resume.Judge(f, true, nil, resume.World{}); !v.Resumable() {
+		t.Fatalf("all required states were held, verdict %q", v.Reason)
+	}
+}
+
+// A caveat does not change whether a restore works; it changes what the user is told it will do.
+func TestACaveatIsPrintedOnTheSameLine(t *testing.T) {
+	f := resume.File{
+		Schema: resume.Schema, Generation: 1000, Step: 1000, Format: resume.FormatHFTrainer,
+		World:    resume.World{Ranks: 1},
+		State:    resume.State{Model: true, Optimizer: true, Scheduler: true, RNG: true},
+		Requires: []string{"model", "optimizer", "scheduler", "rng"},
+		Caveats:  []string{resume.CaveatDataPositionNotSaved},
+	}
+	v := resume.Judge(f, true, nil, resume.World{})
+	if !v.Resumable() {
+		t.Fatalf("a caveat made the copy unresumable: %s", v.Line())
+	}
+	if !strings.Contains(v.Line(), "caveat: the data position is not saved") {
+		t.Fatalf("line = %q, want the caveat named", v.Line())
+	}
+	if len(v.Caveats) != 1 {
+		t.Fatalf("JSON caveats = %v, want one", v.Caveats)
+	}
+}
+
+// Every declaration written before `requires` existed still gets exactly the sentence it got then.
+func TestADeclarationWithoutRequiresKeepsTodaysAnswer(t *testing.T) {
+	gen := singleGeneration(t, filepath.Join("testdata", "weights-only"))
+	f, declared, err := resume.Load(gen)
+	if err != nil || !declared {
+		t.Fatalf("fixture: declared=%v err=%v", declared, err)
+	}
+	if len(f.Requires) != 0 {
+		t.Fatalf("fixture should predate requires, has %v", f.Requires)
+	}
+	v := resume.Judge(f, declared, err, resume.World{})
+	if v.Line() != "not resumable: optimizer state absent (also: scheduler, rng, dataloader)" {
+		t.Fatalf("line = %q, want the pre-requires answer", v.Line())
+	}
+	for _, name := range v.Requires {
+		if name == "scaler" || name == "ema" {
+			t.Fatalf("default requirements grew: %v", v.Requires)
+		}
+	}
+}
+
 // A world field the declaration never stated is not a promise that it matches the restore. Asking for 16
 // ranks against a file that does not say how many it had is a refusal, not a guess.
 func TestAnUndeclaredTopologyIsNotAnAssumptionOfEquality(t *testing.T) {

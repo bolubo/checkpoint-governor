@@ -46,6 +46,73 @@ type Glue struct {
 	// deadline because the job was given it; the controller must not invent a second one.
 	SecondsLeft int64
 	HasSeconds  bool
+
+	// Members is each rank's own step, read from `ranks/<rank>/step`. Empty when that directory
+	// does not exist: that is the single-writer path, and every answer stays exactly as it was.
+	// The minimum is the real progress (the slowest rank is the unit), and the maximum minus it is
+	// the spread, which is reported and never used to suppress a write.
+	//
+	// It is `ranks/`, not `members/`: `members` is already the launcher's roster file, and one name
+	// cannot be both a file and a directory.
+	Members []MemberStep
+}
+
+// MemberStep is one rank's own view of where it is.
+type MemberStep struct {
+	Rank    int
+	Step    int64
+	HasStep bool
+}
+
+// Progress is the slowest reporting rank's step: a unit has not reached a step until every member
+// has. Empty members mean "not a gang", and the caller falls back to the team-level `step`.
+func (g Glue) Progress() (int64, bool) {
+	var best int64
+	found := false
+	for _, m := range g.Members {
+		if !m.HasStep {
+			continue
+		}
+		if !found || m.Step < best {
+			best, found = m.Step, true
+		}
+	}
+	return best, found
+}
+
+// Spread is max − min over the ranks that reported. It is a diagnostic: a wide spread is worth
+// saying, and it is never a reason to skip a write (0021).
+func (g Glue) Spread() int64 {
+	var min, max int64
+	found := false
+	for _, m := range g.Members {
+		if !m.HasStep {
+			continue
+		}
+		if !found {
+			min, max, found = m.Step, m.Step, true
+			continue
+		}
+		if m.Step < min {
+			min = m.Step
+		}
+		if m.Step > max {
+			max = m.Step
+		}
+	}
+	return max - min
+}
+
+// Silent lists the ranks that have a member directory but no step: a rank that started and has not
+// reported is worth naming, and it never stops the others from writing.
+func (g Glue) Silent() []int {
+	var out []int
+	for _, m := range g.Members {
+		if !m.HasStep {
+			out = append(out, m.Rank)
+		}
+	}
+	return out
 }
 
 // ReadGlue reads what the job left behind. A missing file is zero values with its Has flag false:
@@ -71,7 +138,34 @@ func ReadGlue(dir string) Glue {
 	if n, ok := readNumber(base, "seconds-left"); ok {
 		g.SecondsLeft, g.HasSeconds = n, true
 	}
+	g.Members = readMembers(base)
 	return g
+}
+
+// readMembers reads `ranks/<rank>/step`. A directory with no step is a silent rank, not an absent
+// one: it was listed by the launcher and has not said where it is, which is different from a unit
+// that has only one process.
+func readMembers(base string) []MemberStep {
+	entries, err := os.ReadDir(filepath.Join(base, "ranks"))
+	if err != nil {
+		return nil
+	}
+	var out []MemberStep
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		rank, convErr := strconv.Atoi(e.Name())
+		if convErr != nil || rank < 0 {
+			continue
+		}
+		m := MemberStep{Rank: rank}
+		if n, ok := readNumber(filepath.Join(base, "ranks", e.Name()), "step"); ok {
+			m.Step, m.HasStep = n, true
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 func readNumber(base, name string) (int64, bool) {

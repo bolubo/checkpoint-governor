@@ -41,6 +41,17 @@ Without a `saver`, the callback falls back to `trainer.save_checkpoint(path)`: L
 retention and the two pointers are then yours to manage. That fallback is named in the code, not
 implied.
 
+## What it declares
+
+After every write, the callback writes `<file>.ckpt.resume.json` beside the file the saver produced —
+`target` names that file, and `requires` is the four states a framework checkpoint can carry. The
+caveat `data-position-not-saved` is recorded for the same reason as in the Trainer integration. So
+`ckptctl resumable --dir` answers for the `.ckpt` itself:
+
+```
+resumable (step 40, requires model, optimizer, scheduler, rng, caveat: the data position is not saved; …)
+```
+
 ## What happens
 
 | event | who writes | when |
@@ -56,8 +67,8 @@ from the Trainer integration, whose latency is `logging_steps`.
 ## Two things to know
 
 1. **The file is Lightning's, not ours.** The callback writes a `.ckpt` through Lightning's own API; our
-   `gen-N` layout is not involved. This integration decides *when*; `ckptctl resumable` still applies to
-   the layouts our writer produces.
+   `gen-N` layout is not involved. The declaration beside it is what makes `ckptctl resumable` able to
+   answer for that file.
 2. **The saver's own schedule must be off.** `ModelCheckpoint` plus this callback is two schedules for
    one job unless `every_n_train_steps` and `every_n_epochs` are `None` and
    `save_on_train_epoch_end=False`, as in the recipe above. Turning the schedule off is the point;

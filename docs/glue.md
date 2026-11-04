@@ -17,6 +17,7 @@ is never written unless the user signed a fallback. Writing these files is how a
 | `seconds-left` | integer, seconds | the job, while it is stopping | `loop`: the deadline door; the `risk.shutdown` producer | nobody announced a deadline |
 | `may-exit` | presence only | **the controller**, when it has observed that no write is in flight (or that the write's deadline passed, in which case it reports the loss) | the job, `ckptctl glue` | the final write has not landed; it is not safe to kill yet |
 | `members` | one rank per line | whoever starts the gang | `unit` membership | the unit has one member |
+| `ranks/<rank>/step` | decimal integer | that rank, every step | `loop` → the unit's progress (the slowest rank) and `status` | no multi-rank directory: the team-level `step` is read, exactly as before |
 | `gpu` | float, percent busy | the job's own probe | producer `host.gpu-hot` | the GPU condition is absent (no GPU, or no probe) |
 | `step-baseline`, `step-rate` | integer, milliseconds | the job, at start and on a step that wrote nothing | producer `job.step-slow` | no baseline, or no measurement yet; the condition is absent |
 | `write-baseline`, `write-rate` | integer, milliseconds | the job, at start and after each write | producer `store.slow` | no baseline, or no measurement yet; the condition is absent |
@@ -59,3 +60,30 @@ is never written unless the user signed a fallback. Writing these files is how a
   `release-timeout` if nobody answers — an unanswered handshake leaves a trace instead of losing the
   last write silently. The end of a run is the one write that does not depend on any configuration
   (`no-us none` included): with no live plan the job keeps that promise itself and says so.
+
+## Declarations, and where they may live
+
+A declaration is the one file that says what a checkpoint holds (`resume-contract.md`). It lives in
+exactly one of two places, and the finder knows no third:
+
+| form | file | written by |
+|---|---|---|
+| in the copy | `<dir>/resume.json`, `target: "."` | our writer (`gen-N/`), the Trainer callback (`checkpoint-N/`) |
+| beside the artifact | `<file>.resume.json`, `target: "<file>"` | the Lightning and Composer callbacks, or `ckptctl declare` |
+
+A job whose writer we do not recognise can make its copies known without changing the writer:
+`.ckpt-governor/layout.json` names the `glob`, the step pattern and — optionally — a `probe_cmd` that
+prints `{"state": …, "requires": …}`. The probe runs only because the user wrote it there, never
+because a checkpoint mentioned it.
+
+## Multi-rank ownership
+
+Every rank owns its own `ranks/<rank>/step`; the leader (rank 0) also owns every team-level file —
+`step`, `stopping`, `ending`, `seconds-left`, `members`, `expected-bytes`, the plan, and every
+declaration. A non-leader that tries to write one of those gets an error naming the file
+(`lead-only file: …`), not a silent overwrite: eight ranks writing one `step` would let the controller
+see whichever wrote last, possibly the one that is behind.
+
+When `ranks/` exists, the unit's progress is the **slowest** reporting rank, and `status` prints
+`members 2/2 · spread 4`, adding `member N silent` for a rank that exists and has not reported. The
+spread is a diagnostic: it is never used to skip a write (0021).

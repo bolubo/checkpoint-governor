@@ -56,6 +56,13 @@ func TestTheSchemaRefusesWhatItCannotBelieve(t *testing.T) {
 			f.Partial = []string{"optimizer"}
 		}, `partial names "optimizer", but the file does not hold it`},
 		{"loader with a newline", func(f *File) { f.Loader = "python resume.py\nrm -rf /" }, "loader holds a control character"},
+		{"requires names a non-state", func(f *File) { f.Requires = []string{"shards"} }, `requires names "shards"`},
+		{"requires names a state twice", func(f *File) { f.Requires = []string{"model", "model"} }, `requires names "model" twice`},
+		{"target is a path", func(f *File) { f.Target = "../other/ckpt" }, `target "../other/ckpt" must be a sibling file name`},
+		{"target is absolute", func(f *File) { f.Target = "/tmp/x.ckpt" }, "must be a sibling file name"},
+		{"caveat outside the closed set", func(f *File) { f.Caveats = []string{"slow-load"} }, `caveat "slow-load" is not one we can print`},
+		{"min_reader from the future", func(f *File) { f.MinReader = "0.25" }, "needs ckptctl >= 0.25 (you have 0.24)"},
+		{"min_reader is not a version", func(f *File) { f.MinReader = "next" }, `min_reader "next" is not a version`},
 	}
 	for _, c := range cases {
 		f := full()
@@ -157,6 +164,41 @@ func TestAMissingDeclarationIsUnstatedNotBroken(t *testing.T) {
 	}
 	if present {
 		t.Fatal("a generation with no declaration reported one")
+	}
+}
+
+// `ext` is the only place an unknown field may live: readers ignore its contents. The discipline
+// that made every other unknown field an error is unchanged.
+func TestExtIsTheOnlyExtensionPoint(t *testing.T) {
+	good := mustJSON(t, full())
+	injected := strings.Replace(string(good), `"loader"`, `"ext": {"requires-v2": [1,2]}, "loader"`, 1)
+	if _, err := Parse([]byte(injected)); err != nil {
+		t.Fatalf("ext was refused: %v", err)
+	}
+}
+
+// The version-skew matrix in one place: a declaration from a newer build is refused with the upgrade
+// named, and a declaration from an older build gets exactly the answer it got then.
+func TestTheVersionSkewMatrix(t *testing.T) {
+	// Old engine, new declaration: refuse, and say which version is needed.
+	f := full()
+	f.MinReader = "0.26"
+	_, err := Parse(mustJSONRaw(t, f))
+	if err == nil {
+		t.Fatal("a declaration written for a newer build was accepted")
+	}
+	if !strings.Contains(err.Error(), "needs ckptctl >= 0.26 (you have 0.24)") {
+		t.Fatalf("error %q does not name the upgrade", err)
+	}
+
+	// New engine, old declaration: no new fields, same verdict as before the fields existed.
+	old := mustJSON(t, full())
+	if !strings.Contains(string(old), `"generation"`) || strings.Contains(string(old), `"requires"`) {
+		t.Fatalf("the reference writer grew a field: %s", old)
+	}
+	v := Judge(full(), true, nil, World{})
+	if v.Line() != "resumable (gen 7, step 512, world 8/8, full state)" {
+		t.Fatalf("an old declaration changed its verdict: %q", v.Line())
 	}
 }
 

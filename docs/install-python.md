@@ -86,6 +86,20 @@ it is printed rather than hidden.
 | no `state.json` | the engine died or never started | read `engine.log`; `should_save()` stays false, which is the honest fallback |
 | `should_save()` never true | nothing is at risk, and no window is set | that is the default; set `engine_window="30m"` if you want a bound |
 
+## The wheel and the binary move together
+
+The wheel carries the engine, and both read the same declaration schema. A declaration may name
+`min_reader`; an engine older than that refuses it with the upgrade named, rather than reading a
+newer file as an older one:
+
+```
+unknown: resume.json: this declaration needs ckptctl >= 0.25 (you have 0.24)
+```
+
+So the rule is **upgrade both or neither**: `pip install -U ckpt-policy` upgrades the wheel and the
+engine inside it together. Do not pair a new wheel with an old `ckptctl` on `PATH`, and do not pair a
+new `CKPTCTL_ENGINE` with an old wheel — the declaration's optional fields are read by both halves.
+
 ## What this does not do
 
 It does not re-implement the policy in Python. The decision stays in the Go engine; the client starts

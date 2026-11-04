@@ -71,6 +71,11 @@ discover it.
 **A version on PyPI is immutable.** A bad wheel is fixed by publishing the next version; the old file
 stays, and is never replaced or deleted.
 
+**The binary and the wheel are one version, not two.** They read the same declaration schema, so a
+release that adds an optional field ships both halves or neither. A declaration may name `min_reader`;
+a reader below it refuses with the upgrade named instead of misreading the file. That is why
+`publish-pypi.yml` and `release.yml` run from the same tag and why the wheel carries the engine.
+
 ## Rollback
 
 A bad tag is never moved. Delete the release, then delete the tag and re-tag the previous commit —

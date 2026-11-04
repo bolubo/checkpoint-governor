@@ -41,7 +41,7 @@ claim resumable 0 "resumable (gen 512, step 512, world 8/8, full state)" resumab
 claim weights-only 1 "not resumable: optimizer state absent" resumable --dir="$FIX/weights-only"
 claim world-changed 1 "not resumable: world changed 8 → 16" resumable --dir="$FIX/full" --world=16
 claim reshardable 0 "resumable with resharding (8 → 16 ranks)" resumable --dir="$FIX/reshardable" --world=16
-claim unstated 2 "unknown: sealed, but nobody said what it holds" resumable --dir="$FIX/no-resume"
+claim unstated 2 "unknown: no declaration beside gen-0512 (and no probe_cmd to ask)" resumable --dir="$FIX/no-resume"
 
 # Adoption is about the job's own report, so the copy is a fixture plus the glue a resumed job leaves.
 cp -R "$FIX/full" "$TMP/adopted"

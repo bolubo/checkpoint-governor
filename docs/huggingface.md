@@ -41,6 +41,21 @@ write — keeps working exactly as before we were installed.
 
 Ours is only the timing: when a write is asked for, and what the receipt says about it.
 
+## What it declares
+
+After every save, `on_save` writes `checkpoint-<step>/resume.json` with `target: "."`, the states the
+Trainer actually wrote, and `requires: model, optimizer, scheduler, rng`. It also records the caveat
+`data-position-not-saved`: a Trainer checkpoint has never held a data-loader position, so a restore
+re-iterates and skips. That is why `ckptctl resumable --dir` can answer for a Hugging Face checkpoint
+without being told anything else:
+
+```
+resumable (step 1000, requires model, optimizer, scheduler, rng, caveat: the data position is not saved; …)
+```
+
+`save_only_model=True` is a fact, not a defect: the declaration then says `optimizer`, `scheduler` and
+`rng` are absent, and the verdict is `not resumable: optimizer state absent`.
+
 ## What happens
 
 | event | who writes | when |
@@ -86,5 +101,6 @@ guarantees kept by using the framework's own saver
 ## What the receipt should say
 
 After the first mid-run write, `ckptctl status --dir` should show a write whose kind is not `final`
-(a `window` or an `exception` write), and `ckptctl resumable --dir` should answer for the generation the
-Trainer wrote. The framework's own `latest` pointer is not ours; we never move it.
+(a `window` or an `exception` write), and `ckptctl resumable --dir` should answer for the
+`checkpoint-<step>` the Trainer wrote — not for a `gen-*` directory, because this integration does not
+write one. The framework's own `latest` pointer is not ours; we never move it.

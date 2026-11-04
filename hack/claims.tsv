@@ -1,0 +1,35 @@
+# Every outbound promise in docs/, and the test that would fail if it stopped being true.
+# Columns: claim | where it is said | test (a Go test name, or py:<class>.<method>)
+# `make test-claims` fails if a test here does not exist. A promise without a row is a promise
+# nobody checks.
+
+The finder reads our own generations | docs/resume-contract.md §Which copy is judged | TestEveryKindIsFound
+Our own generation wins over a newer framework copy | docs/resume-contract.md §Which copy is judged | TestOurGenerationWinsOverANewerFrameworkCopy
+A half-written directory is not the newest copy | docs/resume-contract.md §Which copy is judged | TestAHalfWrittenDirectoryIsNotTheNewest
+Two layouts at the same step are resolved and noted | docs/resume-contract.md §Which copy is judged | TestTheHighestStepWinsAndATieIsExplained
+A user layout is found by layout.json | docs/resume-contract.md §Which copy is judged | TestACustomGlobFindsAWriterWeNeverHeardOf
+A probe turns an opaque copy into a declaration | docs/resume-contract.md §Which copy is judged | TestTheProbeTurnsAnOpaqueCopyIntoADeclaration
+A failed probe is unknown, never "not resumable" | docs/resume-contract.md §Which copy is judged | TestAFailingProbeIsUnknownNotBad
+A hanging probe is refused with a timeout | docs/resume-contract.md §Which copy is judged | TestAProbeThatNeverAnswersNamesTheTimeout
+A declaration is judged against the requires it names | docs/resume-contract.md §1 | TestAFrameworkDeclarationIsJudgedAgainstTheRulerItNames
+An old declaration keeps its old answer | docs/resume-contract.md §1 | TestADeclarationWithoutRequiresKeepsTodaysAnswer
+A caveat does not change the verdict, and is printed | docs/resume-contract.md §1 | TestACaveatIsPrintedOnTheSameLine
+A newer declaration is refused with the upgrade named | RELEASE.md §The Python package | TestTheVersionSkewMatrix
+The schema refuses what it cannot believe | docs/resume-contract.md §1 | TestTheSchemaRefusesWhatItCannotBelieve
+resumable answers for a Hugging Face checkpoint | docs/huggingface.md §What it declares | TestResumableReadsAFrameworkLayout
+The receipt and status name the same copy | docs/resume-contract.md §3 | TestResumableReadsAFrameworkLayout
+--generation names only gen-* copies | docs/resume-contract.md §Which copy is judged | TestGenerationFlagIsOnlyForGenCopies
+declare turns an unknown copy into a resumable one | docs/glue.md §Declarations | TestDeclareTurnsAnUnknownCopyIntoAResumableOne
+A framework checkpoint reaches the snapshot | docs/resume-contract.md §2 | TestAFrameworkCheckpointReachesTheSnapshot
+Retention never removes a framework's checkpoint | docs/glue.md §Multi-rank ownership | TestRetentionNeverCountsAFrameworkCopy
+The receipt counts whoever wrote the copy | docs/resume-contract.md §3 | TestAFrameworkCheckpointIsCountedWhoeverWroteIt
+The wrapper waits for a sealed copy before forwarding | docs/resume-contract.md §3 | TestWrapWaitsForASealedCopyThenForwards
+The wrapper reports a deadline as a lost final write | docs/resume-contract.md §3 | TestWrapDeadlineReportsTheFinalWriteWasNotMade
+A second signal forwards immediately and is recorded | docs/resume-contract.md §3 | TestWrapSecondSignalForwardsImmediatelyAndRecordsIt
+A nested wrapper is refused | docs/resume-contract.md §3 | TestWrapRefusesToNest
+The slowest rank is the unit's progress | docs/glue.md §Multi-rank ownership | TestGangProgressIsTheSlowestRank
+status prints members and silent ranks | docs/glue.md §Multi-rank ownership | TestMembershipReachesTheStatus
+A non-leader cannot write a team-level file | docs/glue.md §Multi-rank ownership | py:TestRankOwnership.test_a_non_leader_is_refused_a_team_level_file
+The Trainer declares four states and no data position | docs/huggingface.md §What it declares | py:TestHuggingFaceDeclares.test_on_save_says_four_states_and_no_data_position
+Lightning declares beside its .ckpt | docs/lightning.md §What it declares | py:TestLightningDeclares.test_the_saver_path_is_declared
+Composer's leader declares beside the episode | docs/composer.md §What it declares | py:TestComposerDeclares.test_rank_zero_writes_one_declaration_beside_the_episode

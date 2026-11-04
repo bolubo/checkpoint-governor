@@ -56,6 +56,7 @@ var commands = []command{
 	{"verify", groupRead, "is what landed sound: one generation, or all of them", runVerify},
 
 	// Beyond one directory: several directories, a cluster, or a trace that stands in for both.
+	{"declare", groupOther, "write what a checkpoint holds, beside it, so a restore can be judged", runDeclare},
 	{"serve", groupOther, "the same facts as Prometheus text, read-only", runServe},
 	{"simulate", groupOther, "the policy against fixed timers, on one trace", runSimulate},
 	{"supervise", groupOther, "several directories, one rollup", runSupervise},
@@ -66,6 +67,7 @@ var commands = []command{
 		return 0
 	}},
 	{"world", groupOther, "what the implementation knows about the cluster; can fabricate one", runWorld},
+	{"wrap", groupOther, "run a job under a supervisor that waits for the final write", runWrap},
 }
 
 func main() {

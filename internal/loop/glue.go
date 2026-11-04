@@ -58,6 +58,86 @@ type Glue struct {
 	Stopping   bool
 	Ending     bool
 	MayExit    bool
+	// Members is each rank's own step (`.ckpt-governor/ranks/<rank>/step`). Empty means a
+	// single-writer job, and every output stays exactly as it was.
+	Members []adapters.MemberStep
+}
+
+// Progress is the slowest reporting rank: a gang has not reached a step until every member has.
+func (g Glue) Progress() (int64, bool) {
+	var best int64
+	found := false
+	for _, m := range g.Members {
+		if !m.HasStep {
+			continue
+		}
+		if !found || m.Step < best {
+			best, found = m.Step, true
+		}
+	}
+	return best, found
+}
+
+// Spread is max − min over the ranks that reported. It is printed, never used to skip a write.
+func (g Glue) Spread() int64 {
+	var lo, hi int64
+	found := false
+	for _, m := range g.Members {
+		if !m.HasStep {
+			continue
+		}
+		if !found {
+			lo, hi, found = m.Step, m.Step, true
+			continue
+		}
+		if m.Step < lo {
+			lo = m.Step
+		}
+		if m.Step > hi {
+			hi = m.Step
+		}
+	}
+	return hi - lo
+}
+
+// Silent lists the ranks that exist but have not reported a step.
+func (g Glue) Silent() []int {
+	var out []int
+	for _, m := range g.Members {
+		if !m.HasStep {
+			out = append(out, m.Rank)
+		}
+	}
+	return out
+}
+
+// stepOfGlue is the unit's progress: the slowest rank when a gang reported, else the team-level
+// `step` exactly as before. A gang is not at a step until every member is, and the single-writer path
+// is untouched. A pointer, because "the job has not said" and "step zero" are different answers.
+func stepOfGlue(g Glue, teamFile string) *int64 {
+	if step, ok := g.Progress(); ok {
+		v := step
+		return &v
+	}
+	return readInt(teamFile)
+}
+
+// noteMembership records what the ranks reported this round for `status`. It never changes a
+// decision: a wide spread is a fact to print, not a reason to skip a write (0021).
+func (l *Loop) noteMembership() {
+	if len(l.glue.Members) == 0 {
+		// Single writer: the fields stay zero, and every line that existed before stays the same.
+		l.ledger.Status.MembersTotal = 0
+		l.ledger.Status.MembersReporting = 0
+		l.ledger.Status.MembersSpread = 0
+		l.ledger.Status.MemberSilent = nil
+		return
+	}
+	silent := l.glue.Silent()
+	l.ledger.Status.MembersTotal = len(l.glue.Members)
+	l.ledger.Status.MembersReporting = len(l.glue.Members) - len(silent)
+	l.ledger.Status.MembersSpread = l.glue.Spread()
+	l.ledger.Status.MemberSilent = silent
 }
 
 // readGlue reads the job's own numbers through the one parser that owns the files, so the executor
@@ -66,7 +146,7 @@ type Glue struct {
 // it into a measurement.
 func readGlue(dir string) Glue {
 	a := adapters.ReadGlue(dir)
-	g := Glue{Stopping: a.StopRequested, Ending: a.Ending, MayExit: a.MayExit}
+	g := Glue{Stopping: a.StopRequested, Ending: a.Ending, MayExit: a.MayExit, Members: a.Members}
 	if a.HasExpected && a.ExpectedBytes > 0 {
 		g.ExpectedBytes = a.ExpectedBytes
 	}

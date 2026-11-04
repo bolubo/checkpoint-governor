@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/bolubo/checkpoint-governor/internal/policy"
+	"github.com/bolubo/checkpoint-governor/internal/resume"
 )
 
 // TestMissingStatesComesFromTheDeclaration is the reader half of "incomplete is a finer kind of
@@ -21,6 +22,52 @@ func TestMissingStatesComesFromTheDeclaration(t *testing.T) {
 	}
 	if none := missingStates(t.TempDir()); len(none) != 0 {
 		t.Fatalf("an empty directory reported %v", none)
+	}
+}
+
+// A framework checkpoint is invisible to the observer (it reads our own layout), so the loop has to
+// put it into the snapshot itself — otherwise the newest copy looks absent and the missing state never
+// reaches a decision.
+func TestAFrameworkCheckpointReachesTheSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	ckpt := filepath.Join(dir, "checkpoint-1000")
+	if err := os.MkdirAll(ckpt, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ckpt, "trainer_state.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := resume.Write(ckpt, resume.File{
+		Schema: resume.Schema, Generation: 1000, Step: 1000, Format: resume.FormatHFTrainer,
+		World:    resume.World{Ranks: 1},
+		State:    resume.State{Model: true},
+		Requires: []string{"model", "optimizer", "scheduler", "rng"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	l, err := Open(Config{Dir: dir, UnitID: "u", Bounds: policy.Bounds{NoUs: policy.NoUsNone, MinCopies: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+
+	s := policy.Snapshot{} // the observer saw nothing: it only reads our own layout
+	l.noteCompleteness(&s)
+	if len(s.Copies) != 1 {
+		t.Fatalf("snapshot copies = %+v, want the framework copy", s.Copies)
+	}
+	c := s.Copies[0]
+	if c.Step != 1000 || c.Kind != "hf-checkpoint" {
+		t.Fatalf("copy = %+v, want step 1000 hf-checkpoint", c)
+	}
+	want := []string{"optimizer", "scheduler", "rng"}
+	if len(c.Missing) != len(want) {
+		t.Fatalf("missing = %v, want %v (dataloader is not required)", c.Missing, want)
+	}
+	for i := range want {
+		if c.Missing[i] != want[i] {
+			t.Fatalf("missing = %v, want %v", c.Missing, want)
+		}
 	}
 }
 
@@ -44,7 +91,23 @@ func TestAnIncompleteCopyIsEscalatedAfterOneRepair(t *testing.T) {
 		t.Fatal("the declaration was not read")
 	}
 
-	// We asked once, at the same copy; a newer copy arrives and is still incomplete.
+	// We asked once, at the same copy; the writer answered with a newer copy, still incomplete. The
+	// newer copy exists on disk, which is what makes the answer a fact rather than a simulation.
+	newerDir := filepath.Join(dir, "gen-0600")
+	if err := os.MkdirAll(newerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(newerDir, "manifest.json"),
+		[]byte(`{"generation":600,"step":600,"sealedAt":"2026-11-02T04:55:44Z","writer":"ckpttrainer","shards":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := resume.Write(newerDir, resume.File{
+		Schema: resume.Schema, Generation: 600, Step: 600, Format: resume.FormatDCP,
+		World: resume.World{Ranks: 8, DP: 8}, State: resume.State{Model: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
 	l.ledger.Status.IncompleteAskedAt = 512
 	newer := policy.Snapshot{Copies: []policy.Copy{{Step: 600, State: policy.CopySealed}}}
 	l.noteCompleteness(&newer)
