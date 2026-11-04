@@ -1,13 +1,16 @@
 """A Lightning callback, without importing lightning.
 
-    trainer = Trainer(..., callbacks=[GovernorCallback(g)])     # and no ModelCheckpoint
+    ckpt = ModelCheckpoint(dirpath=..., save_top_k=2, every_n_train_steps=None,
+                           every_n_epochs=None, save_on_train_epoch_end=False)
+    trainer = Trainer(..., callbacks=[GovernorCallback(g, saver=ckpt)])
 
-Lightning writes its own `.ckpt` through the public `trainer.save_checkpoint(path)`, so the request is
-honoured at the next batch end — one batch of latency, not a logging interval. The callback records the
-generation as served, because Lightning never calls our `sealed()`.
+The saver stays. Its cadence is off (`every_n_train_steps=None`, `every_n_epochs=None`,
+`save_on_train_epoch_end=False`), so it never writes on its own; when the plan asks, we call its own
+`save_checkpoint(trainer)`, which keeps `save_top_k`, `last_model_path` and `best_model_path` doing
+what they did before we were installed.
 
-The format is Lightning's, not our `gen-N` layout: this integration decides *when*, and `ckptctl
-resumable` still applies to the layouts our own writer produces.
+Without a `saver`, the callback falls back to the public `trainer.save_checkpoint(path)`: Lightning's
+own format, but retention and the two model-path pointers are then yours to manage.
 """
 
 import os
@@ -16,17 +19,22 @@ import os
 class GovernorCallback:
     """pl.Callback-compatible by duck typing: Lightning inspects the methods it needs."""
 
-    def __init__(self, governor, filename=None):
+    def __init__(self, governor, filename=None, saver=None):
         self.governor = governor
         # A string, or a callable taking the trainer; None means "<default_root_dir>/ckpt-step-<n>.ckpt".
         self.filename = filename
+        self.saver = saver
         self.saves = 0
 
     def on_train_batch_end(self, trainer, pl_module):
         gen = self.governor.requested()
         if not gen:
             return
-        trainer.save_checkpoint(self._path(trainer))
+        if self.saver is not None and hasattr(self.saver, "save_checkpoint"):
+            # The saver's own path: top-k, the latest pointer and the best pointer are its business.
+            self.saver.save_checkpoint(trainer)
+        else:
+            trainer.save_checkpoint(self._path(trainer))
         self.governor.served(gen)
         self.saves += 1
 

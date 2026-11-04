@@ -4,7 +4,7 @@ Status: supported integration, 2026-11-02. The contract is tested in CI without 
 
 ## The diff
 
-Remove `CheckpointSaver` and add the callback:
+Add the callback and pass back the two arguments `CheckpointSaver` used to own:
 
 ```python
 from ckpt_policy import Governor
@@ -14,10 +14,21 @@ g = Governor("/ckpt/job-1", start_engine=True)
 trainer = Trainer(
     model=model, train_dataloader=loader, max_duration="4h",
     save_folder="/ckpt/job-1",
-    callbacks=[GovernorCallback(g)],       # and no CheckpointSaver
+    callbacks=[GovernorCallback(g, num_checkpoints_to_keep=2, latest_filename="latest-rank{rank}")],
 )
 trainer.fit()
 ```
+
+`composer.utils.checkpoint.save_checkpoint` is public, and both arguments are passed to it, so the
+retention and the `latest-rank{rank}` pointer are not lost.
+
+## What stays the framework's
+
+| guarantee | kept by |
+|---|---|
+| file layout, atomic write | Composer's `save_checkpoint` |
+| retention | `num_checkpoints_to_keep` passed through |
+| newest pointer | `latest_filename` passed through |
 
 ## What happens
 
@@ -35,9 +46,9 @@ machine without Composer — the package keeps zero runtime dependencies.
 
 1. **The file is Composer's layout, not our `gen-N`.** This integration decides *when*; `ckptctl
    resumable` still applies to the layouts our writer produces.
-2. **`CheckpointSaver` was also the retention and the `latest-rank{rank}` pointer.** Removing it means
-   those are yours: the policy decides when, not what to keep. That is a real trade, and it is why this
-   page says it out loud instead of implying a drop-in replacement.
+2. **`CheckpointSaver`'s two guarantees are passed back explicitly.** If the installed Composer version's
+   `save_checkpoint` does not accept `num_checkpoints_to_keep`/`latest_filename`, the callback still
+   makes the write and records why in `cb.notes` — it never pretends the pointer was written.
 
 ## What the receipt should say
 

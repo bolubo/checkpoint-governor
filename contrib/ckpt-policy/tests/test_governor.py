@@ -375,7 +375,32 @@ class _FakeLightningTrainer:
             f.write("ckpt")
 
 
+class _FakeSaver:
+    """Stands in for a configured ModelCheckpoint: top-k and the latest pointer are its business."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def save_checkpoint(self, trainer):
+        self.calls += 1
+
+
 class TestLightningCallback(unittest.TestCase):
+    def test_the_saver_is_used_when_it_is_given(self):
+        from ckpt_policy.lightning import GovernorCallback
+
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            plan(root, generation=7)
+            trainer = _FakeLightningTrainer(root)
+            saver = _FakeSaver()
+            cb = GovernorCallback(g, saver=saver)
+            trainer.global_step = 1
+            cb.on_train_batch_end(trainer, None)
+            self.assertEqual(saver.calls, 1, "the saver's own path keeps top-k and the latest pointer")
+            self.assertEqual(trainer.saved, [], "the bare save path was not used")
+            self.assertFalse(g.should_save())
+
     def test_nothing_is_written_while_the_plan_is_silent(self):
         from ckpt_policy.lightning import GovernorCallback
 
@@ -451,8 +476,8 @@ class TestComposerCallback(unittest.TestCase):
         utils = types.ModuleType("composer.utils")
         checkpoint = types.ModuleType("composer.utils.checkpoint")
 
-        def save_checkpoint(state, filename="ep{epoch}-ba{batch}-rank{rank}"):
-            self.calls.append((state, filename))
+        def save_checkpoint(state, filename="ep{epoch}-ba{batch}-rank{rank}", **kwargs):
+            self.calls.append((state, filename, kwargs))
 
         checkpoint.save_checkpoint = save_checkpoint
         utils.checkpoint = checkpoint
@@ -501,6 +526,44 @@ class TestComposerCallback(unittest.TestCase):
             cb = GovernorCallback(g)
             cb.fit_end(object(), None)
             self.assertEqual(glue(root, "ending"), "1")
+
+    def test_the_latest_pointer_is_passed_to_the_saver(self):
+        from ckpt_policy.composer import GovernorCallback
+
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            plan(root, generation=7)
+            cb = GovernorCallback(g)
+            cb.batch_end(object(), None)
+            self.assertEqual(self.calls[0][2].get("latest_filename"), "latest-rank0")
+
+    def test_retention_is_passed_when_it_is_set(self):
+        from ckpt_policy.composer import GovernorCallback
+
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            plan(root, generation=7)
+            cb = GovernorCallback(g, num_checkpoints_to_keep=2)
+            cb.batch_end(object(), None)
+            self.assertEqual(self.calls[0][2].get("num_checkpoints_to_keep"), 2)
+
+    def test_a_version_without_these_arguments_is_told_not_assumed(self):
+        from ckpt_policy import composer as composer_module
+
+        strict_calls = []
+
+        def strict_save_checkpoint(state, filename="ep{epoch}-ba{batch}-rank{rank}"):
+            strict_calls.append(filename)
+
+        sys.modules["composer.utils.checkpoint"].save_checkpoint = strict_save_checkpoint
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            plan(root, generation=7)
+            cb = composer_module.GovernorCallback(g)
+            cb.batch_end(object(), None)
+            self.assertEqual(len(strict_calls), 1, "the write still happened")
+            self.assertEqual(len(cb.notes), 1, "and the lost guarantee was named")
+            self.assertIn("latest pointer are yours", cb.notes[0])
 
 
 if __name__ == "__main__":

@@ -8,13 +8,18 @@ not re-implement the policy, and it does not own the checkpoint format.
 ## The contract
 
 1. **Ask once per step (or per batch).** `governor.should_save()` is the whole question.
-2. **Write through the framework.** Call its public save API; do not build a gen directory yourself.
+2. **Write through the framework's saver.** Keep the saver object the framework already has
+   (`ModelCheckpoint`, `CheckpointSaver`, the Trainer's own path) and call it. Never remove a saver to
+   take over its schedule: it owns retention, the latest pointer and best tracking, and those are not
+   ours to lose.
 3. **Mark the request served.** `governor.served(gen)` — otherwise the same generation is asked for on
    every step. (`sealed()` is the exception: it records the request while writing our metadata.)
 4. **Record the end.** `governor.ending()` once, when training finishes.
 5. **Never import the framework at module import.** Use a lazy import, or an optional base class:
    `try: from framework import Callback as _Base; except ImportError: class _Base: pass`.
-6. **Disable the framework's own cadence in the page's diff.** Two schedules is worse than one.
+6. **Turn the framework's own cadence off in the page's diff.** Two schedules is worse than one; a
+   removed saver is worse than both.
+7. **The glue budget is three lines.** If a page needs more, the gap is ours, not the user's.
 
 ## The skeleton
 
