@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -174,4 +175,57 @@ func TestThePriceIsAvailableBeforeTheFirstRound(t *testing.T) {
 	if got := p.Describe(); !strings.Contains(got, "the job") && !strings.Contains(got, "at ") {
 		t.Fatalf("the price does not explain itself: %q", got)
 	}
+}
+
+// TestPriceOfDoesNotProbeWithoutADeclaredSize keeps `price` read-only: on a directory where the job
+// declared no size there is nothing to price, so the 32 MiB throughput probe must not run.
+func TestPriceOfDoesNotProbeWithoutADeclaredSize(t *testing.T) {
+	dir := t.TempDir()
+	before := namesUnder(t, dir)
+	p := PriceOf(dir)
+	after := namesUnder(t, dir)
+	if after != before {
+		t.Fatalf("PriceOf changed the directory: %q -> %q", before, after)
+	}
+	if p.Source != "unknown" || p.Seconds != 0 {
+		t.Fatalf("price on a cold directory = %+v, want unknown", p)
+	}
+	fmt.Printf("price: cold directory untouched, price unknown\n")
+}
+
+// TestPriceOfProbesWhenTheSizeIsDeclared keeps the one case that legitimately probes: a declared size
+// with no history is exactly what the throughput probe is for.
+func TestPriceOfProbesWhenTheSizeIsDeclared(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, advise.BaseDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, advise.BaseDir, "expected-bytes"), []byte("2097152"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := PriceOf(dir)
+	if p.Source != "probe" || p.Seconds <= 0 {
+		t.Fatalf("declared size did not price: %+v", p)
+	}
+	fmt.Printf("price: declared 2 MiB priced by probe (%s)\n", p.Describe())
+}
+
+// namesUnder lists every path under dir, sorted, so a test can say "nothing appeared".
+func namesUnder(t *testing.T, dir string) string {
+	t.Helper()
+	var names []string
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path != dir {
+			names = append(names, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(names)
+	return strings.Join(names, ",")
 }

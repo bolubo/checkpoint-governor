@@ -70,7 +70,7 @@ One callback each for Hugging Face Trainer, Lightning and Composer: `docs/huggin
 
 | input | meaning | required |
 |---|---|---|
-| `no-us` | what the job would do without us: `none`, or a period | **yes** — `none` is an answer; unset refuses to start |
+| `no-us` | what the job would do without us: `none`, or a period | no — unset means `none`, and the first line of the run says so |
 | `with-us` | how stale the newest checkpoint may become while we are alive | no — unset means exceptions only |
 
 Unset `with-us` means **no periodic writes**: the governor is silent until a condition says the work is

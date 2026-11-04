@@ -267,8 +267,17 @@ type WritePrice struct {
 
 // PriceOf answers what one write costs in dir, without a loop:  runs before there is anything
 // to govern, and the price is exactly what it needs.
+//
+// The 32 MiB probe runs only when the job declared a size: with no size there is nothing to price,
+// and a read-only command that writes 32 MiB into the checkpoint directory is a surprise nobody asked
+// for. `run` still probes once, because it needs the throughput for its first decision.
 func PriceOf(dir string) WritePrice {
-	return priceFrom(readGlue(dir), measureThroughput(dir, 32<<20))
+	g := readGlue(dir)
+	var throughput float64
+	if g.ExpectedBytes > 0 {
+		throughput = measureThroughput(dir, 32<<20)
+	}
+	return priceFrom(g, throughput)
 }
 
 // PriceAtStart is the same question for a running loop: it reads the directory itself instead of

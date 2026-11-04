@@ -300,8 +300,10 @@ saying "I do not know". It comes from, in order of authority:
 1. **Measured** — after two sealed writes, the p90 of the durations actually seen. The only number
    used for a deadline.
 2. **Declared by the job** — `expected-bytes` in `.ckpt-governor/`; printed as `(estimated)`.
-3. **One bounded probe** — at start, if neither exists: write 32 MiB into `.ckpt-governor`, fsync,
-   remove, measure. Once per process, counted as overhead.
+3. **One bounded probe** — when the job declared `expected-bytes` and no measured or declared duration
+   exists: write 32 MiB into the checkpoint directory, fsync, remove, measure. The probe belongs to a
+   `run`, never to a read-only command like `price` — without a size there is nothing to price. Once per
+   process, counted as overhead.
 4. **Nothing** — and then the controller says so. It does not invent a duration to look decisive.
 
 Only a **finished** write has a cost: `sealed` and `broken` carry one; `failed`, `abandoned` and
