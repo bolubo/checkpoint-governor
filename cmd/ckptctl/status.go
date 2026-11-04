@@ -45,8 +45,13 @@ func runStatus(args []string, out io.Writer) int {
 	}
 	if *asJSON {
 		// One object, no prose: a script must be able to ask the controller what it thinks without
-		// parsing a table whose columns are a design choice.
-		raw, err := json.MarshalIndent(l.Status, "", "  ")
+		// parsing a table whose columns are a design choice. The resume verdict rides beside the
+		// status rather than inside it: the ledger does not own the declaration (0026).
+		payload := struct {
+			advise.Status
+			Resume string `json:"resume,omitempty"`
+		}{l.Status, strings.TrimPrefix(ResumeLine(dir), "resume: ")}
+		raw, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {
 			fmt.Fprintf(out, "error: %v\n", err)
 			return 1
@@ -56,6 +61,11 @@ func runStatus(args []string, out io.Writer) int {
 	}
 	advise.Render(out, l.Status, time.Now(), 0)
 	worldSummaryLine(out, dir, time.Now())
+
+	// "Are the bytes whole" and "can this continue" are two questions (0026); status answers both.
+	if line := ResumeLine(dir); line != "" {
+		fmt.Fprintln(out, line)
+	}
 
 	// What the policy could not measure is part of the answer: a person reading a plan has to know
 	// which of its inputs were absent.
