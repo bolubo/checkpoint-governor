@@ -1,6 +1,6 @@
 # Install for Python
 
-Status: published as `ckpt-policy 0.22.0`, `manylinux_2_17_x86_64` — the same number as the release tag
+Status: published as `ckpt-policy 0.23.0`, `manylinux_2_17_x86_64` — the same number as the release tag
 (decision 0029), uploaded by `.github/workflows/publish-pypi.yml` through trusted publishing. `make
 wheel` builds the same wheel from a checkout.
 
@@ -16,9 +16,9 @@ From a checkout, the same wheel:
 
 ```bash
 make wheel
-# engine: linux/amd64 (v0.22.0)
-# ckptctl v0.22.0
-# wheel: ckpt_policy-0.22.0-py3-none-manylinux_2_17_x86_64.whl, engine inside
+# engine: linux/amd64 (v0.23.0)
+# ckptctl v0.23.0
+# wheel: ckpt_policy-0.23.0-py3-none-manylinux_2_17_x86_64.whl, engine inside
 python3 -m pip install dist/wheels/ckpt_policy-*.whl
 ```
 

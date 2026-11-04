@@ -3,6 +3,39 @@
 One entry per released tag. The prototype's history before this file is `git log`; this file starts at
 the first release that makes a compatibility promise.
 
+## v0.23.0 — 2026-11-04
+
+The release where a hold covers the nodes a multi-pod arrival actually needs.
+
+**A `parallelism: 2` Job is two pods, not one.** The gate used to read one pod's request, pick one
+node, and drop every unit on any other node. Room freed on worker-1 cannot hold a pod that must land
+on worker-2, so the second node's victim still died with the 0.2 s notice the gate exists to remove.
+The probe printed exactly that: one node picked, one victim, the second node never asked.
+
+**Now it is per node.** `podsOf` reads `spec.parallelism`; the arrival's total is `perPod × pods`;
+`pickNodes` spreads the pods over the emptiest readable nodes (cordoned and unmeasurable nodes
+skipped, evenly shared when there are fewer nodes than pods). The shortfall is per node, and victims
+are chosen per node with the fleet's rule (lowest priority, then the largest footprint; a tie group
+is never broken). The queue is a gate, not the arithmetic (0023): the victims together must free
+`max(queue gap, Σ node gaps)`, and the queue must allow preemption in the first place. A hold is
+**all-or-nothing** — one short node with no governed unit below the arrival means no hold at all.
+
+`--node` takes a comma-separated list. A single-pod, single-node arrival keeps the same arithmetic
+and the same first line as before (pinned by a test).
+
+**Tests.** Seven unit tests and two end-to-end tests against a fake client: a two-node world, two
+governed directories, two stand-in controllers that write their manifest when they see the reclaim —
+one victim per node, both seals observed before the job is created, reclaims released, permits
+granted; and a refusal when the second node has nobody to ask.
+
+**Limits written down** (decision 0031, `docs/gate.md`): one pod per node is a model of how multi-pod
+Jobs are placed, not a scheduler promise; only CPU enters the arithmetic; only a `batch/v1 Job` is
+read (PyTorchJob/MPIJob are not); a real cross-node hold needs a checkpoint volume that both the gate
+and the pods can see — the lab's `hostPath /g1` is per node, so that run stays a deployment
+prerequisite.
+
+The Python package carries the same number without the `v`: `ckpt-policy 0.23.0`.
+
 ## v0.22.0 — 2026-11-04
 
 The release where a higher-priority arrival can be given the time to write, and where the two

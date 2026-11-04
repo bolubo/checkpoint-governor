@@ -54,12 +54,13 @@ One page per question. Start where your question is. Every local link here resol
 
 ## If you are following the work
 
-The current number is **`v0.22.0`** (decision 0029). `v0.21.0`, `v0.15.0` and `v0.2.0` are earlier
-numbers; their pages are history, not install instructions.
+The current number is **`v0.23.0`** (decision 0029). `v0.22.0`, `v0.21.0`, `v0.15.0` and `v0.2.0`
+are earlier numbers; their pages are history, not install instructions.
 
 | page | question |
 |---|---|
-| [release-0.22.md](release-0.22.md) | **the current release**: the arrival waits for the write |
+| [release-0.23.md](release-0.23.md) | **the current release**: the hold covers the nodes the arrival needs |
+| [release-0.22.md](release-0.22.md) | history: the arrival waits for the write |
 | [release-0.21.md](release-0.21.md) | history: where the loop closed, under a real eviction |
 | [plan-library.md](plan-library.md) | the roadmap: what is done, what is next, and the command that proves each line |
 | [product-v1.md](product-v1.md) | v1: the surface |
