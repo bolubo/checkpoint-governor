@@ -1,6 +1,9 @@
 # checkpoint-governor
 
 [![ci](https://github.com/bolubo/checkpoint-governor/actions/workflows/ci.yml/badge.svg)](https://github.com/bolubo/checkpoint-governor/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/bolubo/checkpoint-governor?sort=semver)](https://github.com/bolubo/checkpoint-governor/releases/latest)
+[![pypi](https://img.shields.io/pypi/v/ckpt-policy)](https://pypi.org/project/ckpt-policy/)
+[![license](https://img.shields.io/github/license/bolubo/checkpoint-governor)](LICENSE)
 
 Current release: [`v0.23.0`](docs/release-0.23.md) · [changelog](CHANGELOG.md). The Python package
 carries the same number.
@@ -105,12 +108,15 @@ announcement-only path.
 
 Start with the plan (`docs/plan-library.md`), the cost model (`docs/waste.md`), the resume contract
 (`docs/resume-contract.md`) and the integration template (`docs/integration-template.md`). Every page is
-in `docs/index.md`; decisions in `docs/decisions/`; a tag releases as `RELEASE.md` says.
+in `docs/index.md` (rendered at <https://bolubo.github.io/checkpoint-governor/>); decisions in
+`docs/decisions/`; a tag releases as `RELEASE.md` says.
 
 ## Community
 
 - Questions and ideas: [Discussions](https://github.com/bolubo/checkpoint-governor/discussions).
-- Bugs and features: the issue templates; `good first issue` is the entry point.
+- Bugs and features: the issue templates; the
+  [good first issues](https://github.com/bolubo/checkpoint-governor/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+  are the entry point.
 - Before a pull request: `CONTRIBUTING.md` and its template.
 - Decisions: `GOVERNANCE.md`, records in `docs/decisions/`. Conduct: `CODE_OF_CONDUCT.md`. Security
   reports: `SECURITY.md`, privately.

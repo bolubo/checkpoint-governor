@@ -1,0 +1,10 @@
+# GitHub Pages renders this folder as the project's documentation site:
+#   https://bolubo.github.io/checkpoint-governor/
+#
+# Every page is plain Markdown. GitHub Pages enables jekyll-optional-front-matter,
+# jekyll-default-layout and jekyll-relative-links by default, so a page needs no front matter and a
+# link like `release-0.23.md` becomes `release-0.23.html` on the site.
+title: checkpoint-governor
+description: A write policy for training runs: when a checkpoint is worth writing, and what a loss would cost.
+theme: jekyll-theme-minimal
+show_downloads: false

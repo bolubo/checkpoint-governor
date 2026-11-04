@@ -72,8 +72,10 @@ are earlier numbers; their pages are history, not install instructions.
 
 | page | question |
 |---|---|
-| [../CONTRIBUTING.md](../CONTRIBUTING.md) | how to send a change: conventions, one pull request, the gate |
-| [../GOVERNANCE.md](../GOVERNANCE.md) | who decides, and how a decision is replaced |
-| [../CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) | how people are expected to behave |
-| [../SECURITY.md](../SECURITY.md) | how to report a vulnerability, privately |
-| [../RELEASE.md](../RELEASE.md) | how a tag becomes a release |
+| [CONTRIBUTING.md](https://github.com/bolubo/checkpoint-governor/blob/main/CONTRIBUTING.md) | how to send a change: conventions, one pull request, the gate |
+| [GOVERNANCE.md](https://github.com/bolubo/checkpoint-governor/blob/main/GOVERNANCE.md) | who decides, and how a decision is replaced |
+| [CODE_OF_CONDUCT.md](https://github.com/bolubo/checkpoint-governor/blob/main/CODE_OF_CONDUCT.md) | how people are expected to behave |
+| [SECURITY.md](https://github.com/bolubo/checkpoint-governor/blob/main/SECURITY.md) | how to report a vulnerability, privately |
+| [RELEASE.md](https://github.com/bolubo/checkpoint-governor/blob/main/RELEASE.md) | how a tag becomes a release |
+| [Discussions](https://github.com/bolubo/checkpoint-governor/discussions) | questions, ideas, and what people built with it |
+| [good first issues](https://github.com/bolubo/checkpoint-governor/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) | where a first contribution starts |
