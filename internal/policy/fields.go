@@ -34,6 +34,7 @@ var snapshotFieldStatus = map[string]FieldStatus{
 
 	// Job-local facts, read directly rather than through a condition: one fact, one representation.
 	"Copies":                   FieldRequired,
+	"IncompleteRepairs":        FieldUnknownOK, // filled by the loop's completeness check, not by the scan
 	"ConsecutiveWriteFailures": FieldRequired,
 	"SaveInFlight":             FieldRequired,
 

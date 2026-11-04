@@ -20,7 +20,8 @@ var deliverySheet = map[string]FieldSource{
 	"UnitID":                   {Where: "config", Consumer: "policy+job"},
 	"Generation":               {Where: "ledger", Consumer: "policy+job"},
 	"Evidence":                 {Where: "probes", Consumer: "policy"},
-	"Copies":                   {Where: "scan", Consumer: "policy+executor"},
+	"Copies":                   {Where: "scan + the copy's declaration", Consumer: "policy+executor"},
+	"IncompleteRepairs":        {Where: "ledger", Consumer: "policy"},
 	"ConsecutiveWriteFailures": {Where: "ledger", Consumer: "policy"},
 	"SaveInFlight":             {Where: "scan", Consumer: "policy"},
 

@@ -2,6 +2,7 @@ package policy
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -96,6 +97,26 @@ func (r Risk) Decide(b Bounds, s Snapshot) Decision {
 		d.Reason = ReasonRepair
 		d.SaveNow = true
 		d.Why = fmt.Sprintf("checkpoint at step %d is broken; write it again now", newest.Step)
+		d.Reasons = []ReasonEntry{reason(codeRepairBrokenCopy,
+			map[string]float64{"step": float64(newest.Step)}, "Copies")}
+		return d
+	}
+	if newest := newestCopy(s.Copies); newest != nil && len(newest.Missing) > 0 {
+		// The bytes are whole and the work cannot continue: a finer kind of broken (0026). Writing
+		// again is the only way to add what the declaration does not hold — but only once. If a
+		// newer copy arrives still missing the same state, the writer is never going to produce it,
+		// and rewriting again is a storm rather than a repair.
+		d.Reason = ReasonRepair
+		if s.IncompleteRepairs > 0 {
+			d.Action = ActionInfeasible
+			d.Why = fmt.Sprintf("the newest copy is missing %s, and a rewrite did not add it; a person has to look",
+				strings.Join(newest.Missing, ", "))
+		} else {
+			d.Action = ActionRepair
+			d.SaveNow = true
+			d.Why = fmt.Sprintf("the newest copy is missing %s; writing again is the only way to add it",
+				strings.Join(newest.Missing, ", "))
+		}
 		d.Reasons = []ReasonEntry{reason(codeRepairBrokenCopy,
 			map[string]float64{"step": float64(newest.Step)}, "Copies")}
 		return d

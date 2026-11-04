@@ -248,3 +248,27 @@ func TestTheSameSnapshotDecidesTwice(t *testing.T) {
 		t.Fatalf("why = %q, want the condition named", first.Why)
 	}
 }
+
+// An incomplete copy is a finer kind of broken (0026): the bytes are whole and the work cannot
+// continue. The answer is one write — the only one that can add what is missing — and then a stop,
+// because a writer that keeps producing the same incomplete copy is never going to add it.
+func TestAnIncompleteCopyIsRepairedOnceThenReported(t *testing.T) {
+	s := Snapshot{Copies: []Copy{{Step: 100, State: CopySealed, Missing: []string{"optimizer"}}}}
+
+	first := (Risk{}).Decide(calmBounds(), s)
+	if first.Action != ActionRepair || !first.SaveNow {
+		t.Fatalf("first answer = %s (saveNow %v), want repair+saveNow", first.Action, first.SaveNow)
+	}
+	if !strings.Contains(first.Why, "optimizer") {
+		t.Fatalf("why = %q, want the missing state named", first.Why)
+	}
+
+	s.IncompleteRepairs = 1
+	second := (Risk{}).Decide(calmBounds(), s)
+	if second.Action != ActionInfeasible {
+		t.Fatalf("second answer = %s, want infeasible", second.Action)
+	}
+	if !strings.Contains(second.Why, "rewrite did not add it") {
+		t.Fatalf("why = %q, want the rewrite tried and failed", second.Why)
+	}
+}

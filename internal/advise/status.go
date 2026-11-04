@@ -108,6 +108,13 @@ type Status struct {
 	// means there is none: either every sealed copy has been looked at, or there is no copy at all.
 	// "Never looked" and "looked a minute ago" are different answers, and this is how they stay apart.
 	NewestUnverifiedAt int64 `json:"newestUnverifiedAt,omitempty"`
+	// ResumeStep and ResumeMissing cache the newest sealed copy's declaration verdict, from the
+	// round that read it. A view must not probe the disk (0026), so the answer travels in the ledger.
+	ResumeStep    int64    `json:"resumeStep,omitempty"`
+	ResumeMissing []string `json:"resumeMissing,omitempty"`
+	// IncompleteAskedAt is the training step at which a repair was requested for an incomplete copy.
+	// A newer copy that is still incomplete is the difference between "try once" and "stop".
+	IncompleteAskedAt int64 `json:"incompleteAskedAt,omitempty"`
 	// VerifyBudgetBytes is the hourly read-back allowance and VerifyUsedBytes what this window has
 	// spent. A budget nobody prints is a budget nobody knows is exhausted.
 	VerifyBudgetBytes int64 `json:"verifyBudgetBytes,omitempty"`

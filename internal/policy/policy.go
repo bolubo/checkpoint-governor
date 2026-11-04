@@ -77,6 +77,13 @@ type Copy struct {
 	Bytes     int64
 	State     CopyState
 	CreatedAt time.Time
+	// Missing is the required state the copy's own declaration does not hold, in catalogue order.
+	// It is empty when the declaration holds everything, when there is no declaration at all (nobody
+	// said, so nothing is missing), and when this copy is not a candidate for a resume.
+	//
+	// "Incomplete" is a finer kind of broken (0026): the bytes are whole and the work cannot
+	// continue. It is carried on the copy because that is the fact it belongs to.
+	Missing []string
 }
 
 // WriteKind is what a checkpoint write produces. Empty means full, so a producer that only writes
@@ -119,6 +126,10 @@ type Snapshot struct {
 
 	// Copies are the copies currently on disk, in any order.
 	Copies []Copy
+	// IncompleteRepairs is how many repair requests have already been answered by a newer copy that
+	// is still missing the same required state. Zero means "not tried yet"; one or more means the
+	// writer keeps producing the same incomplete copy, and rewriting again would only be a storm.
+	IncompleteRepairs int
 	// ConsecutiveWriteFailures is how many writes failed in a row without a success in between.
 	ConsecutiveWriteFailures int
 

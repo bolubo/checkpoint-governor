@@ -71,6 +71,21 @@ required only for mixed precision, `ema` only when the run keeps one.
 Exit codes keep the meaning the rest of the product uses: **0 yes, 1 checked and no, 2 cannot decide**.
 A new code would be a compatibility change, and "we do not know" is not a failure of the copy.
 
+### What the controller does about it
+
+`run` reads the newest sealed copy's declaration once per step (the answer is cached in the ledger, so a
+view never probes the disk). If a required state is absent, it asks for **one** write — the only write
+that can add it — and says why in the plan. If the next copy is still missing the same state, it stops
+asking and reports a state a person has to act on:
+
+```
+the newest copy is missing optimizer, and a rewrite did not add it; a person has to look
+```
+
+A rewrite is a new generation, never a retry of the old copy: the writer is the only one that can put
+the missing state into it. Two writes is the budget; a writer that keeps producing the same incomplete
+copy is a fact to report, not a loop to run.
+
 ### Did it resume
 
 Comparing what the job says it adopted with the newest sealed generation:

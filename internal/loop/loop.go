@@ -25,6 +25,7 @@ import (
 	"github.com/bolubo/checkpoint-governor/internal/permit"
 	"github.com/bolubo/checkpoint-governor/internal/policy"
 	"github.com/bolubo/checkpoint-governor/internal/produce"
+	"github.com/bolubo/checkpoint-governor/internal/resume"
 )
 
 // Config is one governed directory.
@@ -963,6 +964,10 @@ func (l *Loop) Reconcile() (Step, error) {
 	if l.cfg.Reclaim != nil {
 		reclaimCause, reclaimHeld = l.cfg.Reclaim(now)
 	}
+	// Can the newest copy continue the run? "Incomplete" is a finer kind of broken (0026): the bytes
+	// are whole and the work cannot resume. The answer is read once per step and cached in the ledger,
+	// because a view must not probe the disk and a round must not read the same declaration twice.
+	l.noteCompleteness(&s)
 	windowDue := l.window.Due(now)
 	decide := l.shouldDecide(now, s) || windowDue ||
 		(reclaimHeld && l.ledger.CauseWrittenID != reclaimCause)
@@ -970,6 +975,11 @@ func (l *Loop) Reconcile() (Step, error) {
 	if decide {
 		d = l.cfg.Policy.Decide(l.cfg.Bounds, s)
 		ov.Decisions = 1
+		// Remember when we asked for a repair of an incomplete copy. A newer copy that is still
+		// incomplete is the difference between "try once" and "stop asking".
+		if d.Action == policy.ActionRepair && incompleteNewest(s.Copies) && l.ledger.Status.IncompleteAskedAt == 0 {
+			l.ledger.Status.IncompleteAskedAt = newestStep(s.Copies)
+		}
 		l.ledger.DecidedSealStep = l.ledger.LastSealStep
 		l.ledger.DecidedFailures = l.ledger.Failures
 		l.ledger.WasInFlight = s.SaveInFlight
@@ -1937,4 +1947,70 @@ func plural(n int, word string) string {
 		return "1 " + word
 	}
 	return fmt.Sprintf("%d %ss", n, word)
+}
+
+// noteCompleteness fills the snapshot's Missing from the newest sealed copy's declaration, and decides
+// whether a repair has already been answered by a newer copy that is still incomplete.
+//
+// The answer is cached by step in the ledger: reading a declaration once per round is cheap, but a view
+// must not read the disk at all, so both the view and the decision take the same cached fact (0026).
+func (l *Loop) noteCompleteness(s *policy.Snapshot) {
+	if newest := newestSealed(s.Copies); newest != nil {
+		if l.ledger.Status.ResumeStep != newest.Step {
+			l.ledger.Status.ResumeStep = newest.Step
+			l.ledger.Status.ResumeMissing = missingStates(l.cfg.Dir)
+		}
+		newest.Missing = l.ledger.Status.ResumeMissing
+	}
+	if !incompleteNewest(s.Copies) {
+		// Nothing is missing any more: the next incomplete copy is a first attempt again.
+		l.ledger.Status.IncompleteAskedAt = 0
+		return
+	}
+	if asked := l.ledger.Status.IncompleteAskedAt; asked > 0 && newestStep(s.Copies) > asked {
+		// We asked once, a newer copy arrived, and the same state is still absent: the writer is
+		// never going to produce it. Rewriting again would be a storm, not a repair.
+		s.IncompleteRepairs = 1
+	}
+}
+
+// missingStates is which required states the newest sealed copy's declaration does not hold. Empty
+// when there is no declaration (nobody said, so nothing is missing) or when it holds everything.
+func missingStates(dir string) []string {
+	sealed, ok, err := resume.NewestSealed(dir)
+	if err != nil || !ok {
+		return nil
+	}
+	f, declared, loadErr := resume.Load(sealed.Dir)
+	v := resume.Judge(f, declared, loadErr, resume.World{})
+	if v.Reason != resume.ReasonStateAbsent {
+		return nil
+	}
+	return v.Missing
+}
+
+func incompleteNewest(copies []policy.Copy) bool {
+	c := newestSealed(copies)
+	return c != nil && len(c.Missing) > 0
+}
+
+func newestSealed(copies []policy.Copy) *policy.Copy {
+	var newest *policy.Copy
+	for i := range copies {
+		c := &copies[i]
+		if c.State != policy.CopySealed && c.State != policy.CopyVerified {
+			continue
+		}
+		if newest == nil || c.Step > newest.Step {
+			newest = c
+		}
+	}
+	return newest
+}
+
+func newestStep(copies []policy.Copy) int64 {
+	if c := newestSealed(copies); c != nil {
+		return c.Step
+	}
+	return 0
 }
