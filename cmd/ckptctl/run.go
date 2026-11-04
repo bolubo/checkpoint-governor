@@ -255,6 +255,12 @@ func runRun(args []string, out io.Writer) int {
 			for _, line := range l.Receipt().Lines() {
 				fmt.Fprintln(out, line)
 			}
+			// Can the newest copy continue the run? The receipt says what the bytes are and what
+			// they would restore; "not resumable: optimizer state absent" is the sentence a person
+			// needs after a silent death (0026).
+			if line := ResumeLine(*dir); line != "" {
+				fmt.Fprintln(out, line)
+			}
 		}()
 	}
 
