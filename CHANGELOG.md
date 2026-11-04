@@ -3,6 +3,47 @@
 One entry per released tag. The prototype's history before this file is `git log`; this file starts at
 the first release that makes a compatibility promise.
 
+## v0.24.0 — 2026-11-04
+
+The release where "can this continue" is answered for the layout your framework already writes.
+
+**The finder reads more than `gen-*`.** One package (`internal/layout`) recognises `gen-N/`,
+`step-N/`, Hugging Face's `checkpoint-N/`, Lightning's `*.ckpt`, a Composer episode, and whatever a
+user's `.ckpt-governor/layout.json` names. Preference is fixed (our generation first, then the highest
+step; at the same step `checkpoint-*` > `*.ckpt` > Composer), and a half-written directory is reported
+as `unknown: … is not sealed` instead of being counted as the newest copy. `resumable`, `status`, the
+receipt and the loop all ask the same finder; the receipt and `status` can no longer print two
+different numbers.
+
+**Declarations say what the job needs.** `resume.json` gained optional `requires` (default five; a
+framework declares four, because it re-iterates the dataset instead of saving a data position),
+`target` (`"."` or a sibling artifact), `caveats` (`data-position-not-saved`), `min_reader`, and `ext`.
+An older declaration keeps its exact sentence; a newer one is refused with the upgrade named.
+
+**Every adapter declares.** Hugging Face writes `checkpoint-<step>/resume.json`, Lightning writes
+`<file>.ckpt.resume.json`, Composer's rank 0 writes `<artifact>.resume.json`. `ckptctl declare` is the
+manual half, and a `probe_cmd` is the last glue (5 s, then `unknown: probe_cmd failed`).
+
+**`ckptctl wrap` makes the stop handshake executable.** It takes the first signal, writes `stopping`,
+waits for a sealed copy or the deadline, then forwards SIGTERM to the process group. Every branch
+prints, including `final write NOT made`. Proven at grace 60/30/10, N=3; a second signal forwards at
+once and records `release-forced`.
+
+**Multi-rank ownership.** Each rank owns `ranks/<rank>/step`; only rank 0 writes team-level files
+(`lead-only file` otherwise). Progress is the slowest rank, `status` prints `members 2/2 · spread 4`,
+silent ranks are named, and a missing rank shard is `not resumable: rank N shard missing`. Retention
+only removes our own layouts.
+
+**Tests.** Thirty outbound promises now name the test that would fail if they stopped being true
+(`make test-claims` prints `claims: 30 · tests found: 30 · missing: 0`). New failure injections: a
+half-written directory, a copy with no declaration, a declaration from a newer build, a probe that
+never answers. `hack/wrap-grace.sh` and `hack/members.sh` are real-process proofs.
+
+**Not in this release.** Built-in format sniffing (`probe_cmd` instead), cross-node coordination in
+`wrap`, rank barriers, real Lightning/Composer runs (v0.25), macOS/Windows wheels (v1).
+
+The Python package carries the same number without the `v`: `ckpt-policy 0.24.0`.
+
 ## v0.23.0 — 2026-11-04
 
 The release where a hold covers the nodes a multi-pod arrival actually needs.

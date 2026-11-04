@@ -5,12 +5,12 @@
 [![pypi](https://img.shields.io/pypi/v/ckpt-policy)](https://pypi.org/project/ckpt-policy/)
 [![license](https://img.shields.io/github/license/bolubo/checkpoint-governor)](LICENSE)
 
-Current release: [`v0.23.0`](docs/release-0.23.md) · [changelog](CHANGELOG.md). The Python package
+Current release: [`v0.24.0`](docs/release-0.24.md) · [changelog](CHANGELOG.md). The Python package
 carries the same number.
 
 A backstop for training runs: it watches the named conditions that come before a lost job, asks for a
-write when one fires, and proves that the copy which landed can resume. One Go engine, one plan file,
-no CRD, no API, no new permission.
+write when one fires, and proves that the copy which landed can resume — whoever wrote it. One Go
+engine, one plan file, no CRD, no API, no new permission.
 
 ## The default is the problem
 
@@ -31,6 +31,26 @@ conditions (`docs/conditions.md`); an urgent one asks for a write. What the plat
 write is `docs/operator-notes.md`.
 
 Framework defaults at four scales: `make waste` (`docs/waste.md`).
+
+## Any writer's layout
+
+Your job probably already writes checkpoints its own way: Hugging Face's `checkpoint-<step>/`,
+Lightning's `last.ckpt`, a Composer episode. The governor reads the newest copy through one finder and
+judges it by the declaration beside it — a small file the adapters write on every save, or one command
+for copies that existed before the integration:
+
+```bash
+$ ckptctl resumable --dir=/ckpt/job-1
+resumable (step 1000, requires model, optimizer, scheduler, rng, caveat: the data position is not saved; …)
+
+$ ckptctl declare --dir=/ckpt/job-1/checkpoint-1000 --step=1000
+declared resume.json (step 1000, requires model, optimizer, scheduler, rng)
+```
+
+A copy nobody described is `unknown`, never "not resumable". The declaration, a `probe_cmd` in
+`.ckpt-governor/layout.json`, or your own `glob` turns it into a known one. Recognised layouts:
+`gen-N/`, `step-N/`, `checkpoint-N/`, `*.ckpt`, Composer episodes, and whatever your `layout.json`
+names.
 
 ## Install
 
@@ -64,7 +84,20 @@ for step, batch in loader:
 ```
 
 One callback each for Hugging Face Trainer, Lightning and Composer: `docs/huggingface.md`,
-`docs/lightning.md`, `docs/composer.md`.
+`docs/lightning.md`, `docs/composer.md`. Each writes a declaration beside every save, so
+`ckptctl resumable` can answer for the framework's own checkpoint.
+
+If your framework decides to exit on its own instead of waiting for `may-exit`, run the job under the
+wrapper. It takes the signal, writes `stopping`, waits for a sealed copy (or the deadline), and only
+then forwards:
+
+```bash
+$ ckptctl wrap --dir=/ckpt/job-1 --grace=60s -- python train.py
+wrap: signal received, stopping written, waiting up to 1m0s
+wrap: sealed at step 1000 (18.4s) → forwarding SIGTERM
+```
+
+A grace that is too short is said out loud (`final write NOT made`), never silent.
 
 ## The two inputs
 
@@ -97,8 +130,9 @@ announcement-only path.
 ## What it does not do
 
 - It is not monitoring software: `ckptctl serve` exports numbers and decides nothing.
-- It never writes, repairs or deletes a checkpoint: your library writes; the governor asks and checks
-  what landed.
+- It never writes your shards: your library writes; the governor asks, writes one declaration beside
+  the copy, and checks what landed. It does retire copies it wrote itself when your retention rule
+  says so — and it never removes a framework's checkpoint.
 - It is not a scheduler, and it does not pick the checkpoint a job resumes from — it says whether the
   newest one can continue, and proves one step of it.
 - It does not promise the machine, the network, or a death that announces nothing: a polling interval

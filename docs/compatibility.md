@@ -50,8 +50,9 @@ refused to answer. A script may branch on these three.
 
 **Flags**: the authoritative list is `ckptctl <command> --help`. The ones a deployment script may rely
 on are `run --dir --unit --no-us --window --every --once --dry-run --webhook`, `supervise --members
---members-from --rounds --forever --every --webhook`, `serve --addr --members --members-from`, and
-`doctor --dir`. Adding a flag is free; removing or renaming one is breaking.
+--members-from --rounds --forever --every --webhook`, `serve --addr --members --members-from`,
+`doctor --dir`, `wrap --dir --grace --teardown`, and `declare --dir --step --requires --state
+--format`. Adding a flag is free; removing or renaming one is breaking.
 
 ## What this page does not promise
 
@@ -61,7 +62,7 @@ reads two schemas, `Reads()` becomes `2..3` and this table grows a row.
 
 ## Added in v0.2, and additive by construction
 
-The current number is `v0.23.0`; v0.22, v0.21, v0.2 and v0.15 are earlier numbers (decision 0029).
+The current number is `v0.24.0`; v0.23, v0.22, v0.21, v0.2 and v0.15 are earlier numbers (decision 0029).
 Their additions are carried by every later release.
 
 The resume contract adds files; it renames nothing and adds no frozen name (decision 0026).
@@ -76,3 +77,24 @@ The resume contract adds files; it renames nothing and adds no frozen name (deci
   (`0` yes, `1` checked and no, `2` cannot decide).
 - **Not added**: no condition, no event kind, no metric, no plan-schema move. `TestFrozenNames` is
   unchanged and still prints `frozen: 14 conditions, 9 event kinds, 6 metrics, 2 exit codes`.
+
+## Added in v0.24, additive
+
+The plan schema stays 2 and `resume.json` stays schema 1. Everything here is an optional field or a
+new name; no existing name changed meaning.
+
+- **Five optional declaration fields**: `requires` (the states this job needs; absent means the
+  original five), `target` (`"."` or a sibling file name; absent means `"."`), `caveats`
+  (`data-position-not-saved`), `min_reader` (a declaration from a newer build is refused with the
+  upgrade named, never misread), and `ext` (readers ignore its contents; every other unknown field is
+  still refused). A declaration written before these existed produces the sentence it always did.
+- **More layouts are found, none renamed**: `step-N/`, `checkpoint-N/`, `*.ckpt` and a Composer
+  episode are read by the same finder as `gen-N/`. `gen-*` keeps priority; a half-written directory is
+  not "the newest copy".
+- **Two new file names**: `ranks/<rank>/step` (each rank's own step; no `ranks/` means the
+  single-writer path, unchanged) and `.ckpt-governor/layout.json` (a user's `glob`, `step_regex`,
+  `declaration`, `probe_cmd`).
+- **One new declaration location**: `<artifact>.resume.json`, beside Lightning's `.ckpt` or a Composer
+  episode, with `target` naming the artifact. `<dir>/resume.json` is unchanged.
+- **Two commands**: `wrap` and `declare`. `wrap` writes `stopping` and never `may-exit`; the controller
+  still owns that file.
