@@ -37,6 +37,7 @@ answers "why is it this way", so a later change either follows it or replaces it
 | 0028 | [The direction is a library](0028-the-direction-is-a-library.md) | the product is a policy library in the training loop, grown through integrations; the default is zero periodic writes |
 | 0029 | [One version number](0029-one-version-number.md) | `vX.Y.Z` on the code, the tag and the wheel; `v0.21.0` is the current number, and the two crossed schemes before it are closed |
 | 0030 | [The reclaim is gated](0030-the-reclaim-is-gated.md) | a held reclaim is an announcement with lead time: the gate delays the arrival, not the victim, and the algorithm learns nothing new |
+| 0031 | [The fanout is per node](0031-the-fanout-is-per-node.md) | a multi-pod arrival is short per node, victims are chosen per node, the queue is only a gate, and a hold is all-or-nothing |
 
 ## Folded records
 

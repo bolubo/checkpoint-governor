@@ -43,50 +43,183 @@ func TestNeedOfSumsContainersAndTakesTheLargestInit(t *testing.T) {
 	}
 }
 
-// Four different reasons a gate must not wait: the queue will not preempt, the work can never fit,
-// the arrival already fits, or there is nothing to ask for.
-func TestShortfallForRefusesCasesThatAreNotReclaims(t *testing.T) {
-	base := adapters.QueueWire{Name: "lab", FreeMilli: 2000, CapacityMilli: 4000, Allowed: true}
-	cases := []struct {
-		name     string
-		q        adapters.QueueWire
-		need     int64
-		nodeFree int64
-		none     bool
-		want     int64
-	}{
-		{"a shortfall", base, 4000, 4000, false, 2000},
-		{"the arrival fits", base, 1000, 1000, false, 0},
-		{"the queue may not preempt", adapters.QueueWire{Name: "lab", FreeMilli: 0, Allowed: false}, 4000, 4000, true, 0},
-		{"the work can never fit", adapters.QueueWire{Name: "lab", CapacityMilli: 500, Allowed: true}, 4000, 4000, true, 0},
-		{"nothing asked for", base, 0, 4000, true, 0},
+// parallelism is the pod count; zero or absent is one. Completions index pods one after another, so
+// they do not add a second concurrent request.
+func TestPodsOfReadsParallelism(t *testing.T) {
+	j := jobWith("2000m", "", 100)
+	if got := podsOf(j); got != 1 {
+		t.Fatalf("pods = %d, want 1 without parallelism", got)
 	}
-	for _, c := range cases {
-		got, pressing := shortfallFor(c.q, c.nodeFree, c.need)
-		if c.none || c.want == 0 {
-			if pressing || got != 0 {
-				t.Errorf("%s: shortfall = %d/%v, want no hold", c.name, got, pressing)
-			}
-			continue
-		}
-		if !pressing || got != c.want {
-			t.Errorf("%s: shortfall = %d/%v, want %d", c.name, got, pressing, c.want)
-		}
+	j.Spec.Parallelism = ptr32(2)
+	if got := podsOf(j); got != 2 {
+		t.Fatalf("pods = %d, want 2", got)
+	}
+	j.Spec.Parallelism = ptr32(0)
+	if got := podsOf(j); got != 1 {
+		t.Fatalf("pods = %d, want 1 for an explicit zero", got)
 	}
 }
 
-// A cohort's room is the group's, and the node's room caps it: a reclaim can only free what the node
-// holds. This is the measured rule's two terms (0023) applied to an arrival the world has not seen.
-func TestShortfallForUsesTheCohortAndTheNode(t *testing.T) {
-	q := adapters.QueueWire{Name: "lab", FreeMilli: 500, CapacityMilli: 4000,
-		Cohort: "c", CohortFreeMilli: 3000, Allowed: true}
-	if got, pressing := shortfallFor(q, 3000, 4000); !pressing || got != 1000 {
-		t.Fatalf("cohort room: shortfall = %d/%v, want 1000", got, pressing)
+// pickNodes spreads the pods over the emptiest readable nodes and skips the ones it cannot measure.
+func TestPickNodesSpreadsThePods(t *testing.T) {
+	nodes := []adapters.NodeState{
+		{Name: "worker-1", Allocatable: cpu(4000), Requested: cpu(1000)},
+		{Name: "worker-2", Allocatable: cpu(4000), Requested: cpu(3000)},
+		{Name: "worker-3", Allocatable: cpu(4000), Requested: cpu(1000), Cordoned: true},
+		{Name: "worker-4", Allocatable: cpu(4000), Requested: cpu(1000), RequestsUnknown: true},
 	}
-	if got, pressing := shortfallFor(q, 1000, 4000); !pressing || got != 3000 {
-		t.Fatalf("node room caps the cohort: shortfall = %d/%v, want 3000", got, pressing)
+	if got := pickNodes(nodes, 1); len(got) != 1 || got[0].Name != "worker-1" || got[0].Pods != 1 {
+		t.Fatalf("one pod = %+v, want worker-1 with one pod", got)
+	}
+	if got := pickNodes(nodes, 2); len(got) != 2 || got[0].Name != "worker-1" || got[1].Name != "worker-2" ||
+		got[0].Pods != 1 || got[1].Pods != 1 {
+		t.Fatalf("two pods = %+v, want one on each of worker-1/worker-2", got)
+	}
+	short := []adapters.NodeState{
+		{Name: "worker-1", Allocatable: cpu(4000), Requested: cpu(1000)},
+		{Name: "worker-2", Allocatable: cpu(4000), Requested: cpu(3000)},
+	}
+	if got := pickNodes(short, 3); len(got) != 2 || got[0].Pods != 2 || got[1].Pods != 1 {
+		t.Fatalf("three pods on two nodes = %+v, want 2+1", got)
+	}
+	if got := pickNodes([]adapters.NodeState{{Name: "w", Cordoned: true}}, 1); got != nil {
+		t.Fatalf("cordoned node = %+v, want none", got)
 	}
 }
+
+// A node gap is per node: room freed on worker-1 does not hold a pod that must land on worker-2.
+func TestShortfallPerNodeIsPerNode(t *testing.T) {
+	picks := []nodePick{
+		{Name: "worker-1", FreeMilli: 3000, Pods: 1},
+		{Name: "worker-2", FreeMilli: 3000, Pods: 1},
+	}
+	got := shortfallPerNode(picks, 4000)
+	if len(got) != 2 || got[0] != 1000 || got[1] != 1000 {
+		t.Fatalf("shortfall = %v, want [1000 1000]", got)
+	}
+}
+
+// The queue is a gate, not the whole arithmetic: the node gaps are what the victims must cover, and
+// the queue's gap is the floor of the total.
+func TestPlanRoomKeepsTheNodeGaps(t *testing.T) {
+	nodes := []adapters.NodeState{
+		{Name: "worker-1", Allocatable: cpu(4000), Requested: cpu(3000)},
+		{Name: "worker-2", Allocatable: cpu(4000), Requested: cpu(3000)},
+	}
+	q := adapters.QueueWire{Name: "lab", FreeMilli: 4000, CapacityMilli: 4000, Allowed: true}
+	plan, hold, why := planRoom(nodes, q, 2000, 2, nil)
+	if !hold {
+		t.Fatalf("not holding: %s", why)
+	}
+	if plan.Total != 4000 || plan.QueueShort != 0 || len(plan.NodeShort) != 2 ||
+		plan.NodeShort[0] != 1000 || plan.NodeShort[1] != 1000 || plan.Want != 2000 {
+		t.Fatalf("plan = %+v, want queue 0, node gaps 1000+1000, want 2000", plan)
+	}
+
+	q2 := adapters.QueueWire{Name: "lab", FreeMilli: 1000, CapacityMilli: 4000, Allowed: true}
+	plan, hold, _ = planRoom(nodes, q2, 2000, 2, nil)
+	if !hold || plan.QueueShort != 3000 || plan.Want != 3000 {
+		t.Fatalf("queue gap = %+v, want queue 3000 and want 3000", plan)
+	}
+
+	q3 := adapters.QueueWire{Name: "lab", FreeMilli: 500, CapacityMilli: 4000,
+		Cohort: "c", CohortFreeMilli: 3000, Allowed: true}
+	plan, hold, _ = planRoom(nodes, q3, 2000, 2, nil)
+	if !hold || plan.QueueShort != 1000 {
+		t.Fatalf("cohort room = %+v, want the cohort's 3000 to leave 1000", plan)
+	}
+}
+
+// The reasons a gate does not wait: the queue will not preempt, the work can never fit, the arrival
+// already fits, the pinned node is unknown, or there is nothing to ask for.
+func TestPlanRoomRefusesWhatIsNotAReclaim(t *testing.T) {
+	nodes := []adapters.NodeState{
+		{Name: "worker-1", Allocatable: cpu(4000), Requested: cpu(3000)},
+		{Name: "worker-2", Allocatable: cpu(4000), Requested: cpu(3000)},
+	}
+	check := func(name string, q adapters.QueueWire, perPod int64, pods int, pinned []string) {
+		t.Helper()
+		if _, hold, why := planRoom(nodes, q, perPod, pods, pinned); hold || why == "" {
+			t.Fatalf("%s: hold=%v why=%q, want no hold and a sentence", name, hold, why)
+		}
+	}
+	check("a queue that may not preempt", adapters.QueueWire{Name: "lab", FreeMilli: 0, Allowed: false}, 2000, 2, nil)
+	check("work past capacity", adapters.QueueWire{Name: "lab", CapacityMilli: 500, Allowed: true}, 2000, 2, nil)
+	check("the arrival fits", adapters.QueueWire{Name: "lab", FreeMilli: 4000, CapacityMilli: 4000, Allowed: true}, 1000, 1, nil)
+	check("an unknown pinned node", adapters.QueueWire{Name: "lab", FreeMilli: 0, Allowed: true}, 2000, 2, []string{"nope"})
+	check("nothing asked for", adapters.QueueWire{Name: "lab", FreeMilli: 0, Allowed: true}, 0, 1, nil)
+}
+
+// One victim per short node, never two from the node with the cheaper units.
+func TestPickVictimsTakesOnePerShortNode(t *testing.T) {
+	plan := roomPlan{
+		Picks:     []nodePick{{Name: "worker-1", FreeMilli: 3000, Pods: 1}, {Name: "worker-2", FreeMilli: 3000, Pods: 1}},
+		NodeShort: []int64{1000, 1000}, Want: 2000, Total: 4000, Pods: 2, PerPod: 2000,
+	}
+	units := []adapters.UnitRecord{
+		{UnitID: "team/a", Node: "worker-1", Priority: 100},
+		{UnitID: "team/b", Node: "worker-2", Priority: 100},
+	}
+	sizes := map[string]int64{"team/a": 2000, "team/b": 2000}
+	dirs := map[string]string{"team/a": "/ckpt/a", "team/b": "/ckpt/b"}
+	got, why := pickVictims(plan, units, sizes, dirs, 500)
+	if why != "" || len(got) != 2 || got[0].ID != "team/a" || got[1].ID != "team/b" {
+		t.Fatalf("victims = %+v why=%q, want team/a then team/b", got, why)
+	}
+
+	// All-or-nothing: worker-2 has nobody to ask, so the gate does not hold at all.
+	got, why = pickVictims(plan, units[:1], sizes, map[string]string{"team/a": "/ckpt/a"}, 500)
+	if got != nil || why == "" {
+		t.Fatalf("victims = %+v why=%q, want no hold", got, why)
+	}
+}
+
+// When the nodes have room but the queue does not, the queue gap is topped up from any selected node.
+func TestPickVictimsTopsUpTheQueueGap(t *testing.T) {
+	plan := roomPlan{
+		Picks: []nodePick{{Name: "worker-1", FreeMilli: 2000, Pods: 1}, {Name: "worker-2", FreeMilli: 2000, Pods: 1}},
+		Total: 4000, Pods: 2, PerPod: 2000,
+		QueueShort: 3000, NodeShort: []int64{0, 0}, Want: 3000,
+	}
+	units := []adapters.UnitRecord{
+		{UnitID: "team/a", Node: "worker-1", Priority: 100},
+		{UnitID: "team/b", Node: "worker-2", Priority: 100},
+	}
+	sizes := map[string]int64{"team/a": 2000, "team/b": 2000}
+	dirs := map[string]string{"team/a": "/ckpt/a", "team/b": "/ckpt/b"}
+	got, why := pickVictims(plan, units, sizes, dirs, 500)
+	if why != "" || len(got) != 2 {
+		t.Fatalf("top-up = %+v why=%q, want both units", got, why)
+	}
+
+	// One unit of 1000m cannot free the 3000m the queue is short: no hold.
+	got, why = pickVictims(plan, units[:1], map[string]int64{"team/a": 1000}, map[string]string{"team/a": "/ckpt/a"}, 500)
+	if got != nil || why == "" {
+		t.Fatalf("short top-up = %+v why=%q, want no hold", got, why)
+	}
+}
+
+// The single-pod, single-node line is the one every earlier experiment printed; it must not change.
+func TestGateSentenceKeepsTheSingleNodeLine(t *testing.T) {
+	job := jobWith("4000m", "", 100)
+	job.Namespace, job.Name = "default", "train"
+	plan := roomPlan{Picks: []nodePick{{Name: "worker-1"}}, Pods: 1, Total: 4000, Want: 2000}
+	want := "default/train needs 4000m; lab is 2000m short on worker-1"
+	if got := gateSentence(job, plan, "lab"); got != want {
+		t.Fatalf("gate line = %q, want %q", got, want)
+	}
+
+	plan.Picks = []nodePick{{Name: "worker-1", Pods: 1}, {Name: "worker-2", Pods: 1}}
+	plan.Pods, plan.NodeShort, plan.QueueShort, plan.Want = 2, []int64{1000, 1000}, 0, 2000
+	want = "default/train needs 4000m over 2 pods; worker-1 is 1000m short; worker-2 is 1000m short"
+	if got := gateSentence(job, plan, "lab"); got != want {
+		t.Fatalf("multi gate line = %q, want %q", got, want)
+	}
+}
+
+func cpu(milli int64) adapters.Resources { return adapters.Resources{CPUMilli: milli} }
+
+func ptr32(v int32) *int32 { return &v }
 
 // Only a unit that is below the arrival, on the chosen node, and whose size is known can be asked to
 // pay. The last clause matters: a hold on an unknown size is a guess, not a selection.

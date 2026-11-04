@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -33,7 +34,7 @@ func runSubmit(args []string) int {
 	ckptRoot := fs.String("ckpt-root", "", "where the victims' checkpoint directories live (required)")
 	deadline := fs.Duration("deadline", 2*time.Minute, "how long the gate waits for the victims to seal")
 	namespace := fs.String("namespace", "", "namespace when the manifest names none")
-	nodeName := fs.String("node", "", "hold a victim on this node (default: the emptiest node)")
+	nodeName := fs.String("node", "", "hold victims on these nodes (comma-separated; default: the emptiest nodes the arrival's pods need)")
 	kubeconfig := fs.String("kubeconfig", "", "kubeconfig path (default: the usual locations, then in-cluster)")
 	dryRun := fs.Bool("dry-run", false, "print the victims and the wait, change nothing")
 	if err := fs.Parse(args); err != nil {
@@ -89,17 +90,46 @@ func runSubmit(args []string) int {
 		}
 		prio = pc.Value
 	}
-	need := needOf(job)
-	if prio <= 0 || need <= 0 {
+	// --node takes a comma-separated list: one node for a single-pod arrival, the arrival's nodes
+	// when the operator knows them.
+	var pinned []string
+	for _, n := range strings.Split(*nodeName, ",") {
+		if n = strings.TrimSpace(n); n != "" {
+			pinned = append(pinned, n)
+		}
+	}
+	return submitArrival(ctx, client, job, prio, submitOptions{
+		WorldDir: *worldDir, Cluster: clusterName, Queue: *queue, CkptRoot: *ckptRoot,
+		Deadline: *deadline, Pinned: pinned, DryRun: *dryRun,
+	}, out)
+}
+
+// submitOptions is what the flag layer resolved: the world to read and the numbers to obey.
+type submitOptions struct {
+	WorldDir string
+	Cluster  string
+	Queue    string
+	CkptRoot string
+	Deadline time.Duration
+	Pinned   []string
+	DryRun   bool
+}
+
+// submitArrival is the gate after the client exists: read the world, decide who pays, hold the
+// arrival, watch for the seal, then create the job.
+func submitArrival(ctx context.Context, client kubernetes.Interface, job *batchv1.Job, prio int32, opt submitOptions, out io.Writer) int {
+	perPod := needOf(job)
+	podCount := podsOf(job)
+	if prio <= 0 || perPod <= 0 {
 		// Nothing to gate: the arrival outranks nobody or asks for nothing. Submitting it directly is
 		// the honest answer, and the alternative would be a hold with no arithmetic behind it.
 		return createJob(client, job, out, "no priority or no request: submitted directly")
 	}
 
-	summary, err := adapters.ReadSummary(*worldDir, clusterName)
+	summary, err := adapters.ReadSummary(opt.WorldDir, opt.Cluster)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return createJob(client, job, out, "no world for cluster "+clusterName+": submitted without a hold")
+			return createJob(client, job, out, "no world for cluster "+opt.Cluster+": submitted without a hold")
 		}
 		fmt.Fprintf(os.Stderr, "ckptgate submit: %v\n", err)
 		return 1
@@ -108,29 +138,24 @@ func runSubmit(args []string) int {
 	if summary.Stale(now) {
 		return createJob(client, job, out, "the world is stale: submitted without a hold")
 	}
-	q, ok := queueByName(summary, *queue)
+	q, ok := queueByName(summary, opt.Queue)
 	if !ok {
-		return createJob(client, job, out, "queue "+*queue+" is not in the world: submitted without a hold")
+		return createJob(client, job, out, "queue "+opt.Queue+" is not in the world: submitted without a hold")
 	}
 
-	node, nodeFree := *nodeName, int64(0)
-	if node == "" {
-		node, nodeFree = pickNode(summary.Nodes)
-	} else if n, ok := summary.Node(node); ok {
-		nodeFree = n.Allocatable.CPUMilli - n.Requested.CPUMilli
-	} else {
-		fmt.Fprintf(os.Stderr, "ckptgate submit: node %q is not in the world\n", node)
-		return 1
-	}
-	if node == "" {
-		return createJob(client, job, out, "no node is readable: submitted without a hold")
-	}
-	shortfall, pressing := shortfallFor(q, nodeFree, need)
-	if !pressing {
-		return createJob(client, job, out, "the queue is not short on "+node+": submitted without a hold")
+	for _, n := range opt.Pinned {
+		if _, ok := summary.Node(n); !ok {
+			fmt.Fprintf(os.Stderr, "ckptgate submit: node %q is not in the world\n", n)
+			return 1
+		}
 	}
 
-	units, err := readUnits(*worldDir, clusterName)
+	plan, hold, why := planRoom(summary.Nodes, q, perPod, podCount, opt.Pinned)
+	if !hold {
+		return createJob(client, job, out, why)
+	}
+
+	units, err := readUnits(opt.WorldDir, opt.Cluster)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ckptgate submit: %v\n", err)
 		return 1
@@ -143,20 +168,18 @@ func runSubmit(args []string) int {
 	// The size of a victim is a fact about its pod, and the world deliberately does not carry it: a
 	// unit record is "who could die", not how much room it holds. One LIST at submit time is cheap
 	// because submissions are rare.
-	dirs, err := governedDirs(*ckptRoot, units)
+	dirs, err := governedDirs(opt.CkptRoot, units)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ckptgate submit: %v\n", err)
 		return 1
 	}
-	cands := candidates(units, cpuSizes(pods.Items), dirs, node, prio)
-	victims := permit.Victims(cands, permit.CauseReclaim, int(shortfall))
+	victims, why := pickVictims(plan, units, cpuSizes(pods.Items), dirs, prio)
 	if len(victims) == 0 {
-		return createJob(client, job, out,
-			"nobody below this priority on "+node+" is governed here: submitted without a hold")
+		return createJob(client, job, out, why)
 	}
 	dirs = map[string]string{}
 	for _, v := range victims {
-		if d, ok := findUnitDir(*ckptRoot, v.ID); ok {
+		if d, ok := findUnitDir(opt.CkptRoot, v.ID); ok {
 			dirs[v.ID] = d
 		}
 	}
@@ -164,15 +187,22 @@ func runSubmit(args []string) int {
 		return createJob(client, job, out, "a victim's checkpoint dir disappeared: submitted without a hold")
 	}
 
+	nodeOf := map[string]string{}
+	for _, u := range units {
+		nodeOf[u.UnitID] = u.Node
+	}
 	names := make([]string, 0, len(victims))
 	for _, v := range victims {
-		names = append(names, fmt.Sprintf("%s (priority %d, size %dm)", v.ID, v.Priority, v.Size))
+		if len(plan.Picks) == 1 {
+			names = append(names, fmt.Sprintf("%s (priority %d, size %dm)", v.ID, v.Priority, v.Size))
+			continue
+		}
+		names = append(names, fmt.Sprintf("%s (%s, priority %d, size %dm)", v.ID, nodeOf[v.ID], v.Priority, v.Size))
 	}
-	fmt.Fprintf(out, "gate       %s/%s needs %dm; %s is %dm short on %s\n",
-		job.Namespace, jobName(job), need, *queue, shortfall, node)
+	fmt.Fprintf(out, "gate       %s\n", gateSentence(job, plan, opt.Queue))
 	fmt.Fprintf(out, "victims    %s\n", joinStrings(names, ", "))
-	fmt.Fprintf(out, "deadline   %s\n", deadline.Round(time.Second))
-	if *dryRun {
+	fmt.Fprintf(out, "deadline   %s\n", opt.Deadline.Round(time.Second))
+	if opt.DryRun {
 		fmt.Fprintln(out, "dry-run    nothing was held and nothing was created")
 		return 0
 	}
@@ -182,21 +212,21 @@ func runSubmit(args []string) int {
 	for i, v := range victims {
 		rec := adapters.ReclaimRecord{
 			UnitID: v.ID, RequestID: requestID, Intruder: job.Namespace + "/" + jobName(job),
-			NeedMilli: need, State: adapters.ReclaimHeld, Since: since, Deadline: since.Add(*deadline),
+			NeedMilli: plan.Total, State: adapters.ReclaimHeld, Since: since, Deadline: since.Add(opt.Deadline),
 		}
-		if err := adapters.WriteReclaim(*worldDir, clusterName, rec); err != nil {
+		if err := adapters.WriteReclaim(opt.WorldDir, opt.Cluster, rec); err != nil {
 			fmt.Fprintf(os.Stderr, "ckptgate submit: write reclaim: %v\n", err)
 			return 1
 		}
 		// The permit is the fleet's answer, and the gate is the fleet that knows: this unit is the one
 		// the reclaim selects, so it may spend the write (0021).
-		if err := grant(*worldDir, clusterName, v.ID, i+1); err != nil {
+		if err := grant(opt.WorldDir, opt.Cluster, v.ID, i+1); err != nil {
 			fmt.Fprintf(os.Stderr, "ckptgate submit: grant %s: %v\n", v.ID, err)
 			return 1
 		}
 	}
 
-	step, ok := waitForSeals(dirs, since, *deadline)
+	step, ok := waitForSeals(dirs, since, opt.Deadline)
 	elapsed := time.Since(since).Round(100 * time.Millisecond)
 	state := adapters.ReclaimReleased
 	if !ok {
@@ -207,9 +237,9 @@ func runSubmit(args []string) int {
 	for _, v := range victims {
 		rec := adapters.ReclaimRecord{
 			UnitID: v.ID, RequestID: requestID, Intruder: job.Namespace + "/" + jobName(job),
-			NeedMilli: need, State: state, Since: since, Deadline: since.Add(*deadline),
+			NeedMilli: plan.Total, State: state, Since: since, Deadline: since.Add(opt.Deadline),
 		}
-		if err := adapters.WriteReclaim(*worldDir, clusterName, rec); err != nil {
+		if err := adapters.WriteReclaim(opt.WorldDir, opt.Cluster, rec); err != nil {
 			fmt.Fprintf(os.Stderr, "ckptgate submit: release %s: %v\n", v.ID, err)
 			return 1
 		}
@@ -218,6 +248,29 @@ func runSubmit(args []string) int {
 		fmt.Fprintf(out, "gate       sealed at step %d after %s: releasing the arrival\n", step, elapsed)
 	}
 	return createJob(client, job, out, "")
+}
+
+// gateSentence is the first block: what the arrival needs and where the room has to come from. The
+// single-pod, single-node sentence is the one every earlier experiment printed; a multi-node
+// arrival gets one clause per node, because that is the plan a person has to check.
+func gateSentence(job *batchv1.Job, plan roomPlan, queue string) string {
+	who := job.Namespace + "/" + jobName(job)
+	if len(plan.Picks) == 1 && plan.Pods == 1 {
+		return fmt.Sprintf("%s needs %dm; %s is %dm short on %s", who, plan.Total, queue, plan.Want, plan.Picks[0].Name)
+	}
+	parts := make([]string, 0, len(plan.Picks)+1)
+	if plan.QueueShort > 0 {
+		parts = append(parts, fmt.Sprintf("queue %s is %dm short", queue, plan.QueueShort))
+	}
+	for i, p := range plan.Picks {
+		if plan.NodeShort[i] > 0 {
+			parts = append(parts, fmt.Sprintf("%s is %dm short", p.Name, plan.NodeShort[i]))
+		}
+	}
+	if len(parts) == 0 {
+		parts = append(parts, "the queue and the nodes have room")
+	}
+	return fmt.Sprintf("%s needs %dm over %d pods; %s", who, plan.Total, plan.Pods, joinStrings(parts, "; "))
 }
 
 func createJob(client kubernetes.Interface, job *batchv1.Job, out io.Writer, why string) int {

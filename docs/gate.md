@@ -51,8 +51,34 @@ gate       sealed at step 42 after 18.3s: releasing the arrival
 submitted  default/train-big
 ```
 
-`--dry-run` prints the first block and stops. `--node` pins the node when the gate's "emptiest node"
-heuristic is not what you want.
+`--dry-run` prints the first block and stops. `--node` pins the nodes when the gate's "emptiest node"
+heuristic is not what you want; it takes a comma-separated list (`--node=worker-1,worker-2`), one
+entry per pod of the arrival.
+
+## When the arrival needs more than one node
+
+A `batch/v1 Job` with `parallelism: N` asks for N pods. The gate counts N pod requests, spreads them
+over the emptiest readable nodes (cordoned and unmeasurable nodes are skipped, and pods share a node
+when there are fewer nodes than pods), and computes a shortfall **per node**:
+
+```
+gate       default/train-big needs 4000m over 2 pods; worker-1 is 1200m short; worker-2 is 800m short
+victims    default/train-a (worker-1, priority 100, size 2000m), default/train-b (worker-2, priority 100, size 2000m)
+```
+
+The victims are chosen on each node with the fleet's existing rule (lowest priority first, then the
+largest footprint, a tie group is never broken), because room freed on worker-1 cannot hold the pod
+that must land on worker-2. The queue's own gap is a gate, not the arithmetic: the queue must allow
+preemption, and the victims together must free `max(queue gap, sum of node gaps)`.
+
+**All-or-nothing.** If a node that must free room has no governed unit below the arrival, the gate
+does not hold at all — it submits directly and says why. Holding one node and letting the other's
+victim die with 0.2 s notice would be a promise nobody keeps. A single-pod, single-node arrival
+produces exactly the same arithmetic and the same first line as before.
+
+The real cross-node run needs a checkpoint volume both the gate and the pods can see (the lab's
+`hostPath /g1` is per node); the end-to-end test that covers the gate's own path uses a two-node
+world and a fake client (`contrib/gate/submit_fanout_test.go`).
 
 ## Where it runs
 
@@ -99,6 +125,11 @@ same shape the observer already uses (decision 0021).
 - **The checkpoint directory must be discoverable** under `--ckpt-root`: the gate matches a unit by
   the `unitId` its controller publishes in `.ckpt-governor/state.json`. When it cannot find one, it
   does not hold.
+- **One pod, one node is a model, not a promise.** It is how multi-pod Jobs are normally placed, and
+  `--node` overrides it; a single pod spanning nodes (MPI-style) is a different shape this gate does
+  not model.
+- **Only CPU is in the arithmetic**, and only a `batch/v1 Job` is read. Memory belongs to the queue,
+  and PyTorchJob/MPIJob manifests are not accepted.
 
 ## Measured, 2026-11-03
 
