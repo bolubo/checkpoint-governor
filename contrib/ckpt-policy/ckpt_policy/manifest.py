@@ -63,8 +63,15 @@ def write_manifest(gen_dir: str, manifest: dict) -> None:
 
 
 def write_resume(gen_dir: str, *, generation: int, step: int, format: str, world: dict,
-                 state: dict, partial=None, loader=None) -> None:
-    """The declaration, written beside the manifest. The reader treats it as untrusted input."""
+                 state: dict, partial=None, loader=None, requires=None, target=None,
+                 file_name: str = "resume.json") -> None:
+    """The declaration, written beside the manifest. The reader treats it as untrusted input.
+
+    `requires` is which states a resume of *this* job needs; absent means the reader's default five.
+    `target` names the artifact the declaration describes: `"."` for the directory it sits in, or a
+    sibling file name (Lightning `.ckpt`, Composer episode). Both are optional, so an older reader
+    keeps its old answer.
+    """
     doc = {
         "schema": RESUME_SCHEMA,
         "generation": generation,
@@ -82,7 +89,11 @@ def write_resume(gen_dir: str, *, generation: int, step: int, format: str, world
     }
     if partial:
         doc["partial"] = list(partial)
+    if requires:
+        doc["requires"] = list(requires)
+    if target:
+        doc["target"] = target
     if loader:
         doc["loader"] = loader
     raw = (json.dumps(doc, indent=2) + "\n").encode("utf-8")
-    write_atomic(os.path.join(gen_dir, "resume.json"), raw)
+    write_atomic(os.path.join(gen_dir, file_name), raw)

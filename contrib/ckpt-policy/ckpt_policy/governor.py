@@ -21,6 +21,10 @@ from .manifest import build_manifest, write_manifest, write_resume
 PLAN_SCHEMA = 2
 ENGINE_ENV = "CKPTCTL_ENGINE"
 
+# What a framework checkpoint can carry. Frameworks do not save a data-loader position — they re-iterate
+# the dataset and skip — so a declaration that demanded one would refuse every copy they ever write.
+FRAMEWORK_REQUIRES = ("model", "optimizer", "scheduler", "rng")
+
 
 def engine_path() -> str | None:
     """The engine this client should use: the bundled one first, then `CKPTCTL_ENGINE`, then PATH.
@@ -246,6 +250,43 @@ class Governor:
             self._pending_request = ""
         self._last_write = time.monotonic()
         return manifest
+
+    def declare(self, path: str, *, step: int, state: dict | None = None,
+                format: str = "other", requires: list[str] | None = None,
+                target: str | None = None) -> None:
+        """Say what a framework-written checkpoint holds, beside that checkpoint.
+
+        The framework owns the layout and the bytes; we own the statement a restore is judged
+        against, because nobody else writes one. `state` defaults to this client's configured
+        `Saves`, which is what the framework was asked to write.
+
+        `path` is either a directory (Hugging Face's `checkpoint-<step>/`) or the artifact itself
+        (Lightning's `*.ckpt`). A directory gets `<dir>/resume.json` with `target: "."`; an artifact
+        gets `<artifact>.resume.json` with `target: <file name>`. Those are the only two places a
+        declaration may live.
+
+        `requires` defaults to the four states a framework checkpoint can actually carry: model,
+        optimizer, scheduler and rng. Frameworks re-iterate the loader instead of saving a data
+        position, so judging them against a dataloader they never had would refuse every copy.
+        """
+        if not self.rank0:
+            return
+        is_dir = os.path.isdir(path)
+        target = "." if target is None and is_dir else target
+        if target is None:
+            target = os.path.basename(path)
+        if target == ".":
+            out_dir, file_name = path, "resume.json"
+        else:
+            out_dir, file_name = os.path.dirname(path) or ".", target + ".resume.json"
+            if is_dir:
+                out_dir = path
+        os.makedirs(out_dir, exist_ok=True)
+        write_resume(out_dir, generation=int(step), step=int(step), format=format,
+                     world=self.world.as_dict(),
+                     state=state or self.saves.as_dict(),
+                     requires=requires if requires is not None else list(FRAMEWORK_REQUIRES),
+                     target=target, loader=None, file_name=file_name)
 
     def resumed(self, generation: int, step: int, seconds: float | None = None) -> None:
         """Say what the loader adopted, right after it returns. This is what makes a restart

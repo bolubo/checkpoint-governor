@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -32,8 +33,16 @@ const (
 	MaxBytes       = 64 << 10
 	MaxRanks       = 65536
 	MaxPartial     = 16
+	MaxRequires    = 7
+	MaxCaveats     = 8
+	MaxTargetBytes = 255
 	MaxLoaderBytes = 512
 )
+
+// ReaderVersion is what this build can judge. A writer may set `min_reader` to the version its
+// declaration needs; a newer declaration read by an older build is refused with the upgrade named,
+// rather than misread as an older one (decision 0026, version skew).
+const ReaderVersion = "0.24"
 
 // Formats are the layouts a declaration may name. The list is closed for the same reason the condition
 // catalogue is: a typo must be refused at read time, not silently treated as "some other format".
@@ -116,6 +125,24 @@ type File struct {
 	World      World    `json:"world"`
 	State      State    `json:"state"`
 	Partial    []string `json:"partial,omitempty"`
+	// Requires is which states a resume of *this* job needs. Absent means the catalogue's default
+	// (model, optimizer, scheduler, rng, dataloader). Hugging Face and Lightning do not save a
+	// dataloader position — they re-iterate and skip — so an integration declares four, not five.
+	// Without this field every framework checkpoint would be judged against a requirement its
+	// framework never had (0026).
+	Requires []string `json:"requires,omitempty"`
+	// Target is which artifact this declaration describes: "." for the directory it sits in (Hugging
+	// Face's checkpoint-N/), or a sibling file name (Lightning's .ckpt, a Composer episode). Absent
+	// means "." — the only place a declaration lived before this field existed.
+	Target string `json:"target,omitempty"`
+	// Caveats are facts a person must hear that do not change "can it continue": today the closed
+	// set is one value, `data-position-not-saved`.
+	Caveats []string `json:"caveats,omitempty"`
+	// MinReader is the build a writer says a reader needs. A lower build refuses instead of guessing.
+	MinReader string `json:"min_reader,omitempty"`
+	// Ext is the only extension point: readers ignore its contents and say so in `status`. Everything
+	// else unknown is still refused, because a typo must not travel through a restore unnoticed.
+	Ext map[string]json.RawMessage `json:"ext,omitempty"`
 	// Loader is the command the writer suggests for a drill. It is never executed because it was
 	// declared here: an untrusted file must not become a command (decision 0026).
 	Loader string `json:"loader,omitempty"`
@@ -169,6 +196,18 @@ func (f File) validate() error {
 	if err := f.validatePartial(); err != nil {
 		return err
 	}
+	if err := f.validateRequires(); err != nil {
+		return err
+	}
+	if err := f.validateTarget(); err != nil {
+		return err
+	}
+	if err := f.validateCaveats(); err != nil {
+		return err
+	}
+	if err := f.validateMinReader(); err != nil {
+		return err
+	}
 	if len(f.Loader) > MaxLoaderBytes {
 		return fmt.Errorf("%s: loader is %d bytes, more than the %d allowed", FileName, len(f.Loader), MaxLoaderBytes)
 	}
@@ -215,6 +254,106 @@ func (f File) validatePartial() error {
 		}
 	}
 	return nil
+}
+
+// validateRequires refuses a requirement this file cannot answer, and a duplicate. An absent list is
+// valid: it is the default five, which is what every declaration written before the field existed says.
+func (f File) validateRequires() error {
+	if len(f.Requires) > MaxRequires {
+		return fmt.Errorf("%s: requires names %d states, more than the %d possible", FileName, len(f.Requires), MaxRequires)
+	}
+	seen := map[string]bool{}
+	for _, name := range f.Requires {
+		if !stateNames[name] {
+			return fmt.Errorf("%s: requires names %q, which is not a state this file can carry", FileName, name)
+		}
+		if seen[name] {
+			return fmt.Errorf("%s: requires names %q twice", FileName, name)
+		}
+		seen[name] = true
+	}
+	return nil
+}
+
+// validateTarget refuses anything but the two places a declaration may live: the directory it sits in
+// (".") or a sibling artifact's name. A path would make the declaration describe something else, which
+// is the one thing the format exists to prevent.
+func (f File) validateTarget() error {
+	if f.Target == "" || f.Target == "." {
+		return nil
+	}
+	if len(f.Target) > MaxTargetBytes {
+		return fmt.Errorf("%s: target is %d bytes, more than the %d allowed", FileName, len(f.Target), MaxTargetBytes)
+	}
+	if strings.ContainsAny(f.Target, `/\`) || f.Target == ".." || strings.HasPrefix(f.Target, "..") {
+		return fmt.Errorf("%s: target %q must be a sibling file name or \".\", not a path", FileName, f.Target)
+	}
+	return nil
+}
+
+// CaveatNames is the closed set `caveats` may name. A caveat does not change the verdict, so a typo
+// would silently drop the one fact the user needed to hear.
+var CaveatNames = map[string]bool{
+	CaveatDataPositionNotSaved: true,
+}
+
+// CaveatDataPositionNotSaved is the only caveat today: the copy can continue, but the dataset position
+// was not saved, so a restore replays or restarts the epoch.
+const CaveatDataPositionNotSaved = "data-position-not-saved"
+
+func (f File) validateCaveats() error {
+	if len(f.Caveats) > MaxCaveats {
+		return fmt.Errorf("%s: caveats names %d entries, more than the %d allowed", FileName, len(f.Caveats), MaxCaveats)
+	}
+	seen := map[string]bool{}
+	for _, name := range f.Caveats {
+		if !CaveatNames[name] {
+			return fmt.Errorf("%s: caveat %q is not one we can print (known: %s)", FileName, name, CaveatDataPositionNotSaved)
+		}
+		if seen[name] {
+			return fmt.Errorf("%s: caveat %q twice", FileName, name)
+		}
+		seen[name] = true
+	}
+	return nil
+}
+
+// validateMinReader refuses a declaration written for a newer build. Reading it as though it were
+// this schema is the failure mode the field exists to stop: the file may hold fields this build
+// ignores, and an ignored field is indistinguishable from an absent one.
+func (f File) validateMinReader() error {
+	if f.MinReader == "" {
+		return nil
+	}
+	need, ok := parseVersion(f.MinReader)
+	if !ok {
+		return fmt.Errorf("%s: min_reader %q is not a version (want MAJOR.MINOR)", FileName, f.MinReader)
+	}
+	if mine, _ := parseVersion(ReaderVersion); need.major > mine.major ||
+		(need.major == mine.major && need.minor > mine.minor) {
+		return fmt.Errorf("%s: this declaration needs ckptctl >= %s (you have %s)", FileName, f.MinReader, ReaderVersion)
+	}
+	return nil
+}
+
+type version struct{ major, minor int }
+
+// parseVersion accepts exactly MAJOR.MINOR, digits only. The release rule is that engine and wheel
+// move together, so a two-part number is the whole of it.
+func parseVersion(s string) (version, bool) {
+	parts := strings.Split(s, ".")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return version{}, false
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil || major < 0 {
+		return version{}, false
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil || minor < 0 {
+		return version{}, false
+	}
+	return version{major, minor}, true
 }
 
 // holds reports whether the declaration says this state was saved.

@@ -26,6 +26,8 @@ transformers is installed (it inherits the no-op hooks) and stays a plain class 
 module remains importable on a machine without transformers.
 """
 
+import os
+
 try:
     from transformers import TrainerCallback as _TrainerCallback
 except ImportError:  # pragma: no cover - the package keeps zero runtime dependencies
@@ -52,4 +54,28 @@ class GovernorCallback(_TrainerCallback):
 
     def on_train_end(self, args, state, control, **kwargs):
         self.governor.ending()
+        return control
+
+    def on_save(self, args, state, control, **kwargs):
+        """Say what the Trainer just wrote, inside the directory it wrote.
+
+        HF owns the layout and the bytes; the declaration beside them is the only thing a restore
+        can be judged against. `save_only_model` makes the optimizer/scheduler/RNG answer a fact
+        rather than a guess.
+        """
+        step = int(getattr(state, "global_step", 0) or 0)
+        out = os.path.join(str(getattr(args, "output_dir", "")), f"checkpoint-{step}")
+        only = bool(getattr(args, "save_only_model", False))
+        held = {
+            "model": True,
+            "optimizer": not only,
+            "scheduler": not only,
+            "rng": not only,
+            # A Trainer checkpoint has never held a data-loader position: the dataset is re-iterated
+            # and skipped. Saying so is a fact, and a restore is judged against it.
+            "dataloader": False,
+        }
+        if os.path.isdir(out):
+            self.governor.declare(out, step=step, state=held, format="hf-trainer",
+                                  requires=["model", "optimizer", "scheduler", "rng"])
         return control
