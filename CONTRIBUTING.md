@@ -2,8 +2,10 @@
 
 ## Start here
 
-- **Pick an issue.** `good first issue` is the entry point; every issue states a done-when. A comment
-  before you start keeps two people off the same change.
+- **Pick an issue and claim it.** `good first issue` is the entry point; every issue states a done-when.
+  Put `/assign` as the **first word** of a comment and a bot assigns you — that, not a prose comment, is
+  what keeps two people off the same change; `/unassign` releases it. If the bot is down, say so in the
+  issue and carry on.
 - **Read `docs/index.md`** to find the page your change touches, and `docs/decisions/` to find out why
   the current behaviour is what it is.
 - **Run `make fast`** while you work (format check, vet, build, every unit test, the docs pins).
