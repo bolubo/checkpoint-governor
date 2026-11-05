@@ -190,6 +190,13 @@ drill           03:31:02  restorable: step 512 → 513  0.9s
 Every line carries its own evidence: `resumable` from the declaration, `adopted` from the job, `restorable`
 from a drill. None of them is upgraded by the others.
 
+A framework copy has no generation number. The same line names its step instead, and the copy it
+compares against is the newest one that existed before the job started:
+
+```
+resumed         03:24:11  adopted step 50, load 0.005s
+```
+
 ## 4. Two accounts of time-to-resume
 
 A resume takes as long as two different things take, and no party owns both:

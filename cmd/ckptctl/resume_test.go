@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -266,6 +267,49 @@ func TestResumedReportsWhatWasAdopted(t *testing.T) {
 			t.Fatalf("output %q does not contain %q", out.String(), want)
 		}
 	})
+}
+
+// A framework writer leaves no gen-* manifest, so `resumed` used to answer "nothing to adopt" after a
+// successful resume. The question is answered against the copy that existed at boot — not against a
+// newer checkpoint the resumed run wrote itself.
+func TestResumedReadsAFrameworkCopy(t *testing.T) {
+	root := t.TempDir()
+	ckpt := filepath.Join(root, "checkpoint-50")
+	if err := os.MkdirAll(ckpt, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ckpt, "trainer_state.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := resume.Write(ckpt, resume.File{
+		Schema: resume.Schema, Generation: 50, Step: 50, Format: resume.FormatHFTrainer,
+		World:    resume.World{Ranks: 1},
+		State:    resume.State{Model: true, Optimizer: true, Scheduler: true, RNG: true},
+		Requires: []string{"model", "optimizer", "scheduler", "rng"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	writeGlue(t, root, "boot", strconv.FormatInt(time.Now().UnixNano(), 36))
+	writeGlue(t, root, "resumed-step", "50")
+	writeGlue(t, root, "load-seconds", "0.004")
+
+	// The resumed run saves again; those steps are its own work, not steps it left unused.
+	later := filepath.Join(root, "checkpoint-52")
+	if err := os.MkdirAll(later, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(later, "trainer_state.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if code := runResumed([]string{"--dir=" + root}, &out); code != 0 {
+		t.Fatalf("exit %d: %s", code, out.String())
+	}
+	if want := "adopted step 50, load 0.004s"; !strings.Contains(out.String(), want) {
+		t.Fatalf("output %q does not contain %q", out.String(), want)
+	}
 }
 
 // A verdict is a report, not an input (decision 0026). The same work, with the declaration changed from

@@ -56,13 +56,24 @@ type Adoption struct {
 
 // Line is the sentence a receipt prints.
 func (a Adoption) Line() string {
+	framework := a.SealedGeneration == 0 // a writer that leaves a declaration, not a gen-* manifest
 	switch a.Reason {
 	case AdoptAdopted:
+		if framework {
+			if a.LoadSeconds != "" {
+				return fmt.Sprintf("adopted step %d, load %ss", a.AdoptedStep, a.LoadSeconds)
+			}
+			return fmt.Sprintf("adopted step %d", a.AdoptedStep)
+		}
 		if a.LoadSeconds != "" {
 			return fmt.Sprintf("adopted gen %d (step %d), load %ss", a.AdoptedGeneration, a.AdoptedStep, a.LoadSeconds)
 		}
 		return fmt.Sprintf("adopted gen %d (step %d)", a.AdoptedGeneration, a.AdoptedStep)
 	case AdoptUnused:
+		if framework {
+			return fmt.Sprintf("adopted step %d, newest sealed step %d: %d steps on disk unused",
+				a.AdoptedStep, a.SealedStep, a.SealedStep-a.AdoptedStep)
+		}
 		return fmt.Sprintf("adopted gen %d (step %d), newest sealed %d (step %d): %d steps on disk unused",
 			a.AdoptedGeneration, a.AdoptedStep, a.SealedGeneration, a.SealedStep,
 			a.SealedStep-a.AdoptedStep)
@@ -70,6 +81,9 @@ func (a Adoption) Line() string {
 		step := "unknown"
 		if a.CurrentStepKnown {
 			step = strconv.FormatInt(a.CurrentStep, 10)
+		}
+		if framework {
+			return fmt.Sprintf("not adopted: step %s, newest sealed step %d", step, a.SealedStep)
 		}
 		return fmt.Sprintf("not adopted: step %s, newest sealed %d", step, a.SealedStep)
 	case AdoptMismatch:
@@ -98,7 +112,7 @@ func (a Adoption) ExitCode() int {
 // Observe answers "did this job resume", from the job's own report and the seals that existed when it
 // started. It reads only glue and manifests: no checkpoint bytes, no loader, no format knowledge.
 func Observe(root string) (Adoption, error) {
-	boot, _ := bootTime(root)
+	boot, _ := BootTime(root)
 	sealed, ok, err := SealedBefore(root, boot)
 	if err != nil {
 		return Adoption{}, err
@@ -148,9 +162,46 @@ func Observe(root string) (Adoption, error) {
 	return a, nil
 }
 
-// bootTime is when the job started, from the stamp it wrote at start. The stamp is base36 nanoseconds;
+// ObserveStep answers the same question for a writer that leaves a declaration instead of a `gen-*`
+// manifest: the newest copy is a name like `checkpoint-50`, so there is a step and no generation.
+//
+// It exists because a Hugging Face user was told `nothing to adopt: no sealed generation` after a
+// successful resume — true under the old vocabulary, and useless to the person who asked.
+func ObserveStep(root string, sealedStep int64) (Adoption, error) {
+	a := Adoption{SealedStep: sealedStep}
+	if cur, ok := intGlue(root, GlueStep); ok {
+		a.CurrentStep, a.CurrentStepKnown = cur, true
+	}
+	if load, ok := stringGlue(root, GlueLoadSeconds); ok {
+		a.LoadSeconds = load
+	}
+	stepText, ok := stringGlue(root, GlueResumedStep)
+	if !ok {
+		a.Reason = AdoptCold
+		return a, nil
+	}
+	step, err := strconv.ParseInt(strings.TrimSpace(stepText), 10, 64)
+	if err != nil {
+		a.Reason = AdoptUnknown
+		a.Detail = fmt.Sprintf("resumed-step is not a number: %q", stepText)
+		return a, nil
+	}
+	a.AdoptedStep, a.Reported = step, true
+	switch {
+	case step < sealedStep:
+		a.Reason = AdoptUnused
+	case step == sealedStep:
+		a.Reason = AdoptAdopted
+	default:
+		a.Reason = AdoptUnknown
+		a.Detail = fmt.Sprintf("adopted step %d is ahead of the newest seal (step %d)", step, sealedStep)
+	}
+	return a, nil
+}
+
+// BootTime is when the job started, from the stamp it wrote at start. The stamp is base36 nanoseconds;
 // a file that cannot be read falls back to its mtime, and a directory without one has no bound.
-func bootTime(root string) (time.Time, bool) {
+func BootTime(root string) (time.Time, bool) {
 	path := filepath.Join(root, GlueDir, GlueBoot)
 	raw, err := os.ReadFile(path)
 	if err == nil {

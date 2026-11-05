@@ -86,6 +86,9 @@ func (c Copy) Load() (resume.File, bool, error) {
 type Result struct {
 	Newest Copy
 	Found  bool
+	// Sealed is every finished copy, in preference order. A caller that needs "what existed before the
+	// job started" cannot answer from Newest alone: the current run may have saved a newer copy since.
+	Sealed []Copy
 	// Unsealed is the newest thing that exists but is not finished, when nothing sealed exists. Its
 	// presence is why the answer is "not sealed" rather than "nothing yet".
 	Unsealed *Copy
@@ -145,7 +148,7 @@ func Scan(root string, cfg Config) (Result, error) {
 		}
 	}
 
-	res := Result{Count: len(sealed)}
+	res := Result{Count: len(sealed), Sealed: sealed}
 	if len(sealed) > 0 {
 		// Ascending by `better`, so the preferred copy is first.
 		sort.Slice(sealed, func(i, j int) bool { return better(sealed[i], sealed[j]) })
