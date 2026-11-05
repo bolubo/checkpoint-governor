@@ -20,7 +20,8 @@ Worse, the wheel's engine cannot say which release it is: `hack/build-wheel.sh` 
 **One number. `vX.Y.Z` on the code and the tag; the Python package carries the same number without the
 `v`.**
 
-1. **`v0.21.0` is the current number.** The two earlier numbers are closed: they stay published, they
+1. **`v0.21.0` was the current number when this record was written.** Later releases follow the same rule
+   without a new record; `v0.24.0` is the current number at the time of 0032. The two earlier numbers are closed: they stay published, they
    are never renumbered, and the pages that describe them are history rather than install instructions.
 2. **A tag publishes both artifacts.** `.github/workflows/publish-pypi.yml` runs on `v*`, from the same
    tree the binaries and the image come from, and `workflow_dispatch` exists only for the first upload
