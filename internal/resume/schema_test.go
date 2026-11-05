@@ -61,7 +61,7 @@ func TestTheSchemaRefusesWhatItCannotBelieve(t *testing.T) {
 		{"target is a path", func(f *File) { f.Target = "../other/ckpt" }, `target "../other/ckpt" must be a sibling file name`},
 		{"target is absolute", func(f *File) { f.Target = "/tmp/x.ckpt" }, "must be a sibling file name"},
 		{"caveat outside the closed set", func(f *File) { f.Caveats = []string{"slow-load"} }, `caveat "slow-load" is not one we can print`},
-		{"min_reader from the future", func(f *File) { f.MinReader = "0.25" }, "needs ckptctl >= 0.25 (you have 0.24)"},
+		{"min_reader from the future", func(f *File) { f.MinReader = "0.26" }, "needs ckptctl >= 0.26 (you have 0.25)"},
 		{"min_reader is not a version", func(f *File) { f.MinReader = "next" }, `min_reader "next" is not a version`},
 	}
 	for _, c := range cases {
@@ -182,12 +182,12 @@ func TestExtIsTheOnlyExtensionPoint(t *testing.T) {
 func TestTheVersionSkewMatrix(t *testing.T) {
 	// Old engine, new declaration: refuse, and say which version is needed.
 	f := full()
-	f.MinReader = "0.26"
+	f.MinReader = "0.27"
 	_, err := Parse(mustJSONRaw(t, f))
 	if err == nil {
 		t.Fatal("a declaration written for a newer build was accepted")
 	}
-	if !strings.Contains(err.Error(), "needs ckptctl >= 0.26 (you have 0.24)") {
+	if !strings.Contains(err.Error(), "needs ckptctl >= 0.27 (you have 0.25)") {
 		t.Fatalf("error %q does not name the upgrade", err)
 	}
 

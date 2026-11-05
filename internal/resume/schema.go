@@ -42,7 +42,7 @@ const (
 // ReaderVersion is what this build can judge. A writer may set `min_reader` to the version its
 // declaration needs; a newer declaration read by an older build is refused with the upgrade named,
 // rather than misread as an older one (decision 0026, version skew).
-const ReaderVersion = "0.24"
+const ReaderVersion = "0.25"
 
 // Formats are the layouts a declaration may name. The list is closed for the same reason the condition
 // catalogue is: a typo must be refused at read time, not silently treated as "some other format".
