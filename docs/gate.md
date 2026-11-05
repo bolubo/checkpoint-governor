@@ -76,9 +76,43 @@ does not hold at all — it submits directly and says why. Holding one node and 
 victim die with 0.2 s notice would be a promise nobody keeps. A single-pod, single-node arrival
 produces exactly the same arithmetic and the same first line as before.
 
-The real cross-node run needs a checkpoint volume both the gate and the pods can see (the test
-cluster's `hostPath /g1` is per node); the end-to-end test that covers the gate's own path uses a
-two-node world and a fake client (`contrib/gate/submit_fanout_test.go`).
+The real cross-node run needs a checkpoint volume both the gate and the pods can see. The test
+cluster's `hostPath /g1` is per node, so the gate's own two-node path is covered by a two-node world and
+a fake client (`contrib/gate/submit_fanout_test.go`), and the two-pod harness
+(`hack/kind-multipod-gate.sh`) runs on one kind node with a PVC, not across nodes.
+
+## When the victim is a multi-pod workload
+
+A preemption stops every pod of a `batch/v1 Job` at once, so the gate holds the **workload**, not each
+pod. One Job produces one hold, under the workload's id, and its record names the pods:
+
+```
+gate       default/train-big needs 4000m; lab is 2000m short on worker-1
+victims    default/train-a (worker-1,worker-2, priority 50, size 4000m)
+deadline   2m0s
+```
+
+The gate releases on the workload's copy, not on the first pod's step: the newest manifest must have
+appeared after the hold, every shard it names must read back (size and tail hash), its `sealedAt` must
+not predate the hold, and it must name a shard for **every rank the workload has**. A two-pod workload
+whose seal names only `rank-0` is half a copy; the gate keeps waiting and prints which rank is missing:
+
+```
+gate       default/train-a: not verified — the seal names 1 of 2 ranks; rank 1 has no shard
+```
+
+**One shared root is a premise.** All pods of the workload must see the same checkpoint directory (an
+RWX volume or a shared filesystem, mounted at the same path). The gate refuses a multi-pod victim whose
+checkpoint root is a per-node `hostPath`, and refuses a workload whose pods resolve to different
+directories, instead of waiting for a seal that cannot exist:
+
+```
+ckptgate submit: default/train-a: pod default/train-a-rank1 mounts the checkpoint root from hostPath /g1;
+a multi-pod workload needs one shared root (RWX volume or shared filesystem)
+```
+
+Single-pod output is unchanged, down to the comma: the workload id is the pod's unit id and the
+arithmetic is the same one earlier releases printed.
 
 ## Where it runs
 
@@ -101,8 +135,9 @@ command to run on a new host: it prints the two blocks and changes nothing.
 ## What the victim sees
 
 The victim needs no new configuration. Its controller reads the reclaim record as an announcement —
-the same fact as a `deletionTimestamp` — and `risk.preempt` fires. `ckptctl explain --dir=...` names
-the hold:
+the same fact as a `deletionTimestamp` — and `risk.preempt` fires. A multi-pod victim's record is
+written under the workload's id, and each pod's controller finds it through the `workload` field the
+observer records for its unit. `ckptctl explain --dir=...` names the hold:
 
 ```
 basis      announcement: the reclaim gate is holding default/train-big for this unit until 10:24:04Z (reclaim …)
@@ -118,16 +153,16 @@ same shape the observer already uses (decision 0021).
 - **The deadline is the operator's number.** It must cover the controller's cadence, one write and
   the seal. A hold shorter than a write is not a hold. The measured chain is in
   [operator-notes.md](operator-notes.md).
-- **Fail-open, always.** At the deadline the arrival goes in with no seal. If the gate dies, the
-  arrival was never created, so nothing is blocked; `ckptgate gc` marks the record `uncovered` so
-  the promise that was not kept is visible. If the gate picked the wrong victim, the write is
-  wasted and the scheduler proceeds.
+- **Fail-open, always.** At the deadline the arrival goes in with no seal, and the record is marked
+  `uncovered`: the write was asked for and never promised. If the gate dies, the arrival was never
+  created, so nothing is blocked; `ckptgate gc` marks that record `uncovered` too. If the gate picked
+  the wrong victim, the write is wasted and the scheduler proceeds.
 - **The checkpoint directory must be discoverable** under `--ckpt-root`: the gate matches a unit by
   the `unitId` its controller publishes in `.ckpt-governor/state.json`. When it cannot find one, it
   does not hold.
 - **One pod, one node is a model, not a promise.** It is how multi-pod Jobs are normally placed, and
   `--node` overrides it; a single pod spanning nodes (MPI-style) is a different shape this gate does
-  not model.
+  not model. A multi-pod victim is supported only when its pods share one checkpoint root.
 - **Only CPU is in the arithmetic**, and only a `batch/v1 Job` is read. Memory belongs to the queue,
   and PyTorchJob/MPIJob manifests are not accepted.
 

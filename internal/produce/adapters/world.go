@@ -95,6 +95,11 @@ type UnitRecord struct {
 	// observer that predates the field, a cluster with one unit, and every unreadable value all leave
 	// the governor behaving exactly as it did before.
 	Permit *UnitPermit `json:"permit,omitempty"`
+	// Workload names the pod's owning workload (`namespace/name`, a Job today). A pod without an owner
+	// is its own workload, and the empty value says the observer could not see one — the gate then
+	// holds that pod alone rather than inventing a group (0027).
+	Workload     string `json:"workload,omitempty"`
+	WorkloadKind string `json:"workloadKind,omitempty"`
 }
 
 // UnitPermit is the observer's answer to a question one unit cannot answer: when a cause endangers

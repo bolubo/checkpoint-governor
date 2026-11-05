@@ -1,6 +1,6 @@
 # Roadmap
 
-Status: 2026-11-05, current release `v0.26.0`. The direction is decision
+Status: 2026-11-05, current release `v0.27.0`. The direction is decision
 [0028](decisions/0028-the-direction-is-a-library.md): a policy library in the training loop, one Go
 engine, grown through integrations. The default is zero periodic writes.
 

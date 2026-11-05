@@ -5,7 +5,7 @@
 [![pypi](https://img.shields.io/pypi/v/ckpt-policy)](https://pypi.org/project/ckpt-policy/)
 [![license](https://img.shields.io/github/license/bolubo/checkpoint-governor)](LICENSE)
 
-Current release: [`v0.26.0`](docs/release-0.26.md) · [changelog](CHANGELOG.md). The Python package
+Current release: [`v0.27.0`](docs/release-0.27.md) · [changelog](CHANGELOG.md). The Python package
 carries the same number.
 
 A safety net for training jobs. It watches the conditions that come before a lost job, asks the job to

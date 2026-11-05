@@ -415,7 +415,7 @@ func permitFor(cfg adapters.Config) func(time.Time) (permit.Verdict, time.Time) 
 // question use. It returns the event id (`reclaim:<requestId>`), not the bare request id, because
 // the ledger compares it with what it already paid for.
 func heldReclaim(cfg adapters.Config, now time.Time) (string, bool) {
-	rec, held, err := adapters.ReadHeldReclaim(cfg.WorldDir, cfg.Cluster, cfg.UnitID, now)
+	rec, held, err := adapters.ReadHeldReclaimForUnit(cfg.WorldDir, cfg.Cluster, cfg.UnitID, now)
 	if err != nil || !held {
 		return "", false
 	}

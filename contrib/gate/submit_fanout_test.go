@@ -74,14 +74,13 @@ func ckptFixture(t *testing.T, root, unitID string) string {
 }
 
 // sealWhenHeld is the victim's controller, reduced to the one behaviour the gate watches: when the
-// reclaim for this unit appears, write a manifest (the write the gate bought time for).
+// reclaim for this unit appears, write the checkpoint the gate bought time for — shards and a
+// manifest the verifier can read back, not an empty marker.
 func sealWhenHeld(worldDir, cluster, unitID, dir string, step int64) {
 	path := filepath.Join(worldDir, cluster, "reclaims", adapters.ReclaimFileName(unitID))
 	for i := 0; i < 400; i++ {
 		if _, err := os.Stat(path); err == nil {
-			sub := filepath.Join(dir, fmt.Sprintf("step-%04d", step))
-			_ = os.MkdirAll(sub, 0o755)
-			_ = os.WriteFile(filepath.Join(sub, "manifest.json"), []byte(fmt.Sprintf(`{"step":%d}`, step)), 0o644)
+			_ = writeSeal(dir, step, step, "rank-0.bin")
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -165,6 +164,210 @@ func TestFanoutHoldsOneVictimPerNodeAndWaitsForBoth(t *testing.T) {
 	if _, err := client.BatchV1().Jobs("default").Get(context.Background(), "g3-arrival", metav1.GetOptions{}); err != nil {
 		t.Fatalf("the job was not created: %v", err)
 	}
+}
+
+// A two-pod workload produces one hold, under the workload's id, with both pods named. Holding each
+// pod separately would ask for the same write twice and release the arrival after the first (0027).
+func TestATwoPodWorkloadProducesOneHold(t *testing.T) {
+	world := t.TempDir()
+	ckpt := t.TempDir()
+	cluster := "a"
+	units := []string{"default/train-a-rank0", "default/train-a-rank1"}
+	if err := fanoutWorldWithWorkload(t, world, cluster, units, "default/train-a", twoTightNodes()); err != nil {
+		t.Fatal(err)
+	}
+	dir := ckptFixture(t, ckpt, units[0])
+	// rank 1 shares rank 0's root: only the leader publishes a unit state there.
+	writeSeal(dir, 7, 7, "rank-0.bin", "rank-1.bin")
+
+	client := fake.NewSimpleClientset(podFor("train-a-rank0", "100m"), podFor("train-a-rank1", "100m"))
+	job := jobWith("100m", "", 500)
+	job.Namespace, job.Name = "default", "arrival"
+
+	var out bytes.Buffer
+	code := submitArrival(context.Background(), client, job, 500, submitOptions{
+		WorldDir: world, Cluster: cluster, Queue: "lab", CkptRoot: ckpt, Deadline: 10 * time.Second,
+	}, &out)
+	if code != 0 {
+		t.Fatalf("submit = %d: %s", code, out.String())
+	}
+	got := out.String()
+	if strings.Count(got, "default/train-a (") != 1 {
+		t.Fatalf("the workload must be named once: %s", got)
+	}
+	entries, err := os.ReadDir(filepath.Join(world, cluster, "reclaims"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("reclaims = %d, want one hold for the workload: %v", len(entries), entries)
+	}
+	rec, err := adapters.ReadReclaim(world, cluster, "default/train-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.Pods) != 2 {
+		t.Fatalf("the hold must name both pods: %+v", rec.Pods)
+	}
+}
+
+// A seal that names one rank of a two-pod workload is not the workload's copy: the arrival waits
+// until the second rank's shard is in the manifest (0027).
+func TestATwoPodWorkloadWaitsForEveryRank(t *testing.T) {
+	world := t.TempDir()
+	ckpt := t.TempDir()
+	cluster := "a"
+	units := []string{"default/train-b-rank0", "default/train-b-rank1"}
+	if err := fanoutWorldWithWorkload(t, world, cluster, units, "default/train-b", twoTightNodes()); err != nil {
+		t.Fatal(err)
+	}
+	dir := ckptFixture(t, ckpt, units[0])
+
+	client := fake.NewSimpleClientset(podFor("train-b-rank0", "100m"), podFor("train-b-rank1", "100m"))
+	job := jobWith("100m", "", 500)
+	job.Namespace, job.Name = "default", "arrival-b"
+
+	var out bytes.Buffer
+	done := make(chan int, 1)
+	go func() {
+		done <- submitArrival(context.Background(), client, job, 500, submitOptions{
+			WorldDir: world, Cluster: cluster, Queue: "lab", CkptRoot: ckpt, Deadline: 10 * time.Second,
+		}, &out)
+	}()
+
+	// Wait for the hold, then seal half the workload: the gate must keep waiting.
+	waitForReclaim(t, world, cluster, "default/train-b")
+	if err := writeSeal(dir, 7, 7, "rank-0.bin"); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(400 * time.Millisecond)
+	if _, err := client.BatchV1().Jobs("default").Get(context.Background(), "arrival-b", metav1.GetOptions{}); err == nil {
+		t.Fatal("the arrival was created on a half seal")
+	}
+	// The second rank lands: the workload is now whole.
+	if err := writeSeal(dir, 8, 8, "rank-0.bin", "rank-1.bin"); err != nil {
+		t.Fatal(err)
+	}
+	if code := <-done; code != 0 {
+		t.Fatalf("submit = %d: %s", code, out.String())
+	}
+	if _, err := client.BatchV1().Jobs("default").Get(context.Background(), "arrival-b", metav1.GetOptions{}); err != nil {
+		t.Fatalf("the arrival was not created after the full seal: %v", err)
+	}
+	if !strings.Contains(out.String(), "rank 1") {
+		t.Fatalf("the wait must name the missing rank: %s", out.String())
+	}
+}
+
+// The deadline is fail-open, but the record must say the write was asked for and not covered.
+func TestATimeoutMarksTheHoldUncovered(t *testing.T) {
+	world := t.TempDir()
+	ckpt := t.TempDir()
+	cluster := "a"
+	units := []string{"default/g4-victim"}
+	fanoutWorld(t, world, cluster, units, twoTightNodes())
+	ckptFixture(t, ckpt, units[0])
+
+	client := fake.NewSimpleClientset(podFor("g4-victim", "100m"))
+	job := jobWith("100m", "", 500)
+	job.Namespace, job.Name = "default", "arrival-uncovered"
+
+	var out bytes.Buffer
+	code := submitArrival(context.Background(), client, job, 500, submitOptions{
+		WorldDir: world, Cluster: cluster, Queue: "lab", CkptRoot: ckpt, Deadline: 300 * time.Millisecond,
+	}, &out)
+	if code != 0 {
+		t.Fatalf("submit = %d: %s", code, out.String())
+	}
+	rec, err := adapters.ReadReclaim(world, cluster, units[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.State != adapters.ReclaimUncovered {
+		t.Fatalf("a timeout state = %s, want uncovered: %s", rec.State, out.String())
+	}
+}
+
+// A multi-pod workload whose checkpoint root is a per-node hostPath has no shared copy to wait for.
+func TestAPerNodeVolumeIsRefused(t *testing.T) {
+	ckpt := t.TempDir()
+	pods := []corev1.Pod{*podWithHostPath("train-c-rank0", "100m", ckpt, "/g1"),
+		*podWithHostPath("train-c-rank1", "100m", ckpt, "/g1")}
+	if pod, host := perNodeCheckpoint(pods, []string{"default/train-c-rank0", "default/train-c-rank1"}, ckpt); pod == "" || host != "/g1" {
+		t.Fatalf("a hostPath at the checkpoint root must be found: %q %q", pod, host)
+	}
+
+	world := t.TempDir()
+	cluster := "a"
+	units := []string{"default/train-c-rank0", "default/train-c-rank1"}
+	if err := fanoutWorldWithWorkload(t, world, cluster, units, "default/train-c", twoTightNodes()); err != nil {
+		t.Fatal(err)
+	}
+	ckptFixture(t, ckpt, units[0])
+
+	client := fake.NewSimpleClientset(&pods[0], &pods[1])
+	job := jobWith("100m", "", 500)
+	job.Namespace, job.Name = "default", "arrival-c"
+
+	var out bytes.Buffer
+	if code := submitArrival(context.Background(), client, job, 500, submitOptions{
+		WorldDir: world, Cluster: cluster, Queue: "lab", CkptRoot: ckpt, Deadline: 10 * time.Second,
+	}, &out); code != 2 {
+		t.Fatalf("submit = %d, want a refusal: %s", code, out.String())
+	}
+	if _, err := client.BatchV1().Jobs("default").Get(context.Background(), "arrival-c", metav1.GetOptions{}); err == nil {
+		t.Fatal("a refused workload must not be created")
+	}
+}
+
+// fanoutWorldWithWorkload writes units that all name one workload, the shape the observer produces
+// for a multi-pod Job.
+func fanoutWorldWithWorkload(t *testing.T, root, cluster string, unitIDs []string, workload string, nodes []adapters.NodeState) error {
+	t.Helper()
+	s := adapters.WorldSummary{
+		Schema: 1, Cluster: cluster, At: time.Now(), StaleAfterSeconds: 600,
+		Nodes:  nodes,
+		Queues: []adapters.QueueWire{{Name: "lab", FreeMilli: 800, CapacityMilli: 2000, Allowed: true}},
+	}
+	if err := adapters.WriteSummary(root, s); err != nil {
+		return err
+	}
+	for _, id := range unitIDs {
+		u := adapters.UnitRecord{
+			Schema: 1, Cluster: cluster, UnitID: id, At: time.Now(),
+			Node: nodes[0].Name, Priority: 50, Workload: workload, WorkloadKind: "Job",
+		}
+		if err := adapters.WriteUnit(root, cluster, u); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func podWithHostPath(name, cpu, mountPath, hostPath string) *corev1.Pod {
+	p := podFor(name, cpu)
+	p.Spec.Volumes = []corev1.Volume{{
+		Name:         "ckpt",
+		VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: hostPath}},
+	}}
+	p.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{{
+		Name: "ckpt", MountPath: mountPath,
+	}}
+	return p
+}
+
+// waitForReclaim waits until the gate has written the hold. A test that writes a seal before the
+// reclaim would be testing its own clock, not the gate's.
+func waitForReclaim(t *testing.T, worldDir, cluster, unitID string) {
+	t.Helper()
+	path := filepath.Join(worldDir, cluster, "reclaims", adapters.ReclaimFileName(unitID))
+	for i := 0; i < 400; i++ {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("the gate never wrote a reclaim for %s", unitID)
 }
 
 // All-or-nothing: worker-2 has nobody to ask, so the gate does not hold at all and submits directly.

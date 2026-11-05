@@ -14,7 +14,7 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from ckpt_policy import Governor, Saves, World  # noqa: E402
-from ckpt_policy.glue import BASE_DIR  # noqa: E402
+from ckpt_policy.glue import BASE_DIR, write_text  # noqa: E402
 from ckpt_policy.governor import engine_path  # noqa: E402
 
 
@@ -158,6 +158,104 @@ class TestSealed(unittest.TestCase):
             with open(os.path.join(gen_dir, "resume.json"), encoding="utf-8") as f:
                 decl = json.load(f)
             self.assertFalse(decl["state"]["optimizer"])
+
+    def test_a_shard_that_is_not_readable_is_not_sealed(self):
+        """The manifest is a promise about the disk, so the disk is asked before the promise is made."""
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root, world=World(ranks=2))
+            gen_dir = os.path.join(root, "gen-0007")
+            os.makedirs(gen_dir)
+            with open(os.path.join(gen_dir, "rank-00.bin"), "wb") as f:
+                f.write(b"\x00" * 64)
+            # rank 1 never landed: the writer's shard is missing.
+            result = g.sealed(7, 512, ["rank-00.bin", "rank-01.bin"])
+            self.assertEqual(result, {}, "a copy with a missing shard must not be sealed")
+            self.assertFalse(os.path.exists(os.path.join(gen_dir, "manifest.json")),
+                             "a failed readback must not leave a manifest")
+            self.assertFalse(os.path.exists(os.path.join(gen_dir, "resume.json")),
+                             "a declaration without a manifest is a promise nobody can check")
+            with open(os.path.join(root, BASE_DIR, "seal-failed"), encoding="utf-8") as f:
+                failed = json.load(f)
+            self.assertEqual(failed["generation"], 7)
+            self.assertEqual(len(failed["attempts"]), 2, "a failure is retried once")
+            self.assertIn("rank-01.bin", " ".join(failed["attempts"][-1]["problems"]),
+                          "the record names the shard")
+
+    def test_a_transient_readback_failure_is_retried(self):
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            gen_dir = os.path.join(root, "gen-0001")
+            os.makedirs(gen_dir)
+            with open(os.path.join(gen_dir, "rank-00.bin"), "wb") as f:
+                f.write(b"w")
+            with patch("ckpt_policy.governor.readback_problems",
+                       side_effect=[["shard rank-00.bin is unreadable: busy"], []]) as rb:
+                m = g.sealed(1, 10, ["rank-00.bin"])
+            self.assertEqual(rb.call_count, 2, "one retry is what the contract promises")
+            self.assertEqual(m["generation"], 1)
+            self.assertTrue(os.path.exists(os.path.join(gen_dir, "manifest.json")))
+
+    def test_a_tail_that_no_longer_matches_is_not_sealed(self):
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            gen_dir = os.path.join(root, "gen-0001")
+            os.makedirs(gen_dir)
+            path = os.path.join(gen_dir, "rank-00.bin")
+            with open(path, "wb") as f:
+                f.write(b"A" * 64)
+            with patch("ckpt_policy.governor.build_manifest") as build:
+                built = {"generation": 1, "step": 10, "shards": [
+                    {"name": "rank-00.bin", "size": 64, "sha256": "0" * 64,
+                     "tailSha256": "0" * 64}]}
+                build.return_value = built
+                result = g.sealed(1, 10, ["rank-00.bin"])
+            self.assertEqual(result, {})
+            self.assertFalse(os.path.exists(os.path.join(gen_dir, "manifest.json")))
+
+
+class TestTheStepCellOnASharedVolume(unittest.TestCase):
+    """A network volume charges every rank for every metadata operation; liveness is read at 1s."""
+
+    class Clock:
+        def __init__(self):
+            self.t = 0.0
+
+        def __call__(self):
+            self.t += 0.001
+            return self.t
+
+    def test_shared_writes_at_most_one_step_per_interval(self):
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root, storage="shared", step_write_seconds=1.0)
+            clock = self.Clock()
+            with patch("ckpt_policy.governor.time.monotonic", clock), \
+                    patch("ckpt_policy.governor.write_text", wraps=write_text) as wt:
+                for step in range(1, 301):
+                    g.step(step)
+            written = [c for c in wt.call_args_list if c.args[1].endswith("step")]
+            self.assertLessEqual(len(written), 3,
+                                 "300 steps inside one interval must not write 300 times "
+                                 f"(wrote {len(written)})")
+            self.assertEqual(glue(root, "step"), "1", "the first step is always written")
+
+    def test_the_held_step_is_flushed_when_the_run_ends(self):
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root, storage="shared", step_write_seconds=1.0)
+            clock = self.Clock()
+            with patch("ckpt_policy.governor.time.monotonic", clock):
+                for step in range(1, 301):
+                    g.step(step)
+                g.ending()
+            self.assertEqual(glue(root, "step"), "300",
+                             "a run that ends inside the interval still leaves its last step")
+
+    def test_local_keeps_every_step(self):
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            for step in range(1, 6):
+                g.step(step)
+            self.assertEqual(glue(root, "step"), "5")
+            self.assertEqual(glue(root, os.path.join("ranks", "0", "step")), "5")
 
 
 class TestResumedAndGlue(unittest.TestCase):

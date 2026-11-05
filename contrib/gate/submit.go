@@ -173,31 +173,49 @@ func submitArrival(ctx context.Context, client kubernetes.Interface, job *batchv
 		fmt.Fprintf(os.Stderr, "ckptgate submit: %v\n", err)
 		return 1
 	}
-	victims, why := pickVictims(plan, units, cpuSizes(pods.Items), dirs, prio)
+	sizes := cpuSizes(pods.Items)
+	victims, why := pickVictims(plan, units, sizes, dirs, prio)
 	if len(victims) == 0 {
 		return createJob(client, job, out, why)
 	}
-	dirs = map[string]string{}
-	for _, v := range victims {
-		if d, ok := findUnitDir(opt.CkptRoot, v.ID); ok {
-			dirs[v.ID] = d
-		}
-	}
-	if len(dirs) != len(victims) {
-		return createJob(client, job, out, "a victim's checkpoint dir disappeared: submitted without a hold")
-	}
 
-	nodeOf := map[string]string{}
-	for _, u := range units {
-		nodeOf[u.UnitID] = u.Node
+	// The arithmetic picked pods; a preemption takes workloads. Every pod of a chosen workload joins
+	// the hold, and one workload produces one record — two pods must not mean two holds (0027).
+	workloads := groupByWorkload(victims, units, sizes)
+	wdirs := map[string]string{}
+	for _, w := range workloads {
+		found := ""
+		for _, pod := range w.Pods {
+			d, ok := dirs[pod]
+			if !ok {
+				continue
+			}
+			if found != "" && d != found {
+				return refuse(out, "%s: its pods see different checkpoint roots (%s and %s); a per-node volume cannot hold a workload",
+					w.ID, found, d)
+			}
+			found = d
+		}
+		if found == "" {
+			return createJob(client, job, out, "a victim's checkpoint dir disappeared: submitted without a hold")
+		}
+		wdirs[w.ID] = found
 	}
-	names := make([]string, 0, len(victims))
-	for _, v := range victims {
-		if len(plan.Picks) == 1 {
-			names = append(names, fmt.Sprintf("%s (priority %d, size %dm)", v.ID, v.Priority, v.Size))
+	// A per-node hostPath is the same failure stated in the pod spec: rank 1 writes a directory rank 0
+	// cannot read, so waiting would be waiting for a seal that cannot exist.
+	for _, w := range workloads {
+		if len(w.Pods) < 2 {
 			continue
 		}
-		names = append(names, fmt.Sprintf("%s (%s, priority %d, size %dm)", v.ID, nodeOf[v.ID], v.Priority, v.Size))
+		if pod, hostPath := perNodeCheckpoint(pods.Items, w.Pods, opt.CkptRoot); pod != "" {
+			return refuse(out, "%s: pod %s mounts the checkpoint root from hostPath %s; a multi-pod workload needs one shared root (RWX volume or shared filesystem)",
+				w.ID, pod, hostPath)
+		}
+	}
+
+	names := make([]string, 0, len(workloads))
+	for _, w := range workloads {
+		names = append(names, victimsLine(w, len(plan.Picks) == 1))
 	}
 	fmt.Fprintf(out, "gate       %s\n", gateSentence(job, plan, opt.Queue))
 	fmt.Fprintf(out, "victims    %s\n", joinStrings(names, ", "))
@@ -209,38 +227,41 @@ func submitArrival(ctx context.Context, client kubernetes.Interface, job *batchv
 
 	since := time.Now()
 	requestID := reclaimID(job)
-	for i, v := range victims {
+	for _, w := range workloads {
 		rec := adapters.ReclaimRecord{
-			UnitID: v.ID, RequestID: requestID, Intruder: job.Namespace + "/" + jobName(job),
+			UnitID: w.ID, Pods: w.Pods, RequestID: requestID, Intruder: job.Namespace + "/" + jobName(job),
 			NeedMilli: plan.Total, State: adapters.ReclaimHeld, Since: since, Deadline: since.Add(opt.Deadline),
 		}
 		if err := adapters.WriteReclaim(opt.WorldDir, opt.Cluster, rec); err != nil {
 			fmt.Fprintf(os.Stderr, "ckptgate submit: write reclaim: %v\n", err)
 			return 1
 		}
-		// The permit is the fleet's answer, and the gate is the fleet that knows: this unit is the one
-		// the reclaim selects, so it may spend the write (0021).
-		if err := grant(opt.WorldDir, opt.Cluster, v.ID, i+1); err != nil {
-			fmt.Fprintf(os.Stderr, "ckptgate submit: grant %s: %v\n", v.ID, err)
-			return 1
+		// The permit is the fleet's answer, and the gate is the fleet that knows: every pod of this
+		// workload is the one the reclaim selects, so it may spend the write (0021).
+		for _, pod := range w.Pods {
+			if err := grant(opt.WorldDir, opt.Cluster, pod, 1); err != nil {
+				fmt.Fprintf(os.Stderr, "ckptgate submit: grant %s: %v\n", pod, err)
+				return 1
+			}
 		}
 	}
 
-	step, ok := waitForSeals(dirs, since, opt.Deadline)
+	step, ok := waitForVerifiedSeals(workloads, wdirs, since, opt.Deadline, out)
 	elapsed := time.Since(since).Round(100 * time.Millisecond)
 	state := adapters.ReclaimReleased
 	if !ok {
-		// The deadline is the fail-open edge: the arrival goes in anyway, and the line says what the
-		// gate could not buy. A hold that outlives its own promise is worse than no hold.
+		// The deadline is the fail-open edge: the arrival goes in anyway, and the record says the write
+		// was asked for and never promised. `released` would hide the promise that was not kept.
+		state = adapters.ReclaimUncovered
 		fmt.Fprintf(out, "gate       waited %s and no seal: releasing the arrival (the write was not covered)\n", elapsed)
 	}
-	for _, v := range victims {
+	for _, w := range workloads {
 		rec := adapters.ReclaimRecord{
-			UnitID: v.ID, RequestID: requestID, Intruder: job.Namespace + "/" + jobName(job),
+			UnitID: w.ID, Pods: w.Pods, RequestID: requestID, Intruder: job.Namespace + "/" + jobName(job),
 			NeedMilli: plan.Total, State: state, Since: since, Deadline: since.Add(opt.Deadline),
 		}
 		if err := adapters.WriteReclaim(opt.WorldDir, opt.Cluster, rec); err != nil {
-			fmt.Fprintf(os.Stderr, "ckptgate submit: release %s: %v\n", v.ID, err)
+			fmt.Fprintf(os.Stderr, "ckptgate submit: release %s: %v\n", w.ID, err)
 			return 1
 		}
 	}
@@ -271,6 +292,13 @@ func gateSentence(job *batchv1.Job, plan roomPlan, queue string) string {
 		parts = append(parts, "the queue and the nodes have room")
 	}
 	return fmt.Sprintf("%s needs %dm over %d pods; %s", who, plan.Total, plan.Pods, joinStrings(parts, "; "))
+}
+
+// refuse stops the submission, with the sentence that says what to change. A multi-pod workload on a
+// volume its pods do not share has no seal to wait for, so holding it would be a hold forever.
+func refuse(out io.Writer, format string, args ...any) int {
+	fmt.Fprintf(os.Stderr, "ckptgate submit: "+format+"\n", args...)
+	return 2
 }
 
 func createJob(client kubernetes.Interface, job *batchv1.Job, out io.Writer, why string) int {
@@ -369,34 +397,6 @@ func readUnits(worldDir, cluster string) ([]adapters.UnitRecord, error) {
 		out = append(out, u)
 	}
 	return out, nil
-}
-
-// waitForSeals polls until every victim has a manifest newer than the hold, or the deadline passes.
-// The poll is a few stats; the victims' own controllers decide when to write, and the gate only
-// watches the directory the contract already defines.
-func waitForSeals(dirs map[string]string, since time.Time, deadline time.Duration) (int64, bool) {
-	end := since.Add(deadline)
-	var step int64
-	for {
-		done := true
-		for _, dir := range dirs {
-			at, s, ok := newestManifest(dir, since)
-			if !ok || !at.After(since) {
-				done = false
-				break
-			}
-			if s > step {
-				step = s
-			}
-		}
-		if done && len(dirs) > 0 {
-			return step, true
-		}
-		if time.Now().After(end) {
-			return 0, false
-		}
-		time.Sleep(250 * time.Millisecond)
-	}
 }
 
 func kubeConfig(path string) (*rest.Config, string, error) {

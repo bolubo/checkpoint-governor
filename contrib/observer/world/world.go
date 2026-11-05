@@ -84,6 +84,11 @@ type UnitRecord struct {
 	// (docs/decisions/0021). It is written here, and only here, because the answer needs the set: a
 	// governor that sees one unit cannot tell "I am the victim" from "my neighbour is".
 	Permit *Permit `json:"permit,omitempty"`
+	// Workload names the pod's owning workload (`namespace/name`, a Job today). It is what lets the
+	// gate hold a whole workload once instead of holding each pod separately (0027). A pod with no
+	// owner is its own workload, and the empty value says the observer could not see one.
+	Workload     string `json:"workload,omitempty"`
+	WorkloadKind string `json:"workloadKind,omitempty"`
 }
 
 // Permit is the verdict. Absent means permission: a governor reads a missing field as granted, so a
@@ -221,6 +226,7 @@ func FoldWithJobs(nodes []corev1.Node, pods []corev1.Pod, jobs []batchv1.Job, cl
 			Schema: 1, Cluster: opts.Cluster, UnitID: p.Namespace + "/" + p.Name, At: now.UTC(),
 			Node: p.Spec.NodeName, Priority: prio, QoS: string(p.Status.QOSClass),
 		}
+		u.Workload, u.WorkloadKind = workloadOf(p)
 		if p.DeletionTimestamp != nil {
 			t := p.DeletionTimestamp.Time
 			u.DeletionTimestamp = &t
@@ -338,4 +344,17 @@ type Arrival struct {
 	Name      string    `json:"name"`
 	Priority  int32     `json:"priority"`
 	CreatedAt time.Time `json:"createdAt"`
+}
+
+// workloadOf names the workload that owns a pod. The gate holds a workload, not a pod: every pod of a
+// Job stops when the Job is preempted, so one hold per pod would ask for the same write twice and
+// release the arrival after the first one (0027). A bare pod has no owner and is its own workload.
+func workloadOf(p *corev1.Pod) (string, string) {
+	for _, o := range p.OwnerReferences {
+		if o.Kind == "" || o.Name == "" {
+			continue
+		}
+		return p.Namespace + "/" + o.Name, o.Kind
+	}
+	return "", ""
 }

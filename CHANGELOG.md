@@ -3,6 +3,42 @@
 One entry per released tag. The prototype's history before this file is `git log`; this file starts at
 the first release that makes a compatibility promise.
 
+## v0.27.0 — 2026-11-05
+
+The release where the volume is measured instead of assumed, and a multi-pod victim is held as one
+workload.
+
+**`ckptctl doctor --storage <dir>`.** It writes, syncs, renames, syncs the directory, and reads the
+result from a second process, then prints `local` / `shared-safe` / `shared-unsafe` with the promise
+each tier makes (process death / node death / volume death). The exit code is the verdict. On one
+machine a local `tmpfs` is `local` and WSL's 9p mount is `shared-safe`; every failed line names its
+reason. The contract is `docs/storage.md`.
+
+**A seal reads the disk back.** Python `Governor.sealed` and `ckpttrainer --contract` re-open every
+shard before writing the manifest — size and declared tail hash, one retry — and refuse to seal a
+shard they cannot read. The failure is recorded in `.ckpt-governor/seal-failed`, and `resumable` no
+longer answers `world N/N` for a generation that was never sealed. The Go writer's tear fixture is
+injected after the readback, so the fault matrix still produces a damaged copy to judge.
+
+**The gate releases on a verified copy.** `ckptgate` checks the newest generation with the same
+verifier before releasing an arrival: shards present and readable, `sealedAt` not older than the hold,
+and one shard per rank of the workload. A missing shard keeps the arrival held and prints the rank;
+the deadline is fail-open and marks the record `uncovered`.
+
+**One workload, one hold.** The observer records each pod's owning workload; the gate writes one
+reclaim record per workload, naming its pods, and the controller finds it through the unit's
+`workload` field. A two-pod Job produces one hold, not two. A multi-pod victim on a per-node
+`hostPath` (or whose pods see different roots) is refused with the reason.
+
+**Shared-volume progress throttle.** `Governor(storage="shared")` writes the step cell at most once
+per second (configurable), flushing the last step on `sealed`, `ending` and `close`.
+
+**Measured.** `hack/kind-multipod-gate.sh` on kueue-lab runs a two-pod indexed Job with the real,
+torch-free Python client and prints `sealed both ranks · arrival created · victim lost 0`.
+
+**Tests.** `make py` runs 60 tests; `make test-claims` prints
+`claims: 44 · tests found: 44 · missing: 0`.
+
 ## v0.26.0 — 2026-11-05
 
 The release where a `pip install` is the whole install, a multi-rank answer checks the disk, and the

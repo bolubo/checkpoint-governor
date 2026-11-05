@@ -16,7 +16,7 @@ import subprocess
 import time
 
 from .glue import BASE_DIR, base36, write_text, write_atomic, read_text
-from .manifest import build_manifest, write_manifest, write_resume
+from .manifest import build_manifest, readback_problems, write_manifest, write_resume
 
 PLAN_SCHEMA = 2
 ENGINE_ENV = "CKPTCTL_ENGINE"
@@ -79,7 +79,8 @@ class Governor:
                  expected_bytes: int | None = None, writer: str = "ckpt-policy",
                  step_baseline_ms: int = 0, start_engine: bool = False,
                  engine: str | None = None, engine_every: str = "1s",
-                 engine_window: str | None = None, engine_args: list[str] | None = None):
+                 engine_window: str | None = None, engine_args: list[str] | None = None,
+                 storage: str = "local", step_write_seconds: float = 1.0):
         self.root = root
         self.format = format
         # `torchrun` already knows the rank and the world; a user who launched a job that way should
@@ -106,6 +107,13 @@ class Governor:
         self._grace_seconds: int = 0
         self._last_write = time.monotonic()
         self._last_step = time.monotonic()
+        # On a shared volume every progress cell costs a metadata operation paid by every rank, so a
+        # fast step would turn "say where I am" into a tax on the training loop. `storage="shared"`
+        # writes the latest step at most once per interval; `local` keeps one write per step (0027).
+        self.storage = storage
+        self.step_write_seconds = max(0.0, float(step_write_seconds))
+        self._last_step_write = float("-inf")
+        self._pending_step: int | None = None
         self._engine: subprocess.Popen | None = None
         self._engine_log = None
         self._engine_bin = engine
@@ -188,6 +196,7 @@ class Governor:
     def close(self, timeout: float = 5.0) -> None:
         """Stop the engine this client started. Safe to call twice; a client that never started one
         does nothing."""
+        self._flush_step()
         if self._engine is not None:
             if self._engine.poll() is None:
                 self._engine.terminate()
@@ -226,7 +235,23 @@ class Governor:
         Every rank owns its own cell, including the leader: the controller compares members, and a
         leader that only wrote the team-level file would look like the only member. The team-level
         `step` stays for the single-writer path and every existing reader.
+
+        On `storage="shared"` the cell is written at most once per `step_write_seconds`: the controller
+        only needs liveness at the resolution it decides at (one second), and a per-step metadata
+        operation on a network volume is paid by every rank on every step (0027).
         """
+        now = time.monotonic()
+        throttled = (self.storage == "shared" and self.step_write_seconds > 0
+                     and now - self._last_step_write < self.step_write_seconds)
+        if throttled:
+            # The latest value is flushed by `sealed`, `ending` or `close`, so a run that stops inside
+            # the interval still leaves the step it reached on disk.
+            self._pending_step = int(n)
+        else:
+            self._write_step(int(n), now)
+        self._last_step = now
+
+    def _write_step(self, n: int, now: float | None = None) -> None:
         # These cells are liveness, not data: the rename keeps a reader from seeing half a number, and
         # the fsync is skipped. A crash loses the current value and the next step writes it again; the
         # plan, declarations and manifests still fsync (see glue.write_atomic).
@@ -234,12 +259,16 @@ class Governor:
                    durable=False)
         if self.rank0:
             write_text(self.root, "step", str(int(n)), durable=False)
-        now = time.monotonic()
-        if self._stopping_at is not None:
-            left = max(0, int(self._grace_seconds - (now - self._stopping_at)))
-            if self.rank0:
+            if self._stopping_at is not None:
+                left = max(0, int(self._grace_seconds - ((now or time.monotonic()) - self._stopping_at)))
                 write_text(self.root, "seconds-left", str(left), durable=False)
-        self._last_step = now
+        self._last_step_write = time.monotonic()
+        self._pending_step = None
+
+    def _flush_step(self) -> None:
+        """Write the step a shared-storage throttle was holding, before the run goes quiet."""
+        if self._pending_step is not None:
+            self._write_step(self._pending_step)
 
     def requested(self) -> int:
         """The generation the governor asked for, or 0. A request is acted on at most once.
@@ -274,14 +303,48 @@ class Governor:
 
     def sealed(self, generation: int, step: int, shards: list[str], *, base: str | None = None,
                loader: str | None = None, partial: list[str] | None = None) -> dict:
-        """Seal a generation: hash the shards the library wrote, then write manifest, then declaration."""
+        """Seal a generation: hash the shards the library wrote, then write manifest, then declaration.
+
+        Before the manifest is written, every shard is read back and compared with what the hash pass
+        saw. A shard that vanished, changed size or lost its tail must not be sealed: a manifest is a
+        promise about the disk, and the one thing this product cannot do is make that promise after a
+        check that already failed (0027). A single retry absorbs a file that was still settling; the
+        second failure is recorded in `.ckpt-governor/seal-failed` and nothing is sealed.
+        """
         if not self.rank0:
             return {}
+        self._flush_step()
         gen_dir = os.path.join(self.root, f"gen-{generation:04d}")
         base = base or gen_dir
-        manifest = build_manifest(generation, step,
-                                  time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                                  self.writer, shards, base)
+
+        manifest = None
+        attempts: list[dict] = []
+        problems: list[str] = []
+        for attempt in (1, 2):
+            try:
+                manifest = build_manifest(generation, step,
+                                          time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                                          self.writer, shards, base)
+                problems = readback_problems(base, manifest)
+            except OSError as e:
+                manifest = None
+                problems = [str(e)]
+            if not problems:
+                break
+            attempts.append({
+                "attempt": attempt,
+                "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "problems": problems,
+            })
+
+        if problems or manifest is None:
+            write_text(self.root, "seal-failed", json.dumps({
+                "generation": int(generation),
+                "step": int(step),
+                "attempts": attempts,
+            }, indent=2))
+            return {}
+
         write_manifest(gen_dir, manifest)
         write_resume(gen_dir, generation=generation, step=step, format=self.format,
                      world=self.world.as_dict(), state=self.saves.as_dict(),
@@ -341,6 +404,7 @@ class Governor:
     def ending(self) -> None:
         """Training is over: the work that exists now is the work that matters."""
         self._lead_only("ending")
+        self._flush_step()
         write_text(self.root, "ending", "1")
 
     def may_exit(self) -> bool:

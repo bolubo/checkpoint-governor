@@ -50,6 +50,10 @@ type ReclaimRecord struct {
 	// are distinguishable in the record and in `explain`.
 	RequestID string `json:"requestId"`
 	Intruder  string `json:"intruder,omitempty"`
+	// Pods are the units whose controller must hear this hold when the victim is a multi-pod workload.
+	// The record is one hold under the workload's id; the pods are what makes the sentence checkable
+	// against the cluster (0027).
+	Pods []string `json:"pods,omitempty"`
 	// NeedMilli is how much room the arrival needs, in milli-cores, as the gate read it. It is not
 	// used by any condition: the gate picks the victim, and the controller only needs "am I held".
 	NeedMilli int64 `json:"needMilli,omitempty"`
@@ -76,7 +80,11 @@ func (r ReclaimRecord) Line() string {
 	if intruder == "" {
 		intruder = "a higher-priority job"
 	}
-	s := "the reclaim gate is holding " + intruder + " for this unit"
+	held := "this unit"
+	if len(r.Pods) > 1 {
+		held = "this workload"
+	}
+	s := "the reclaim gate is holding " + intruder + " for " + held
 	if !r.Deadline.IsZero() {
 		s += " until " + r.Deadline.UTC().Format("15:04:05Z")
 	}
@@ -139,4 +147,20 @@ func ReadHeldReclaim(worldDir, cluster, unitID string, now time.Time) (ReclaimRe
 		return r, false, nil
 	}
 	return r, true, nil
+}
+
+// ReadHeldReclaimForUnit answers the question for one pod: its own record first, then the record of
+// the workload it belongs to. The gate writes one hold per workload, so every pod of a multi-pod
+// victim must find it; a pod whose unit record carries no workload keeps the old one-pod behaviour
+// (0027). Every failure to read the unit record is "no workload", never an error: a coordination
+// channel must not fail in the direction that suppresses a write.
+func ReadHeldReclaimForUnit(worldDir, cluster, unitID string, now time.Time) (ReclaimRecord, bool, error) {
+	if r, held, err := ReadHeldReclaim(worldDir, cluster, unitID, now); err != nil || held {
+		return r, held, err
+	}
+	u, err := ReadUnit(worldDir, cluster, unitID)
+	if err != nil || u.Workload == "" || u.Workload == unitID {
+		return ReclaimRecord{}, false, nil
+	}
+	return ReadHeldReclaim(worldDir, cluster, u.Workload, now)
 }

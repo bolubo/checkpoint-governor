@@ -1,8 +1,12 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +17,36 @@ import (
 	"github.com/bolubo/checkpoint-governor/internal/permit"
 	"github.com/bolubo/checkpoint-governor/internal/produce/adapters"
 )
+
+// writeSeal writes a contract-shaped checkpoint the verifier can judge: shards first, then a manifest
+// that names them with sizes and tail hashes. The gate's own tests must produce copies the real
+// verifier accepts, otherwise the fixture proves a rule the product does not have.
+func writeSeal(dir string, generation, step int64, shardNames ...string) error {
+	gen := filepath.Join(dir, fmt.Sprintf("gen-%04d", generation))
+	if err := os.MkdirAll(gen, 0o755); err != nil {
+		return err
+	}
+	var entries []string
+	for i, name := range shardNames {
+		data := []byte(fmt.Sprintf("rank %d, step %d", i, step))
+		if err := os.WriteFile(filepath.Join(gen, name), data, 0o644); err != nil {
+			return err
+		}
+		sum := sha256.Sum256(data)
+		entries = append(entries, fmt.Sprintf(
+			`{"name":%q,"size":%d,"sha256":%q,"tailSha256":%q,"member":%d}`,
+			name, len(data), hex.EncodeToString(sum[:]), hex.EncodeToString(sum[:]), i))
+	}
+	manifest := fmt.Sprintf(`{"generation":%d,"step":%d,"sealedAt":%q,"writer":"fixture","shards":[%s]}`,
+		generation, step, time.Now().UTC().Format(time.RFC3339), joinStrings(entries, ","))
+	path := filepath.Join(gen, "manifest.json")
+	if err := os.WriteFile(path, []byte(manifest), 0o644); err != nil {
+		return err
+	}
+	// The hold is a *time*: a seal that is already there is not evidence the victim heard us.
+	at := time.Now()
+	return os.Chtimes(path, at, at)
+}
 
 func jobWith(cpu string, initCPU string, priority int32) *batchv1.Job {
 	j := &batchv1.Job{}
@@ -286,6 +320,52 @@ func TestNewestManifestOnlyCountsASealAfterTheHold(t *testing.T) {
 	at, step, ok := newestManifest(dir, since)
 	if !ok || step != 42 || at.Before(since) {
 		t.Fatalf("newest = %v/%d/%v, want the generation's step 42", at, step, ok)
+	}
+}
+
+// A seal the gate releases on has to be one a restore could read: hiding one rank's shard must stop
+// the release and name the shard, and putting it back must let the release through (0027).
+func TestAVerifiedSealRequiresTheShards(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeSeal(dir, 7, 700, "rank-0.bin", "rank-1.bin"); err != nil {
+		t.Fatal(err)
+	}
+	since := time.Now().Add(-time.Second)
+
+	step, ok, problem := newestVerifiedSeal(dir, since, 2)
+	if !ok || step != 700 || problem != "" {
+		t.Fatalf("a whole copy must verify: ok=%v step=%d problem=%q", ok, step, problem)
+	}
+
+	if err := os.Remove(filepath.Join(dir, "gen-0007", "rank-1.bin")); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, problem := newestVerifiedSeal(dir, since, 2); ok {
+		t.Fatal("a copy with a hidden shard must not release the arrival")
+	} else if !strings.Contains(problem, "rank-1.bin") {
+		t.Fatalf("the refusal must name the shard: %q", problem)
+	}
+
+	if err := writeSeal(dir, 7, 700, "rank-0.bin", "rank-1.bin"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := newestVerifiedSeal(dir, since, 2); !ok {
+		t.Fatal("a restored copy must verify again")
+	}
+}
+
+// A seal that names one rank of a two-pod workload is half a copy: the arrival must wait for the
+// second rank, and the line must say which one is missing (0027).
+func TestASealMustNameEveryRankOfAWorkload(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeSeal(dir, 9, 900, "rank-0.bin"); err != nil {
+		t.Fatal(err)
+	}
+	since := time.Now().Add(-time.Second)
+	if _, ok, problem := newestVerifiedSeal(dir, since, 2); ok {
+		t.Fatal("a one-rank seal must not release a two-pod workload")
+	} else if !strings.Contains(problem, "rank 1") {
+		t.Fatalf("the refusal must name the missing rank: %q", problem)
 	}
 }
 

@@ -74,6 +74,38 @@ def build_manifest(generation: int, step: int, sealed_at: str, writer: str, shar
     }
 
 
+def readback_problems(base: str, manifest: dict) -> list[str]:
+    """Re-open every shard and compare what is readable with what the manifest claims.
+
+    `build_manifest` already reads each shard to hash it, but a manifest is a promise about the disk
+    *after* that read: the file can be truncated, replaced or unmounted in between. Sealing is the
+    moment the promise is made, so it is the moment to ask again. The check is size plus the declared
+    tail hash — cheap enough to run on every save, and it catches the damage a kill actually leaves
+    (0027).
+    """
+    problems: list[str] = []
+    for entry in manifest.get("shards", []):
+        name = entry.get("name", "")
+        path = os.path.join(base, name)
+        try:
+            size = os.path.getsize(path)
+        except OSError as e:
+            problems.append(f"shard {name} is unreadable: {e}")
+            continue
+        if size != entry.get("size"):
+            problems.append(f"shard {name} is {size} bytes, sealed at {entry.get('size')}")
+            continue
+        try:
+            tail = tail_sha256(path, size)
+        except OSError as e:
+            problems.append(f"shard {name} cannot be read back: {e}")
+            continue
+        if tail != entry.get("tailSha256"):
+            problems.append(
+                f"shard {name} tail hashes to {tail[:12]}, sealed as {entry.get('tailSha256', '')[:12]}")
+    return problems
+
+
 def write_manifest(gen_dir: str, manifest: dict) -> None:
     """Seal last: the manifest is written after every shard, through a temporary name, then renamed."""
     raw = (json.dumps(manifest, indent=2) + "\n").encode("utf-8")

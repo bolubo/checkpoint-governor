@@ -10,6 +10,7 @@ import (
 	"github.com/bolubo/checkpoint-governor/internal/observe"
 	"github.com/bolubo/checkpoint-governor/internal/produce"
 	"github.com/bolubo/checkpoint-governor/internal/produce/adapters"
+	"github.com/bolubo/checkpoint-governor/internal/storage"
 )
 
 // runDoctor asks every probe what it sees on this machine, and prints the answer with the two things
@@ -20,15 +21,36 @@ import (
 func runDoctor(args []string, out io.Writer) int {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	dir := fs.String("dir", "", "the checkpoint directory to inspect")
+	storageDir := fs.String("storage", "", "also measure what this directory's filesystem promises")
 	freeFactor := fs.Float64("free-factor", 2, "free space below this multiple of one checkpoint is at risk")
 	storeEvery := fs.Duration("store-every", 5*time.Second, "how often the storage conditions are read")
 	slowFactor := fs.Float64("slow-factor", 2, "how many times the job baseline counts as slow")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *dir == "" {
-		fmt.Fprint(out, "usage: ckptctl doctor --dir=<checkpointDir>\n")
+	if *dir == "" && *storageDir == "" {
+		fmt.Fprint(out, "usage: ckptctl doctor --dir=<checkpointDir> [--storage=<dir>]\n")
 		return 2
+	}
+
+	// The storage table is printed first because it answers the question every other row depends on: on
+	// this volume, does "write, sync, rename" mean what the controller's decisions assume? It can be run
+	// alone, without a checkpoint directory, which is what an operator does before deploying (0027).
+	storageCode := 0
+	if *storageDir != "" {
+		r, err := storage.Probe(*storageDir)
+		if err != nil {
+			fmt.Fprintf(out, "storage %s\nerror: cannot probe it: %v\n", *storageDir, err)
+			return 2
+		}
+		r.Write(out)
+		if !r.Safe() {
+			storageCode = 1
+		}
+		if *dir == "" {
+			return storageCode
+		}
+		fmt.Fprintln(out)
 	}
 
 	now := time.Now()
@@ -108,7 +130,9 @@ func runDoctor(args []string, out io.Writer) int {
 		fmt.Fprintf(out, "\ndoctor: refused — %s\n", problem)
 		return 2
 	}
-	return 0
+	// A storage tier that promises nothing still lets the environment table print, but the exit code
+	// carries the verdict to a script: doctor told you not to trust this volume.
+	return storageCode
 }
 
 // capabilityNote maps a condition to the declaration that decides whether it exists at all.

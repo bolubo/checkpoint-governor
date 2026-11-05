@@ -69,7 +69,17 @@ uses the same script where its rendezvous works.
 ## What this page does not claim
 
 - Model/gradient sync is the framework's (DDP/FSDP); this page is about the checkpoint side.
-- NFS/Lustre rename and fsync semantics are not measured here; the local paths are. A shared volume
-  that does not honour the rename is a deployment limit, not a different policy.
 - A rank that dies before the barrier leaves an unsealed generation: it is a write in flight, and the
   next attempt is a new one. That is the intended reading, not a repair.
+
+## Every rank must see the same root
+
+This is a premise, not a recommendation. A save is one generation directory, and rank 0 seals a
+manifest that names every rank's shard; if the ranks do not write into the same directory, the manifest
+describes files rank 1 cannot read and no seal makes the copy whole.
+
+- One RWX volume (or one shared filesystem) mounted at the same path in every rank and in the
+  controller.
+- A per-node `hostPath` is a single-pod promise. `ckptctl doctor --storage <dir>` says what the volume
+  itself promises ([storage.md](storage.md)); the gate refuses a multi-pod victim on a per-node volume
+  ([gate.md](gate.md)).

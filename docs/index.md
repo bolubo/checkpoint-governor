@@ -51,6 +51,7 @@ One page per question. Start where your question is. Every local link here resol
 | [design.md](design.md) | how is it built? |
 | [ci.md](ci.md) | what runs on a push, and why that and nothing more? |
 | [operator-notes.md](operator-notes.md) | what must the platform allow: the grace a checkpoint needs |
+| [storage.md](storage.md) | what does this volume promise: `local`, `shared-safe`, `shared-unsafe`, and how to measure it |
 | [contrast.md](contrast.md) | what does the four-policy comparison actually say, and how do I reproduce it? |
 | [gate.md](gate.md) | how do I give a higher-priority arrival lead time on a cluster? |
 
@@ -62,13 +63,14 @@ One page per question. Start where your question is. Every local link here resol
 
 ## If you are following the work
 
-The current number is **`v0.26.0`** (decision 0029). `v0.25.0`, `v0.24.0`, `v0.23.0`, `v0.22.0`,
+The current number is **`v0.27.0`** (decision 0029). `v0.26.0`, `v0.25.0`, `v0.24.0`, `v0.23.0`, `v0.22.0`,
 `v0.21.0`, `v0.15.0` and `v0.2.0` are earlier numbers; the release pages are history, and the two
 oldest are entries in `CHANGELOG.md`, not install instructions.
 
 | page | question |
 |---|---|
-| [release-0.26.md](release-0.26.md) | **the current release**: the command, the check, and the glue |
+| [release-0.27.md](release-0.27.md) | **the current release**: what the volume promises, and what a workload-level hold waits for |
+| [release-0.26.md](release-0.26.md) | history: the command, the check, and the glue |
 | [release-0.25.md](release-0.25.md) | history: installed, run for real, said exactly |
 | [release-0.24.md](release-0.24.md) | history: the copy can be judged, whoever wrote it |
 | [release-0.23.md](release-0.23.md) | history: the hold covers the nodes the arrival needs |

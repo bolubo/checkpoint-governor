@@ -40,3 +40,10 @@ The install page starts with a venv, not a system pip | docs/install-python.md �
 A receipt says the copy shares the volume | docs/product-v1.md §6.3 | TestReceiptStatesDurability
 A framework resume is named by its step | docs/resume-contract.md §3 | TestResumedReadsAFrameworkCopy
 The four-row contrast is reproducible | docs/contrast.md §Reproduce it | TestEveryRowNamesItsCoverageAndItsWrites
+A shard that is not visible is not sealed | docs/storage.md §The writer's side | py:TestSealed.test_a_shard_that_is_not_readable_is_not_sealed
+doctor classifies the storage | docs/storage.md §The three tiers | TestProbeAPlainDirectory
+Shared progress writes at most once per interval | docs/storage.md §The three tiers | py:TestTheStepCellOnASharedVolume.test_shared_writes_at_most_one_step_per_interval
+A verified seal needs every shard | docs/gate.md §When the victim is a multi-pod workload | TestAVerifiedSealRequiresTheShards
+A two-pod workload produces one hold | docs/gate.md §When the victim is a multi-pod workload | TestATwoPodWorkloadProducesOneHold
+A multi-pod workload needs one shared root | docs/gate.md §When the victim is a multi-pod workload | TestAPerNodeVolumeIsRefused
+A timeout is uncovered | docs/gate.md §What it does not promise | TestATimeoutMarksTheHoldUncovered

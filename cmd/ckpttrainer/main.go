@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -390,8 +391,16 @@ func writeContractCheckpoint(c config, base string, step int64, tr *trace) error
 		})
 	}
 
-	// The tear happens after the hashes are computed: the manifest describes the file the writer meant to
-	// leave, and the disk holds something else. That is exactly what a kill between two syscalls produces.
+	// The seal is a promise about the disk, so the disk is asked before the promise is made: every
+	// shard is stat-ed and its tail re-hashed. A writer that seals a shard it cannot read back records
+	// a copy no restore can use (0027).
+	if err := readbackShards(dir, shards); err != nil {
+		return err
+	}
+
+	// The tear happens after the readback on purpose: it stands in for damage that lands between the
+	// check and the manifest rename, which is the window this writer cannot close. The fault matrix
+	// needs such a copy to exist; production readbacks above would already have refused one.
 	if c.tear && len(shards) > 0 {
 		last := filepath.Join(dir, shards[len(shards)-1].Name)
 		f, err := os.OpenFile(last, os.O_RDWR, 0o644)
@@ -425,6 +434,49 @@ func writeContractCheckpoint(c config, base string, step int64, tr *trace) error
 
 	tr.Event("save_end", step, int64(c.ranks*c.shardBytes), true)
 	return writeFile(base, "progress", "0")
+}
+
+// readbackShards asks the disk whether the shards are what the writer thinks it left.
+//
+// Size first, then the declared tail: the same checks `ckptctl verify` runs against a sealed copy, made
+// here while the writer still owns the outcome. A failure names the shard, because "the checkpoint
+// failed" without a name is a bug report nobody can act on (0027).
+func readbackShards(dir string, shards []verify.Shard) error {
+	for _, s := range shards {
+		path := filepath.Join(dir, s.Name)
+		info, err := os.Stat(path)
+		if err != nil {
+			return fmt.Errorf("shard %s cannot be read back: %w", s.Name, err)
+		}
+		if info.Size() != s.Size {
+			return fmt.Errorf("shard %s is %d bytes, wrote %d", s.Name, info.Size(), s.Size)
+		}
+		if s.TailSHA256 == "" {
+			continue
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			return fmt.Errorf("shard %s cannot be read back: %w", s.Name, err)
+		}
+		n := int64(verify.TailBytes)
+		if s.Size < n {
+			n = s.Size
+		}
+		if _, err := f.Seek(s.Size-n, io.SeekStart); err != nil {
+			f.Close()
+			return fmt.Errorf("shard %s cannot be read back: %w", s.Name, err)
+		}
+		h := sha256.New()
+		if _, err := io.CopyN(h, f, n); err != nil {
+			f.Close()
+			return fmt.Errorf("shard %s cannot be read back: %w", s.Name, err)
+		}
+		f.Close()
+		if got := hex.EncodeToString(h.Sum(nil)); got != s.TailSHA256 {
+			return fmt.Errorf("shard %s tail hashes to %s, wrote %s", s.Name, got[:12], s.TailSHA256[:12])
+		}
+	}
+	return nil
 }
 
 // syncFor keeps calling fsync on a real file until the time is spent. The duration comes from syscalls, not

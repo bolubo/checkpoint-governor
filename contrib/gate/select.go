@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -292,34 +294,164 @@ func pickVictims(p roomPlan, units []adapters.UnitRecord, sizes map[string]int64
 	return out, ""
 }
 
-// candidates are the units a reclaim may take: strictly lower priority than the arrival, placed on
-// the chosen node, governed by this deployment (its checkpoint directory is under --ckpt-root), and
-// with a size the gate could read.
+// candidates are the workloads a reclaim may take on one node: strictly lower priority than the
+// arrival, placed on the chosen node, governed by this deployment (at least one of their pods has a
+// checkpoint directory under --ckpt-root), and with a size the gate could read.
 //
 // The directory clause is what keeps the cluster's own pods out. An observer that records every pod
 // also writes the controller-manager, and selecting it would be asking a system pod for a checkpoint
 // it does not have; worse, it can outrank a real victim on the priority sort and hide it.
+//
+// A multi-pod workload is one candidate with the footprint of its pods **on this node**: a pod on
+// another node does not free room here, but its shard still belongs to the copy the workload seals.
 func candidates(units []adapters.UnitRecord, sizes map[string]int64, dirs map[string]string, node string, arrivalPriority int32) []permit.Unit {
-	out := make([]permit.Unit, 0, len(units))
+	type workload struct {
+		id       string
+		priority int32
+		size     int64
+		governed bool
+	}
+	byKey := map[string]*workload{}
+	var order []string
 	for _, u := range units {
 		if u.Node != node || u.Priority >= arrivalPriority {
 			continue
 		}
-		if _, governed := dirs[u.UnitID]; !governed {
+		key := u.Workload
+		if key == "" {
+			key = u.UnitID
+		}
+		w := byKey[key]
+		if w == nil {
+			w = &workload{id: key, priority: u.Priority}
+			byKey[key] = w
+			order = append(order, key)
+		}
+		if size, ok := sizes[u.UnitID]; ok && size > 0 {
+			w.size += size
+		}
+		if _, governed := dirs[u.UnitID]; governed {
+			w.governed = true
+		}
+	}
+
+	out := make([]permit.Unit, 0, len(order))
+	for _, key := range order {
+		w := byKey[key]
+		if !w.governed || w.size <= 0 {
 			continue
 		}
-		size, ok := sizes[u.UnitID]
-		if !ok || size <= 0 {
-			continue
-		}
-		out = append(out, permit.Unit{ID: u.UnitID, Priority: int(u.Priority), Size: int(size)})
+		out = append(out, permit.Unit{ID: w.id, Priority: int(w.priority), Size: int(w.size)})
 	}
 	return out
 }
 
-// pickNode chooses the node with the most CPU room to host the arrival. It is a heuristic, not the
-// scheduler: the gate needs somewhere to look for a victim, and the emptiest node is where a job of
-// this size is most likely to land. --node pins it when the operator knows better.
+// workloadVictim is one workload the gate holds. A preemption stops every pod of a Job at once, so
+// holding one pod of a two-pod workload would ask for the same write twice and release the arrival
+// after the first one. `ID` is the workload's id when it has more than one pod, and the pod's own
+// unit id when it has one — which keeps the single-pod output exactly what it always was (0027).
+type workloadVictim struct {
+	ID       string
+	Pods     []string
+	Nodes    []string
+	Size     int64
+	Priority int32
+}
+
+// groupByWorkload turns the chosen pods into the workloads that must write. Every pod of a chosen
+// workload joins the hold, not only the pod the arithmetic picked: the victim loses all of them, so
+// the room they free is the workload's whole footprint.
+func groupByWorkload(chosen []permit.Unit, units []adapters.UnitRecord, sizes map[string]int64) []workloadVictim {
+	byID := make(map[string]adapters.UnitRecord, len(units))
+	for _, u := range units {
+		byID[u.UnitID] = u
+	}
+	keyOf := func(id string) string {
+		if u, ok := byID[id]; ok && u.Workload != "" {
+			return u.Workload
+		}
+		return id
+	}
+
+	var out []workloadVictim
+	seen := map[string]bool{}
+	for _, c := range chosen {
+		key := keyOf(c.ID)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		w := workloadVictim{ID: key, Priority: int32(c.Priority)}
+		nodes := map[string]bool{}
+		for _, u := range units {
+			if keyOf(u.UnitID) != key {
+				continue
+			}
+			w.Pods = append(w.Pods, u.UnitID)
+			if u.Node != "" && !nodes[u.Node] {
+				nodes[u.Node] = true
+				w.Nodes = append(w.Nodes, u.Node)
+			}
+			if s, ok := sizes[u.UnitID]; ok && s > 0 {
+				w.Size += s
+			}
+		}
+		if len(w.Pods) == 1 {
+			w.ID = w.Pods[0]
+		}
+		sort.Strings(w.Nodes)
+		out = append(out, w)
+	}
+	return out
+}
+
+// victimsLine renders one workload. The single-pod forms are the sentences earlier releases printed,
+// down to the comma, because a user's log grep must not change under them.
+func victimsLine(w workloadVictim, oneNode bool) string {
+	if len(w.Pods) == 1 {
+		if oneNode {
+			return fmt.Sprintf("%s (priority %d, size %dm)", w.ID, w.Priority, w.Size)
+		}
+		return fmt.Sprintf("%s (%s, priority %d, size %dm)", w.ID, w.Nodes[0], w.Priority, w.Size)
+	}
+	return fmt.Sprintf("%s (%s, priority %d, size %dm)", w.ID, joinStrings(w.Nodes, ","), w.Priority, w.Size)
+}
+
+// perNodeCheckpoint names the first pod whose checkpoint root is a node-local hostPath mount. A
+// multi-pod workload on such a volume does not share one root: rank 1 writes to a directory rank 0
+// cannot see, so no seal will ever make the workload whole and the gate must refuse to wait (0027).
+func perNodeCheckpoint(pods []corev1.Pod, unitIDs []string, ckptRoot string) (string, string) {
+	root := filepath.Clean(ckptRoot)
+	for _, uid := range unitIDs {
+		ns, name, ok := strings.Cut(uid, "/")
+		if !ok {
+			continue
+		}
+		for i := range pods {
+			p := &pods[i]
+			if p.Namespace != ns || p.Name != name {
+				continue
+			}
+			for _, v := range p.Spec.Volumes {
+				if v.HostPath == nil {
+					continue
+				}
+				for _, c := range p.Spec.Containers {
+					for _, m := range c.VolumeMounts {
+						if m.Name != v.Name {
+							continue
+						}
+						mp := filepath.Clean(m.MountPath)
+						if root == mp || strings.HasPrefix(root, mp+"/") {
+							return uid, v.HostPath.Path
+						}
+					}
+				}
+			}
+		}
+	}
+	return "", ""
+}
 func pickNode(nodes []adapters.NodeState) (string, int64) {
 	best, bestFree := "", int64(0)
 	for _, n := range nodes {
