@@ -57,7 +57,9 @@ var commands = []command{
 
 	// Beyond one directory: several directories, a cluster, or a trace that stands in for both.
 	{"declare", groupOther, "write what a checkpoint holds, beside it, so a restore can be judged", runDeclare},
+	{"demo", groupOther, "show the whole contract on a synthetic checkpoint, in thirty seconds", runDemo},
 	{"serve", groupOther, "the same facts as Prometheus text, read-only", runServe},
+	{"setup", groupOther, "prepare a deployment: check this machine, then print the next commands", runSetup},
 	{"simulate", groupOther, "the policy against fixed timers, on one trace", runSimulate},
 	{"supervise", groupOther, "several directories, one rollup", runSupervise},
 	{"table", groupOther, "the evidence table: every family under the controllers worth comparing", runTable},

@@ -47,3 +47,4 @@ A verified seal needs every shard | docs/gate.md §When the victim is a multi-po
 A two-pod workload produces one hold | docs/gate.md §When the victim is a multi-pod workload | TestATwoPodWorkloadProducesOneHold
 A multi-pod workload needs one shared root | docs/gate.md §When the victim is a multi-pod workload | TestAPerNodeVolumeIsRefused
 A timeout is uncovered | docs/gate.md §What it does not promise | TestATimeoutMarksTheHoldUncovered
+The demo's missing shard is not resumable | docs/demo.md §The four faults | TestDemoKillThenRepair

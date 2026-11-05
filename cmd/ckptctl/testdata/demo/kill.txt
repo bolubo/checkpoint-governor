@@ -1,0 +1,7 @@
+demo <dir>: 2 ranks, gen-0001, step 300, storage local
+fault: rank1.pt deleted — the kill landed between the shards and the manifest
+status      newest sealed step 300 · writing none
+resumable   not resumable: rank 1 shard missing
+verify      broken: shard rank1.pt is missing
+evidence    1 problem · storage local (process death)
+next        ckptctl demo --repair --dir=<dir>

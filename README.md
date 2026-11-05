@@ -8,9 +8,28 @@
 Current release: [`v0.27.0`](docs/release-0.27.md) · [changelog](CHANGELOG.md). The Python package
 carries the same number.
 
-A safety net for training jobs. It watches the conditions that come before a lost job, asks the job to
-write a checkpoint when one fires, and tells you whether the newest copy can continue after a restart —
-whichever library wrote it. One static Go binary, one plan file; on Kubernetes, no custom resource and
+**Know whether your training run can continue — whichever library wrote the checkpoint.**
+
+```bash
+pip install ckpt-policy
+ckptctl demo        # thirty seconds, no cluster, no GPU
+```
+
+```
+demo /tmp/ckpt-demo: 2 ranks, gen-0001, step 300, storage local
+fault: rank1.pt deleted — the kill landed between the shards and the manifest
+status      newest sealed step 300 · writing none
+resumable   not resumable: rank 1 shard missing
+verify      broken: shard rank1.pt is missing
+evidence    1 problem · storage local (process death)
+next        ckptctl demo --repair --dir=/tmp/ckpt-demo
+```
+
+`ckptctl demo --repair` seals it again; the same two commands then answer `resumable (world 2/2)` and
+`verified`. The demo writes a real generation and deletes a real shard, so the answers are the ones a
+production copy gets ([docs/demo.md](docs/demo.md)).
+
+Works with Hugging Face Trainer, Lightning, Composer and Kueue. On Kubernetes: no custom resource and
 no extra permission.
 
 ## The default is the problem

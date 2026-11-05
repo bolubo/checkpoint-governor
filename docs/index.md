@@ -8,6 +8,7 @@ One page per question. Start where your question is. Every local link here resol
 | page | question |
 |---|---|
 | [install.md](install.md) | how do I get the binaries, the image, or the Python package? |
+| [demo.md](demo.md) | thirty seconds, no cluster: the four faults and the answers they get |
 | [install-python.md](install-python.md) | `pip install`, three lines in a loop, and what to do when it fails |
 | [first-ten-minutes.md](first-ten-minutes.md) | one real run: the commands, the lines they print, and where the files are |
 | [compatibility.md](compatibility.md) | what does a version promise to keep? |

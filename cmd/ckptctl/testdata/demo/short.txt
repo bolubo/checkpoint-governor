@@ -1,0 +1,7 @@
+demo <dir>: 2 ranks, gen-0001, step 300, storage local
+fault: rank1.pt truncated — the size no longer matches
+status      newest sealed step 300 · writing none
+resumable   resumable (gen 1, step 300, world 2/2, full state)
+verify      broken: shard rank1.pt is 39 bytes, sealed at 47
+evidence    1 problem · storage local (process death)
+next        ckptctl demo --repair --dir=<dir>
