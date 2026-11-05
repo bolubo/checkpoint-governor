@@ -116,9 +116,10 @@ cluster, under two minutes from a clone.
 
 ## P2 — the audience: Hugging Face Trainer
 
-The integration is `save_strategy="no"` plus a callback that sets `control.should_save` when
-`should_save()` says so. Two lines, not a patch to `Trainer`; the latency is `logging_steps`, and the
-announced stop is HF's own `enable_jit_checkpoint`.
+The integration keeps the Trainer's own saver and turns its alarm off: `save_strategy="steps"` with a
+`save_steps` the run never reaches, plus a callback that sets `control.should_save` when `should_save()`
+says so. Two lines, not a patch to `Trainer`; the latency is `logging_steps`, and the announced stop is
+HF's own `enable_jit_checkpoint`.
 
 - [x] **2.1 The callback, against a fake trainer.** CI has no torch, so the contract test drives a minimal
       object that models the Trainer's two relevant behaviours: its cadence, and `should_save` consumed

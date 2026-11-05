@@ -3,6 +3,49 @@
 One entry per released tag. The prototype's history before this file is `git log`; this file starts at
 the first release that makes a compatibility promise.
 
+## v0.25.0 — 2026-11-05
+
+The release where the install is copyable, the framework runs are real, and the declaration says what
+it needs.
+
+**A fresh machine can follow the page.** `docs/install-python.md` and all three integration pages
+start with `python3 -m venv .venv`, because a system Python managed by PEP 668 refuses `pip install`
+— measured on this machine, not assumed. Each integration page opens with one `Paste this` block whose
+first import is identical everywhere.
+
+**Disk is priced before the first write.** `ckptctl init --params=7B` estimates 18 bytes per
+parameter (fp16 weights, two Adam moments, gradient and master weights) and prints a `disk:` line
+for every answer. The number always says `estimated … not measured`, and the help says it is about
+disk, not whether this GPU can train the model.
+
+**The declaration says what it needs, and the wrapper stops retyping it.** `ckptctl declare` gained
+`--world`, `--tp`, `--pp`, `--dp` and `--reshardable`, so a multi-rank copy is judged against the
+world it was written under. `ckptctl wrap` reads `deployment.json`'s `grace_seconds` when `--grace` is
+absent and prints where the number came from. `ckptctl status` names the `ext` keys a reader ignored
+(names only, never values).
+
+**A receipt says where the copy lives.** `durability      local disk: a copy outlives the process,
+not the volume` is printed whether or not the run wrote anything.
+
+**Real Lightning and Composer runs found real defects, and they are fixed.** Both callbacks were
+plain objects: Lightning failed at `setup`, Composer at `run_event`. Both drove public save
+functions that write a file but skip the framework's own bookkeeping — a real run left
+`best_model_path` empty. They now subclass the framework callback and drive the framework's own
+routines (`_save_topk_checkpoint`/`_save_last_checkpoint`, `CheckpointSaver._save_checkpoint` and
+`_rotate_checkpoints`). A framework write leaves no `gen-*`, so requests are now deduped by
+`requestId`; dedupe by generation used to silence every window request after the first one.
+
+**Version skew with real binaries.** `hack/skew.sh` checks out the ref that shipped the 0.24 reader,
+builds it, and lets it refuse `min_reader: 0.25` on its own terms; this build accepts the same file.
+
+**Tests.** Thirty-three outbound promises name the test that would fail if they stopped being true
+(`make test-claims` prints `claims: 33 · tests found: 33 · missing: 0`).
+
+**Not in this release.** Physical-disk low-space, the 1-second grace matrix, a two-node kind
+cluster, real-model resume (T-6), and long soak runs — the testing round owns those.
+
+The Python package carries the same number without the `v`: `ckpt-policy 0.25.0`.
+
 ## v0.24.0 — 2026-11-04
 
 The release where "can this continue" is answered for the layout your framework already writes.

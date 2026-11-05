@@ -5,7 +5,7 @@
 [![pypi](https://img.shields.io/pypi/v/ckpt-policy)](https://pypi.org/project/ckpt-policy/)
 [![license](https://img.shields.io/github/license/bolubo/checkpoint-governor)](LICENSE)
 
-Current release: [`v0.24.0`](docs/release-0.24.md) · [changelog](CHANGELOG.md). The Python package
+Current release: [`v0.25.0`](docs/release-0.25.md) · [changelog](CHANGELOG.md). The Python package
 carries the same number.
 
 A backstop for training runs: it watches the named conditions that come before a lost job, asks for a
