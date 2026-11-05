@@ -21,6 +21,7 @@ func runAudit(args []string, out io.Writer) int {
 	fs := flag.NewFlagSet("audit", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	bound := fs.Duration("bound", 0, "the bound to certify (0 = the window the ledger last ran with)")
+	asJSON := fs.Bool("json", false, "print the certificate as one JSON object")
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "usage: ckptctl audit --dir=<checkpointDir> [--bound=15m]")
 		fs.PrintDefaults()
@@ -78,6 +79,25 @@ func runAudit(args []string, out io.Writer) int {
 	}
 	got := audit.Certify(certified, start, now, seals)
 
+	if *asJSON {
+		payload := auditPayload{
+			Schema: 1, Dir: dir, BoundSeconds: certified.Seconds(), BoundSource: source,
+			Start: start.UTC().Format(time.RFC3339), End: now.UTC().Format(time.RFC3339),
+			RunSeconds: got.Run().Seconds(), Seals: got.Seals, Covered: got.Covered,
+			UncoveredSeconds:    got.Uncovered().Seconds(),
+			MaxStalenessSeconds: got.MaxStaleness.Seconds(),
+			OverBoundSeconds:    got.OverBound.Seconds(), Held: got.Held(),
+		}
+		if !got.MaxAt.IsZero() {
+			payload.MaxAt = got.MaxAt.UTC().Format(time.RFC3339)
+		}
+		writeJSON(out, payload)
+		if !got.Held() {
+			return 1
+		}
+		return 0
+	}
+
 	fmt.Fprintf(out, "audit           %s\n", dir)
 	fmt.Fprintf(out, "bound           %s (from %s)\n", round(certified), source)
 	fmt.Fprintf(out, "run             %s → %s (%s)\n",
@@ -107,6 +127,25 @@ func runAudit(args []string, out io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// The JSON view is the certificate, not a second opinion; durations are seconds so a script does
+// not have to parse "10m0s".
+type auditPayload struct {
+	Schema              int     `json:"schema"`
+	Dir                 string  `json:"dir"`
+	BoundSeconds        float64 `json:"boundSeconds"`
+	BoundSource         string  `json:"boundSource"`
+	Start               string  `json:"start"`
+	End                 string  `json:"end"`
+	RunSeconds          float64 `json:"runSeconds"`
+	Seals               int     `json:"seals"`
+	Covered             bool    `json:"covered"`
+	UncoveredSeconds    float64 `json:"uncoveredSeconds,omitempty"`
+	MaxStalenessSeconds float64 `json:"maxStalenessSeconds"`
+	MaxAt               string  `json:"maxAt,omitempty"`
+	OverBoundSeconds    float64 `json:"overBoundSeconds"`
+	Held                bool    `json:"held"`
 }
 
 // writesLine prices the writes the receipt counts, when the ledger has them: a certificate that

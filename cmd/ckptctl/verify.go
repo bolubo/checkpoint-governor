@@ -28,6 +28,7 @@ func runVerify(args []string, out io.Writer) int {
 	content := fs.Bool("content", true, "hash the shards; without this the answer can only be sealed")
 	full := fs.Bool("full", false, "hash every byte instead of the declared tails")
 	all := fs.Bool("all", false, "walk every generation under --dir instead of checking one")
+	asJSON := fs.Bool("json", false, "print the verdict as one JSON object")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -47,10 +48,19 @@ func runVerify(args []string, out io.Writer) int {
 	}
 
 	if *all {
-		return runVerifyAll(*dir, *generation, opts, out)
+		return runVerifyAll(*dir, *generation, opts, *asJSON, out)
 	}
 
 	v := verify.Classify(*dir, *generation, opts)
+
+	if *asJSON {
+		writeJSON(out, verifyPayload{Schema: 1, Dir: *dir, Generation: v.Generation, Step: v.Step,
+			State: string(v.State), Reason: string(v.Reason), Detail: v.Detail, Extras: v.Extras})
+		if v.State == policy.CopyBroken {
+			return 1
+		}
+		return 0
+	}
 
 	// The state and the reason on one line, then the detail on the next: the first line is what a person
 	// greps for, the second is what tells them which shard.
@@ -84,11 +94,31 @@ func runVerify(args []string, out io.Writer) int {
 // It does not invent the scheduler's counter. "Taken" is a fact about units that were evicted, which a
 // directory cannot know, so the ratio is only printed when a caller supplies it — an invented denominator
 // would read as a measurement.
-func runVerifyAll(root string, generation int64, opts verify.Options, out io.Writer) int {
+func runVerifyAll(root string, generation int64, opts verify.Options, asJSON bool, out io.Writer) int {
 	s, err := verify.Summarize(root, generation, opts)
 	if err != nil {
 		fmt.Fprintf(out, "verify: %v\n", err)
 		return 2
+	}
+	if asJSON {
+		payload := verifyAllPayload{Schema: 1, Dir: root}
+		for _, v := range s.Verdicts {
+			payload.Generations = append(payload.Generations, verifyPayload{
+				Schema: 1, Dir: root, Generation: v.Generation, Step: v.Step,
+				State: string(v.State), Reason: string(v.Reason), Detail: v.Detail, Extras: v.Extras,
+			})
+		}
+		payload.Tally = verifyTallyPayload{
+			Generations: len(s.Receipts), Verified: s.Tally.Verified, Broken: s.Tally.Invalid,
+			Unchecked: s.Tally.Unchecked, InvalidRate: s.Tally.InvalidRate(),
+		}
+		writeJSON(out, payload)
+		for _, v := range s.Verdicts {
+			if v.State == policy.CopyBroken {
+				return 1
+			}
+		}
+		return 0
 	}
 	for _, r := range s.Receipts {
 		fmt.Fprintln(out, r.Line())
@@ -109,4 +139,31 @@ func runVerifyAll(root string, generation int64, opts verify.Options, out io.Wri
 		}
 	}
 	return 0
+}
+
+// The JSON view is the verdict, not a second opinion: the fields are the ones the text prints.
+type verifyPayload struct {
+	Schema     int      `json:"schema"`
+	Dir        string   `json:"dir,omitempty"`
+	Generation int64    `json:"generation,omitempty"`
+	Step       int64    `json:"step,omitempty"`
+	State      string   `json:"state"`
+	Reason     string   `json:"reason,omitempty"`
+	Detail     string   `json:"detail,omitempty"`
+	Extras     []string `json:"unlisted,omitempty"`
+}
+
+type verifyAllPayload struct {
+	Schema      int                `json:"schema"`
+	Dir         string             `json:"dir"`
+	Generations []verifyPayload    `json:"generations"`
+	Tally       verifyTallyPayload `json:"tally"`
+}
+
+type verifyTallyPayload struct {
+	Generations int     `json:"generations"`
+	Verified    int     `json:"verified"`
+	Broken      int     `json:"broken"`
+	Unchecked   int     `json:"unchecked"`
+	InvalidRate float64 `json:"invalidRate"`
 }

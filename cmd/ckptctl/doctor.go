@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -22,6 +23,7 @@ func runDoctor(args []string, out io.Writer) int {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	dir := fs.String("dir", "", "the checkpoint directory to inspect")
 	storageDir := fs.String("storage", "", "also measure what this directory's filesystem promises")
+	asJSON := fs.Bool("json", false, "print the whole table as one JSON object")
 	freeFactor := fs.Float64("free-factor", 2, "free space below this multiple of one checkpoint is at risk")
 	storeEvery := fs.Duration("store-every", 5*time.Second, "how often the storage conditions are read")
 	slowFactor := fs.Float64("slow-factor", 2, "how many times the job baseline counts as slow")
@@ -37,20 +39,33 @@ func runDoctor(args []string, out io.Writer) int {
 	// this volume, does "write, sync, rename" mean what the controller's decisions assume? It can be run
 	// alone, without a checkpoint directory, which is what an operator does before deploying (0027).
 	storageCode := 0
+	var storagePayload *storageJSON
 	if *storageDir != "" {
 		r, err := storage.Probe(*storageDir)
 		if err != nil {
 			fmt.Fprintf(out, "storage %s\nerror: cannot probe it: %v\n", *storageDir, err)
 			return 2
 		}
-		r.Write(out)
 		if !r.Safe() {
 			storageCode = 1
 		}
+		storagePayload = describeStorage(r)
+		if !*asJSON {
+			r.Write(out)
+			if *dir == "" {
+				return storageCode
+			}
+			fmt.Fprintln(out)
+		}
 		if *dir == "" {
+			if *asJSON {
+				writeJSON(out, doctorJSON{
+					Schema: 1, Storage: storagePayload,
+					Summary: doctorSummary{},
+				})
+			}
 			return storageCode
 		}
-		fmt.Fprintln(out)
 	}
 
 	now := time.Now()
@@ -60,9 +75,13 @@ func runDoctor(args []string, out io.Writer) int {
 	// refused with its number named — the same sentence `status` and `explain` print — and the exit
 	// code says so, so a script cannot mistake a table for an answer.
 	problem := ""
+	planSchema := 0
 	if schema, ok := advise.PlanSchema(*dir); ok {
-		fmt.Fprintf(out, "plan schema %d, this binary reads %s\n", schema, advise.Reads())
-	} else {
+		planSchema = schema
+		if !*asJSON {
+			fmt.Fprintf(out, "plan schema %d, this binary reads %s\n", schema, advise.Reads())
+		}
+	} else if !*asJSON {
 		fmt.Fprintf(out, "plan schema: none (this binary reads %s)\n", advise.Reads())
 	}
 	problem = advise.SchemaProblem(*dir)
@@ -102,6 +121,7 @@ func runDoctor(args []string, out io.Writer) int {
 	cfg = cfg.WithWorld(*dir)
 	probes := adapters.All(cfg)
 	var ok, absent, unknown int
+	rows := make([]probeJSON, 0, len(probes))
 	for _, p := range probes {
 		r := p.Read(env)
 		state, detail := describe(r)
@@ -117,7 +137,25 @@ func runDoctor(args []string, out io.Writer) int {
 		default:
 			ok++
 		}
-		fmt.Fprintf(out, "%-24s %-8s every %-6s %s\n", p.Name(), state, p.Every(), detail)
+		rows = append(rows, probeJSON{Name: p.Name(), State: state, Every: p.Every().String(), Detail: detail})
+		if !*asJSON {
+			fmt.Fprintf(out, "%-24s %-8s every %-6s %s\n", p.Name(), state, p.Every(), detail)
+		}
+	}
+
+	summary := doctorSummary{Probes: len(probes), Reading: ok, Absent: absent, Unknown: unknown}
+	if *asJSON {
+		writeJSON(out, doctorJSON{
+			Schema: 1, Dir: *dir, Storage: storagePayload,
+			Plan:    doctorPlan{Schema: planSchema, Reads: advise.Reads(), Refused: problem},
+			Probes:  rows,
+			Summary: summary,
+			Note:    noScaleNote(s.CheckpointBytes),
+		})
+		if problem != "" {
+			return 2
+		}
+		return storageCode
 	}
 
 	fmt.Fprintf(out, "\ndoctor: %d probes · %d reading, %d absent, %d unknown\n", len(probes), ok, absent, unknown)
@@ -162,4 +200,82 @@ func describe(r produce.Reading) (state, detail string) {
 		}
 		return "0", "not firing"
 	}
+}
+
+// The JSON view is the same table, one object. It carries the schema so a script can refuse a newer
+// bundle it does not understand instead of guessing at the fields.
+type doctorJSON struct {
+	Schema  int           `json:"schema"`
+	Dir     string        `json:"dir,omitempty"`
+	Storage *storageJSON  `json:"storage,omitempty"`
+	Plan    doctorPlan    `json:"plan"`
+	Probes  []probeJSON   `json:"probes,omitempty"`
+	Summary doctorSummary `json:"summary"`
+	Note    string        `json:"note,omitempty"`
+}
+
+type doctorPlan struct {
+	Schema  int    `json:"schema"`
+	Reads   string `json:"reads"`
+	Refused string `json:"refused,omitempty"`
+}
+
+type probeJSON struct {
+	Name   string `json:"name"`
+	State  string `json:"state"`
+	Every  string `json:"every,omitempty"`
+	Detail string `json:"detail,omitempty"`
+}
+
+type doctorSummary struct {
+	Probes  int `json:"probes"`
+	Reading int `json:"reading"`
+	Absent  int `json:"absent"`
+	Unknown int `json:"unknown"`
+}
+
+type storageJSON struct {
+	Dir     string             `json:"dir"`
+	FS      string             `json:"fs"`
+	Magic   uint64             `json:"magic"`
+	Network bool               `json:"network"`
+	Class   string             `json:"class"`
+	Promise string             `json:"promise"`
+	Checks  []storageCheckJSON `json:"checks,omitempty"`
+}
+
+type storageCheckJSON struct {
+	Name   string `json:"name"`
+	OK     bool   `json:"ok"`
+	Detail string `json:"detail,omitempty"`
+	Micros int64  `json:"micros,omitempty"`
+}
+
+func describeStorage(r storage.Report) *storageJSON {
+	s := &storageJSON{
+		Dir: r.Dir, FS: r.FSName, Magic: r.FSMagic, Network: r.Network,
+		Class: r.Class, Promise: r.Promise,
+	}
+	for _, c := range r.Checks {
+		s.Checks = append(s.Checks, storageCheckJSON{
+			Name: c.Name, OK: c.OK, Detail: c.Detail, Micros: c.Took.Microseconds(),
+		})
+	}
+	return s
+}
+
+func noScaleNote(bytes int64) string {
+	if bytes <= 0 {
+		return "no complete checkpoint yet, so the storage rule has no scale to measure against"
+	}
+	return ""
+}
+
+func writeJSON(out io.Writer, v any) {
+	raw, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		fmt.Fprintf(out, "error: %v\n", err)
+		return
+	}
+	fmt.Fprintf(out, "%s\n", raw)
 }

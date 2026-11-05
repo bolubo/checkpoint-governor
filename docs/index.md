@@ -32,6 +32,7 @@ One page per question. Start where your question is. Every local link here resol
 | [conditions.md](conditions.md) | the condition names, one card each, and who produces them |
 | [verify-and-demand.md](verify-and-demand.md) | what happens after a write lands? |
 | [resume-contract.md](resume-contract.md) | what does "this can continue" mean, for any writer's layout, and what proves it? |
+| [evidence-schema.md](evidence-schema.md) | one versioned bundle: status, resume, verify, attempts, storage |
 | [glue.md](glue.md) | what the job writes into the directory, and what reads it |
 | [decisions/README.md](decisions/README.md) | why is it this way? every record that is still load-bearing |
 

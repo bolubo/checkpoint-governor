@@ -22,6 +22,7 @@ import (
 func runExplain(args []string, out io.Writer) int {
 	fs := flag.NewFlagSet("explain", flag.ContinueOnError)
 	dir := fs.String("dir", "", "the checkpoint directory")
+	asJSON := fs.Bool("json", false, "print the decision as one JSON object")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -32,6 +33,11 @@ func runExplain(args []string, out io.Writer) int {
 
 	d, ok := advise.LastDecision(*dir)
 	if !ok {
+		if *asJSON {
+			problem := advise.SchemaProblem(*dir)
+			writeJSON(out, explainPayload{Schema: 1, Dir: *dir, Error: problem})
+			return 1
+		}
 		// Refusing a foreign schema silently would be the same failure as reading it wrongly: the two
 		// states lead to the same fallback, but only one of them is something a person can fix.
 		if problem := advise.SchemaProblem(*dir); problem != "" {
@@ -40,6 +46,11 @@ func runExplain(args []string, out io.Writer) int {
 		}
 		fmt.Fprintf(out, "no plan in %s: the controller has not published one yet\n", *dir)
 		return 1
+	}
+
+	if *asJSON {
+		writeJSON(out, explainPayload{Schema: 1, Dir: *dir, Decision: decisionPayload(d)})
+		return 0
 	}
 
 	fmt.Fprintf(out, "decision   %s", d.Action)
@@ -77,6 +88,53 @@ func kindOf(d policy.Decision) string {
 		return string(d.Kind)
 	}
 	return "full"
+}
+
+type explainPayload struct {
+	Schema   int              `json:"schema"`
+	Dir      string           `json:"dir"`
+	Decision *explainDecision `json:"decision,omitempty"`
+	Error    string           `json:"error,omitempty"`
+}
+
+type explainDecision struct {
+	Action      string               `json:"action"`
+	Reason      string               `json:"reason,omitempty"`
+	Why         string               `json:"why,omitempty"`
+	Reasons     []explainReason      `json:"reasons,omitempty"`
+	Missing     []string             `json:"missing,omitempty"`
+	Sensitivity []explainSensitivity `json:"sensitivity,omitempty"`
+	Kind        string               `json:"kind"`
+	Keep        int                  `json:"keep"`
+}
+
+type explainReason struct {
+	Code     string             `json:"code"`
+	Values   map[string]float64 `json:"values,omitempty"`
+	Evidence []string           `json:"evidence,omitempty"`
+}
+
+type explainSensitivity struct {
+	Field     string  `json:"field"`
+	Threshold float64 `json:"threshold"`
+	Direction string  `json:"direction"`
+	WouldBe   string  `json:"wouldBe"`
+}
+
+func decisionPayload(d policy.Decision) *explainDecision {
+	out := &explainDecision{
+		Action: string(d.Action), Reason: string(d.Reason), Why: d.Why,
+		Missing: d.Missing, Kind: kindOf(d), Keep: d.KeepCopies,
+	}
+	for _, r := range d.Reasons {
+		out.Reasons = append(out.Reasons, explainReason{Code: r.Code, Values: r.Values, Evidence: r.Evidence})
+	}
+	for _, s := range d.Sensitivity {
+		out.Sensitivity = append(out.Sensitivity, explainSensitivity{
+			Field: s.Field, Threshold: s.Threshold, Direction: s.Direction, WouldBe: s.WouldBe,
+		})
+	}
+	return out
 }
 
 // enrich fills in the numbers a reason does not carry, by asking the producer that measured them.
