@@ -14,6 +14,28 @@ import (
 	"github.com/bolubo/checkpoint-governor/internal/produce"
 )
 
+// The receipt is the artifact a person keeps, so it has to say where the copy lives: the same disk as
+// the job. A copy outlives the process, not the volume — a fact that must not be left to inference,
+// and must appear whether or not the run wrote anything.
+func TestReceiptStatesDurability(t *testing.T) {
+	cases := []struct {
+		name string
+		r    Receipt
+	}{
+		{"nothing written", Receipt{}},
+		{"writes", Receipt{Asked: 2, Sealed: 2, Kinds: map[string]int{"window": 2}, Window: 30 * time.Minute}},
+	}
+	const want = "durability      local disk: a copy outlives the process, not the volume"
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			lines := strings.Join(c.r.Lines(), "\n")
+			if !strings.Contains(lines, want) {
+				t.Fatalf("the receipt does not state durability:\n%s", lines)
+			}
+		})
+	}
+}
+
 // TestTheOperatorSeesTheTruthInOnePlace is S1's acceptance: one line that answers "what happened",
 // "what cannot be seen" and "why the last write did not start", read from the loop's own state.
 func TestTheOperatorSeesTheTruthInOnePlace(t *testing.T) {

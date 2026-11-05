@@ -1899,7 +1899,14 @@ func (r Receipt) Lines() []string {
 		out = append(out, fmt.Sprintf("  your own habit (no-us %s) would have made %d in this time",
 			coarseAge(r.NoUs), r.Baseline))
 	}
-	return append(out, r.BoundLine())
+	return append(out, r.DurabilityLine(), r.BoundLine())
+}
+
+// DurabilityLine is the fact a receipt must not leave to inference: the copy sits on the same disk as
+// the job, so it survives the process and not the volume. It is printed whether or not anything was
+// written — the hole does not depend on the run having been busy.
+func (r Receipt) DurabilityLine() string {
+	return "durability      local disk: a copy outlives the process, not the volume"
 }
 
 // BoundLine is the same sentence whether or not anything was written: the hole does not depend on the

@@ -35,3 +35,4 @@ Lightning declares beside its .ckpt | docs/lightning.md §What it declares | py:
 Composer's leader declares beside the episode | docs/composer.md §What it declares | py:TestComposerDeclares.test_rank_zero_writes_one_declaration_beside_the_episode
 Every integration page starts from a paste block | docs/huggingface.md §Paste this | TestIntegrationPagesHaveAPasteBlock
 The install page starts with a venv, not a system pip | docs/install-python.md §1. Install | TestInstallDocsUseAVenv
+A receipt says the copy shares the volume | docs/product-v1.md §6.3 | TestReceiptStatesDurability

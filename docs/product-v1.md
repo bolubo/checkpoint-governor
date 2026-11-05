@@ -94,6 +94,7 @@ run 3h58m · 8 writes · 9.6s (0.07%)
   7 on the 30-minute window
   1 on a platform preemption at 14:41
   a 10-minute habit would have written 24 times (29s)
+durability      local disk: a copy outlives the process, not the volume
   a silent death costs at most 30 minutes
 ```
 
