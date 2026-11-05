@@ -82,6 +82,14 @@ class Governor:
                  engine_window: str | None = None, engine_args: list[str] | None = None):
         self.root = root
         self.format = format
+        # `torchrun` already knows the rank and the world; a user who launched a job that way should
+        # not retype them. Both variables are required, so an unrelated `RANK` in the environment is
+        # not mistaken for this job's topology.
+        env_rank, env_world = os.environ.get("RANK", ""), os.environ.get("WORLD_SIZE", "")
+        if world is None and env_world.isdigit() and int(env_world) > 0:
+            world = World(ranks=int(env_world))
+        if rank0 and rank == 0 and env_rank.isdigit() and int(env_rank) != 0:
+            rank, rank0 = int(env_rank), False
         self.world = world or World()
         self.saves = saves or Saves()
         self.writer = writer
@@ -115,7 +123,9 @@ class Governor:
             write_text(root, "expected-bytes", str(int(expected_bytes)))
         if step_baseline_ms:
             write_text(root, "step-baseline", str(int(step_baseline_ms)))
-        if start_engine:
+        # One engine owns the directory. A rank that is not the leader asking for one would start a
+        # second controller on the same plan; silently keeping it to rank 0 is the safe reading.
+        if start_engine and self.rank0:
             self.start_engine()
 
     # -- the engine -------------------------------------------------------------------------------

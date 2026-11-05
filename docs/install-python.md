@@ -15,7 +15,9 @@ pip install ckpt-policy
 The first two lines are not optional on a machine whose system Python is managed by PEP 668: pip there
 refuses to install (`error: externally-managed-environment`), and a venv is the supported way in.
 
-No other install step: no `go install`, no PATH entry, no second download.
+No other install step: no `go install`, no manual PATH entry, no second download. The same wheel installs
+the `ckptctl` command into the venv, so `ckptctl status <dir>` and `ckptctl resumable --dir` work while
+the venv is active.
 
 From a checkout, the same wheel:
 
@@ -59,6 +61,10 @@ for step, batch in loader:
 `start_engine=True` launches `ckptctl run` for that directory. If the engine exits, the plan stops
 being refreshed and `should_save()` becomes false: the job still writes at the end and on an announced
 stop, and nothing in the loop has to handle it.
+
+Under `torchrun`, the client reads `RANK` and `WORLD_SIZE` on its own, so the same three lines work on
+every rank; only rank 0 starts the engine, and the others read its plan. A negative `RANK` is not a
+topology, and an explicit `rank=`/`world=` still wins when a launcher uses other variables.
 
 ## 4. See it work, without Go
 

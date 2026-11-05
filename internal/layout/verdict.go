@@ -78,5 +78,19 @@ func checkShards(c Copy, decl resume.File, v resume.Verdict) resume.Verdict {
 			return v
 		}
 	}
+	// The manifest is a claim about what was written; the volume is what exists. A rank named in the
+	// manifest but absent from the directory is not a complete copy, even though the declaration and
+	// the other shards agree (the S2 run deleted one shard and the old check still said 2/2).
+	for _, sh := range m.Shards {
+		if sh.Member <= 0 {
+			continue // rank 0 and unmarked shards share the zero value; only marked ranks are checkable
+		}
+		if _, err := os.Stat(filepath.Join(c.Dir, sh.Name)); err != nil {
+			v.Reason = resume.ReasonShardMissing
+			v.MissingRank = sh.Member
+			v.Missing = nil
+			return v
+		}
+	}
 	return v
 }

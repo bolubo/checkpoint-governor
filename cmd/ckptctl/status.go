@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bolubo/checkpoint-governor/internal/advise"
+	"github.com/bolubo/checkpoint-governor/internal/resume"
 )
 
 // runStatus prints what the controller knows about one directory.
@@ -42,6 +43,24 @@ func runStatus(args []string, out io.Writer) int {
 	if l.Status.Phase == "" {
 		fmt.Fprintf(out, "no status in %s: this directory has not been governed yet\n", dir)
 		return 0
+	}
+	// The ledger is the controller's memory, but the job's own final write can land after the last
+	// round. The directory is the fact: show a sealed generation newer than the ledger, and close a
+	// write the seal already covers. Without this, a completed run still printed `phase writing`
+	// and `newest sealed none` (the S2 user run on 2026-11-05).
+	if sealed, ok, err := resume.NewestSealed(dir); err == nil && ok {
+		s := &l.Status
+		covers := sealed.Manifest.Generation >= s.Generation &&
+			(s.WriteStartedAt == 0 || sealed.Manifest.SealedAt.Unix() >= s.WriteStartedAt)
+		if covers {
+			s.Generation = sealed.Manifest.Generation
+			s.SealStep = sealed.Manifest.Step
+			s.SealAt = sealed.Manifest.SealedAt.Unix()
+			if s.Phase == advise.PhaseWriting {
+				s.Phase = advise.PhaseSealed
+			}
+			s.WriteStartedAt = 0
+		}
 	}
 	if *asJSON {
 		// One object, no prose: a script must be able to ask the controller what it thinks without

@@ -13,6 +13,8 @@ A failed probe is unknown, never "not resumable" | docs/resume-contract.md §Whi
 A hanging probe is refused with a timeout | docs/resume-contract.md §Which copy is judged | TestAProbeThatNeverAnswersNamesTheTimeout
 A declaration is judged against the requires it names | docs/resume-contract.md §1 | TestAFrameworkDeclarationIsJudgedAgainstTheRulerItNames
 An old declaration keeps its old answer | docs/resume-contract.md §1 | TestADeclarationWithoutRequiresKeepsTodaysAnswer
+A rank whose shard is gone from the volume is not resumable | docs/resume-contract.md §2 | TestAShardDeletedFromTheVolumeIsNotResumable
+A torchrun job's rank and world are read from the launcher | docs/install-python.md §3 | py:TestTorchrunEnv.test_rank_and_world_come_from_the_launcher
 A caveat does not change the verdict, and is printed | docs/resume-contract.md §1 | TestACaveatIsPrintedOnTheSameLine
 A newer declaration is refused with the upgrade named | RELEASE.md §The Python package | TestTheVersionSkewMatrix
 The schema refuses what it cannot believe | docs/resume-contract.md §1 | TestTheSchemaRefusesWhatItCannotBelieve

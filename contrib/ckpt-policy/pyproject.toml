@@ -24,6 +24,9 @@ classifiers = [
   "Topic :: System :: Distributed Computing",
 ]
 
+[project.scripts]
+ckptctl = "ckpt_policy.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/bolubo/checkpoint-governor"
 Documentation = "https://github.com/bolubo/checkpoint-governor/blob/main/docs/index.md"

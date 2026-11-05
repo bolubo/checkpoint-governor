@@ -34,6 +34,39 @@ def glue(root, name):
         return f.read().strip()
 
 
+class TestTorchrunEnv(unittest.TestCase):
+    """A `torchrun` job already says who each process is; the client should not ask for it twice."""
+
+    def test_rank_and_world_come_from_the_launcher(self):
+        with tempfile.TemporaryDirectory() as root, \
+                patch.dict(os.environ, {"RANK": "1", "WORLD_SIZE": "2"}):
+            g = Governor(root, start_engine=True)
+            try:
+                self.assertEqual((g.rank, g.rank0, g.world.ranks), (1, False, 2))
+                self.assertFalse(g.engine_running())
+                self.assertFalse(os.path.exists(os.path.join(root, BASE_DIR, "members")))
+            finally:
+                g.close()
+
+    def test_rank_zero_keeps_the_lead(self):
+        with tempfile.TemporaryDirectory() as root, \
+                patch.dict(os.environ, {"RANK": "0", "WORLD_SIZE": "2"}):
+            g = Governor(root)
+            try:
+                self.assertEqual((g.rank, g.rank0, g.world.ranks), (0, True, 2))
+            finally:
+                g.close()
+
+    def test_an_explicit_rank_is_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as root, \
+                patch.dict(os.environ, {"RANK": "1", "WORLD_SIZE": "4"}):
+            g = Governor(root, rank=2, rank0=False)
+            try:
+                self.assertEqual((g.rank, g.world.ranks), (2, 4))
+            finally:
+                g.close()
+
+
 class TestRequested(unittest.TestCase):
     def test_reads_the_generation_the_plan_asks_for(self):
         with tempfile.TemporaryDirectory() as root:

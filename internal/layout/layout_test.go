@@ -273,6 +273,35 @@ func TestAMissingRankShardIsNotResumable(t *testing.T) {
 	}
 }
 
+// A manifest can name a rank and the file can still be gone: the manifest is a claim, the directory is
+// the fact. Deleting one shard must turn "resumable, world 2/2" into "not resumable: rank 1 shard
+// missing" (the S2 user run found this false positive).
+func TestAShardDeletedFromTheVolumeIsNotResumable(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "gen-0007")
+	write(t, dir, "manifest.json", `{"generation":7,"step":7,"sealedAt":"2026-11-02T04:55:44Z","writer":"x","shards":[`+
+		`{"name":"rank0-model.bin","size":1,"sha256":"`+strings.Repeat("a", 64)+`","member":0},`+
+		`{"name":"rank1-model.bin","size":1,"sha256":"`+strings.Repeat("b", 64)+`","member":1}]}`)
+	write(t, dir, "rank0-model.bin", "x")
+	write(t, dir, "rank1-model.bin", "x")
+	if err := os.Remove(filepath.Join(dir, "rank1-model.bin")); err != nil {
+		t.Fatal(err)
+	}
+	if err := resume.Write(dir, resume.File{
+		Schema: resume.Schema, Generation: 7, Step: 7, Format: resume.FormatDCP,
+		World: resume.World{Ranks: 2},
+		State: resume.State{Model: true, Optimizer: true, Scheduler: true, RNG: true, Dataloader: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	c := Copy{Dir: dir, Target: ".", Step: 7, Kind: KindGen, Sealed: true, Declared: true}
+	v := Judge(c, Config{}, resume.World{})
+	if v.Line() != "not resumable: rank 1 shard missing" {
+		t.Fatalf("verdict = %q, want the deleted shard named", v.Line())
+	}
+}
+
 // A single-rank copy is never asked for other ranks' shards.
 func TestASingleRankCopySkipsTheShardCheck(t *testing.T) {
 	root := t.TempDir()

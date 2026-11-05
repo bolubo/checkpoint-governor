@@ -84,10 +84,14 @@ not a refusal.
 | a required state absent | `not resumable: optimizer state absent` | 1 |
 | a required state skipped by the loader | `not resumable: declared partial (optimizer) — this is a fine-tune, not a resume` | 1 |
 | sealed, no declaration, no probe | `unknown: no declaration beside gen-0512 (and no probe_cmd to ask)` | 2 |
+| a rank named in the manifest whose shard is gone | `not resumable: rank 1 shard missing` | 1 |
 | a directory with no completion mark | `unknown: checkpoint-1000 is not sealed` | 2 |
 | a probe that failed or timed out | `unknown: probe_cmd failed: …` | 2 |
 | nothing sealed yet | `unknown: nothing sealed yet` | 2 |
 | a declaration that does not parse, or a format we cannot judge | `unknown: …` | 2 |
+
+A multi-rank copy is checked against the volume, not only the manifest: every rank the manifest marks
+must have its shard on disk. A manifest is a claim; a file that is gone is not a complete copy.
 
 Exit codes keep the meaning the rest of the product uses: **0 yes, 1 checked and no, 2 cannot decide**.
 A new code would be a compatibility change, and "we do not know" is not a failure of the copy.
