@@ -2,6 +2,24 @@
 
 Status: supported integration, 2026-11-02. The contract is tested in CI without lightning installed.
 
+## Paste this
+
+```bash
+python3 -m venv .venv      # a system Python under PEP 668 refuses pip without one
+. .venv/bin/activate
+pip install ckpt-policy
+```
+
+```python
+from ckpt_policy import Governor
+from ckpt_policy.lightning import GovernorCallback
+
+g = Governor("/ckpt/job-1", start_engine=True)
+# hand it to your Trainer: callbacks=[GovernorCallback(g, saver=ckpt)]
+```
+
+The block installs and wires the callback; the rest of this page explains what it does.
+
 ## The diff
 
 Keep `ModelCheckpoint`, but turn its own schedule off, and hand it to the callback:

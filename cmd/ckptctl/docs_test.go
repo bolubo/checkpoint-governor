@@ -14,6 +14,86 @@ import (
 // show a shell command, and it does not try to parse Markdown in general.
 var markdownLink = regexp.MustCompile(`\[[^\]]+\]\(([^)\s]+)\)`)
 
+// A page that describes an integration has to hand the user something they can paste. All three
+// pages have one section of that shape: venv first (PEP 668 is the machine this was measured on),
+// then the same entry import, then the object. The pages differ in what they hand the framework.
+func TestIntegrationPagesHaveAPasteBlock(t *testing.T) {
+	for _, name := range []string{"huggingface.md", "lightning.md", "composer.md"} {
+		t.Run(name, func(t *testing.T) {
+			page := readDoc(t, name)
+			section, ok := sectionOf(page, "## Paste this")
+			if !ok {
+				t.Fatalf("%s has no '## Paste this' section", name)
+			}
+			for _, want := range []string{"python3 -m venv .venv", ". .venv/bin/activate", "pip install ckpt-policy"} {
+				if !strings.Contains(section, want) {
+					t.Fatalf("%s: the paste block is missing %q:\n%s", name, want, section)
+				}
+			}
+			// The entry import is byte-identical on every page: moving between frameworks must not
+			// mean relearning where the object comes from.
+			code := firstPythonBlock(t, section)
+			if got := strings.SplitN(code, "\n", 2)[0]; got != "from ckpt_policy import Governor" {
+				t.Fatalf("%s: the python block starts with %q", name, got)
+			}
+		})
+	}
+}
+
+// The install page is copied by a person on a machine we do not control. On this one, pip refuses the
+// system interpreter (PEP 668), so the venv has to come first in the page a reader follows.
+func TestInstallDocsUseAVenv(t *testing.T) {
+	section, ok := sectionOf(readDoc(t, "install-python.md"), "## 1. Install")
+	if !ok {
+		t.Fatal("install-python.md has no Install section")
+	}
+	venv := strings.Index(section, "python3 -m venv .venv")
+	install := strings.Index(section, "pip install ckpt-policy")
+	if venv < 0 || install < 0 || venv > install {
+		t.Fatalf("the install steps do not start with a venv:\n%s", section)
+	}
+	if !strings.Contains(section, "PEP 668") {
+		t.Fatalf("the page does not say why the venv is needed:\n%s", section)
+	}
+}
+
+func readDoc(t *testing.T, name string) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", name))
+	if err != nil {
+		t.Fatalf("cannot read docs/%s: %v", name, err)
+	}
+	return string(raw)
+}
+
+// sectionOf returns the text under a heading, up to the next heading of the same or higher level.
+func sectionOf(page, heading string) (string, bool) {
+	i := strings.Index(page, heading)
+	if i < 0 {
+		return "", false
+	}
+	rest := page[i+len(heading):]
+	if j := strings.Index(rest, "\n## "); j >= 0 {
+		rest = rest[:j]
+	}
+	return rest, true
+}
+
+func firstPythonBlock(t *testing.T, section string) string {
+	t.Helper()
+	const fence = "```python\n"
+	i := strings.Index(section, fence)
+	if i < 0 {
+		t.Fatalf("no python block:\n%s", section)
+	}
+	rest := section[i+len(fence):]
+	j := strings.Index(rest, "\n```")
+	if j < 0 {
+		t.Fatalf("unterminated python block:\n%s", section)
+	}
+	return rest[:j+1]
+}
+
 // F10's "zero dead links": a page that tells a user where to look must not send them nowhere. This
 // walks every page under the docs tree and checks that each relative link resolves to a
 // file that exists. The decisions directory is included because a folded record is exactly where a

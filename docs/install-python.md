@@ -7,8 +7,13 @@ wheel` builds the same wheel from a checkout.
 ## 1. Install
 
 ```bash
+python3 -m venv .venv
+. .venv/bin/activate
 pip install ckpt-policy
 ```
+
+The first two lines are not optional on a machine whose system Python is managed by PEP 668: pip there
+refuses to install (`error: externally-managed-environment`), and a venv is the supported way in.
 
 No other install step: no `go install`, no PATH entry, no second download.
 

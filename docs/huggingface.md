@@ -3,6 +3,24 @@
 Status: supported integration, 2026-11-02. The contract is tested in CI without torch; a real run needs
 `pip install torch transformers`.
 
+## Paste this
+
+```bash
+python3 -m venv .venv      # a system Python under PEP 668 refuses pip without one
+. .venv/bin/activate
+pip install ckpt-policy
+```
+
+```python
+from ckpt_policy import Governor
+from ckpt_policy.hf import GovernorCallback
+
+g = Governor("/ckpt/job-1", start_engine=True)
+# hand it to your Trainer: callbacks=[GovernorCallback(g)]
+```
+
+The block installs and wires the callback; the rest of this page explains what it does.
+
 ## The diff
 
 ```python

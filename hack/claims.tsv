@@ -33,3 +33,5 @@ A non-leader cannot write a team-level file | docs/glue.md §Multi-rank ownershi
 The Trainer declares four states and no data position | docs/huggingface.md §What it declares | py:TestHuggingFaceDeclares.test_on_save_says_four_states_and_no_data_position
 Lightning declares beside its .ckpt | docs/lightning.md §What it declares | py:TestLightningDeclares.test_the_saver_path_is_declared
 Composer's leader declares beside the episode | docs/composer.md §What it declares | py:TestComposerDeclares.test_rank_zero_writes_one_declaration_beside_the_episode
+Every integration page starts from a paste block | docs/huggingface.md §Paste this | TestIntegrationPagesHaveAPasteBlock
+The install page starts with a venv, not a system pip | docs/install-python.md §1. Install | TestInstallDocsUseAVenv
