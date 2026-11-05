@@ -163,13 +163,17 @@ class Governor:
         """Record that the plan's request was written by the framework's own path.
 
         `sealed()` does this as part of writing our metadata, but a framework that writes its own
-        checkpoint format (Lightning `.ckpt`, Composer, a custom saver) never calls `sealed()`. Without
-        this, the same generation is asked for on every step. It records, it does not write.
+        checkpoint format (Lightning `.ckpt`, Composer, a custom saver) never calls `sealed()`. Dedupe
+        is by `requestId`: a framework write leaves no `gen-*` on disk, so the generation number alone
+        would silence every later window request. It records, it does not write.
         """
-        self._served.add(int(generation))
         if self._pending_request:
             self._served_requests.add(self._pending_request)
             self._pending_request = ""
+            return
+        # A plan without a requestId cannot be told apart from its own refresh; the generation is the
+        # only key left.
+        self._served.add(int(generation))
 
     def close(self, timeout: float = 5.0) -> None:
         """Stop the engine this client started. Safe to call twice; a client that never started one
@@ -245,7 +249,7 @@ class Governor:
             gen = newest_generation(self.root) + 1
         if key and key in self._served_requests:
             return 0
-        if gen in self._served:
+        if not key and gen in self._served:
             return 0
         self._pending_request = key
         return gen

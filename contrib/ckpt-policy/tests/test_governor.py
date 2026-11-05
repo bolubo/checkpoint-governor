@@ -142,7 +142,7 @@ class TestResumedAndGlue(unittest.TestCase):
             g.step(512)
             self.assertEqual(glue(root, "step"), "512")
 
-    def test_each_step_performs_exactly_one_fsync(self):
+    def test_a_step_writes_one_cell_and_the_leader_also_writes_the_team_cell(self):
         steps = 5
         with tempfile.TemporaryDirectory() as root:
             g = Governor(root)
@@ -150,7 +150,18 @@ class TestResumedAndGlue(unittest.TestCase):
             with patch("ckpt_policy.glue.os.fsync", wraps=real_fsync) as fsync:
                 for step in range(1, steps + 1):
                     g.step(step)
-            self.assertEqual(fsync.call_count, steps)
+            self.assertEqual(fsync.call_count, 2 * steps,
+                             "rank 0 owns its own cell and the team-level step")
+
+    def test_a_non_leader_writes_only_its_own_cell(self):
+        steps = 5
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root, rank=1)
+            real_fsync = os.fsync
+            with patch("ckpt_policy.glue.os.fsync", wraps=real_fsync) as fsync:
+                for step in range(1, steps + 1):
+                    g.step(step)
+            self.assertEqual(fsync.call_count, steps, "a non-leader owns only its own cell")
 
     def test_step_glue_cost_at_100k_steps(self):
         """Measure the real atomic file write, including flush, fsync and rename."""
@@ -411,15 +422,28 @@ class _FakeLightningTrainer:
 class _FakeSaver:
     """Stands in for a configured ModelCheckpoint: top-k and the latest pointer are its business."""
 
-    def __init__(self):
+    def __init__(self, private=True):
         self.calls = 0
+        self.topk_calls = 0
+        self.last_calls = 0
+        self._last_checkpoint_saved = ""
+        if private:
+            self._save_topk_checkpoint = self._topk
+            self._save_last_checkpoint = self._last
+            self._monitor_candidates = lambda trainer: {}
+
+    def _topk(self, trainer, candidates):
+        self.topk_calls += 1
+
+    def _last(self, trainer, candidates):
+        self.last_calls += 1
 
     def save_checkpoint(self, trainer):
         self.calls += 1
 
 
 class TestLightningCallback(unittest.TestCase):
-    def test_the_saver_is_used_when_it_is_given(self):
+    def test_the_savers_own_bookkeeping_is_preferred(self):
         from ckpt_policy.lightning import GovernorCallback
 
         with tempfile.TemporaryDirectory() as root:
@@ -430,9 +454,27 @@ class TestLightningCallback(unittest.TestCase):
             cb = GovernorCallback(g, saver=saver)
             trainer.global_step = 1
             cb.on_train_batch_end(trainer, None)
-            self.assertEqual(saver.calls, 1, "the saver's own path keeps top-k and the latest pointer")
+            self.assertEqual(saver.topk_calls, 1,
+                             "top-k retention and the best pointer are updated only by the saver")
+            self.assertEqual(saver.last_calls, 1, "last_model_path is updated by the saver")
+            self.assertEqual(saver.calls, 0, "the public save was not used when the routines exist")
             self.assertEqual(trainer.saved, [], "the bare save path was not used")
             self.assertFalse(g.should_save())
+
+    def test_a_version_with_only_the_public_save_is_told_what_it_lost(self):
+        from ckpt_policy.lightning import GovernorCallback
+
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            plan(root, generation=7)
+            trainer = _FakeLightningTrainer(root)
+            saver = _FakeSaver(private=False)
+            cb = GovernorCallback(g, saver=saver)
+            trainer.global_step = 1
+            cb.on_train_batch_end(trainer, None)
+            self.assertEqual(saver.calls, 1, "the write still happens")
+            self.assertTrue(any("top-k retention" in note for note in cb.notes),
+                            f"the lost guarantees are not recorded: {cb.notes}")
 
     def test_nothing_is_written_while_the_plan_is_silent(self):
         from ckpt_policy.lightning import GovernorCallback
@@ -497,6 +539,58 @@ class TestServed(unittest.TestCase):
             gens = [n for n in os.listdir(root) if n.startswith("gen-")]
             self.assertEqual(gens, [], "served() records the request; it does not write a checkpoint")
 
+    def test_a_later_window_request_is_not_silenced_by_the_generation(self):
+        """A framework write leaves no `gen-*`, so every request would carry the same generation.
+
+        Dedupe has to be by `requestId`; otherwise one write in a four-hour job silences the window
+        for the rest of it.
+        """
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            plan(root, generation=0, requestId="r-1")
+            first = g.requested()
+            self.assertTrue(first, "the first window request is served")
+            g.served(first)
+            self.assertFalse(g.should_save(), "the same plan is not served twice")
+            plan(root, generation=0, requestId="r-2")
+            self.assertTrue(g.should_save(),
+                            "a new request with the same synthetic generation is still served")
+
+
+class _ComposerState:
+    def __init__(self, root, callbacks):
+        import types
+
+        self.timestamp = types.SimpleNamespace(batch=1, epoch=0)
+        self.rank = 0
+        self.callbacks = callbacks
+        self.root = root
+        self.fsdp_sharded_state_dict_enabled = False
+
+
+class _FakeCheckpointSaver:
+    """Composer's own saver: folder, rotation and the latest symlink are its business."""
+
+    def __init__(self, root, keep=2):
+        self.root = root
+        self.keep = keep
+        self.all_saved_checkpoints_to_timestamp = {}
+        self.rotations = 0
+
+    def _save_checkpoint(self, state, logger):
+        path = os.path.join(self.root, f"ep0-ba{state.timestamp.batch}-rank{state.rank}")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("ckpt")
+        self.all_saved_checkpoints_to_timestamp[path] = state.timestamp.batch
+
+    def _rotate_checkpoints(self, sharding_enabled=False):
+        self.rotations += 1
+        saved = sorted(self.all_saved_checkpoints_to_timestamp)
+        while len(saved) > self.keep:
+            os.remove(saved.pop(0))
+        self.all_saved_checkpoints_to_timestamp = {
+            p: t for p, t in self.all_saved_checkpoints_to_timestamp.items() if os.path.exists(p)}
+
 
 class TestComposerCallback(unittest.TestCase):
     """Composer is optional: the callback imports it lazily, and the test installs a fake module."""
@@ -508,18 +602,26 @@ class TestComposerCallback(unittest.TestCase):
         composer = types.ModuleType("composer")
         utils = types.ModuleType("composer.utils")
         checkpoint = types.ModuleType("composer.utils.checkpoint")
+        callbacks = types.ModuleType("composer.callbacks")
+        saver = types.ModuleType("composer.callbacks.checkpoint_saver")
 
         def save_checkpoint(state, filename="ep{epoch}-ba{batch}-rank{rank}", **kwargs):
             self.calls.append((state, filename, kwargs))
 
         checkpoint.save_checkpoint = save_checkpoint
+        saver.CheckpointSaver = _FakeCheckpointSaver
         utils.checkpoint = checkpoint
+        callbacks.checkpoint_saver = saver
         composer.utils = utils
+        composer.callbacks = callbacks
         self._saved = {name: sys.modules.get(name) for name in
-                       ("composer", "composer.utils", "composer.utils.checkpoint")}
+                       ("composer", "composer.utils", "composer.utils.checkpoint",
+                        "composer.callbacks", "composer.callbacks.checkpoint_saver")}
         sys.modules["composer"] = composer
         sys.modules["composer.utils"] = utils
         sys.modules["composer.utils.checkpoint"] = checkpoint
+        sys.modules["composer.callbacks"] = callbacks
+        sys.modules["composer.callbacks.checkpoint_saver"] = saver
 
     def tearDown(self):
         for name, module in self._saved.items():
@@ -533,23 +635,33 @@ class TestComposerCallback(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as root:
             g = Governor(root)
+            saver = _FakeCheckpointSaver(root)
+            state = _ComposerState(root, [saver])
             cb = GovernorCallback(g)
+            cb.init(state, None)
             for _ in range(100):
-                cb.batch_end(object(), None)
-            self.assertEqual(self.calls, [])
+                cb.batch_end(state, None)
+            self.assertEqual(saver.all_saved_checkpoints_to_timestamp, {})
 
-    def test_a_request_is_honoured_at_the_next_batch_end_and_once(self):
+    def test_the_savers_own_routine_is_used_and_the_declaration_sits_beside_it(self):
         from ckpt_policy.composer import GovernorCallback
 
         with tempfile.TemporaryDirectory() as root:
             g = Governor(root)
             plan(root, generation=7)
+            saver = _FakeCheckpointSaver(root)
+            state = _ComposerState(root, [saver])
             cb = GovernorCallback(g)
-            for _ in range(100):
-                cb.batch_end(object(), None)
-            self.assertEqual(len(self.calls), 1)
-            self.assertEqual(self.calls[0][1], "ep{epoch}-ba{batch}-rank{rank}")
+            cb.init(state, None)
+            cb.batch_end(state, None)
+            self.assertEqual(len(saver.all_saved_checkpoints_to_timestamp), 1,
+                             "the saver's own routine writes the copy")
+            self.assertEqual(saver.rotations, 1, "the saver's own rotation is asked to run")
+            [path] = saver.all_saved_checkpoints_to_timestamp
+            self.assertTrue(os.path.exists(path + ".resume.json"),
+                            "the declaration sits beside the artifact the saver wrote")
             self.assertFalse(g.should_save())
+            self.assertEqual(cb.saves, 1)
 
     def test_the_end_of_training_is_recorded(self):
         from ckpt_policy.composer import GovernorCallback
@@ -560,7 +672,7 @@ class TestComposerCallback(unittest.TestCase):
             cb.fit_end(object(), None)
             self.assertEqual(glue(root, "ending"), "1")
 
-    def test_the_latest_pointer_is_passed_to_the_saver(self):
+    def test_without_a_saver_the_write_happens_and_the_loss_is_named(self):
         from ckpt_policy.composer import GovernorCallback
 
         with tempfile.TemporaryDirectory() as root:
@@ -568,35 +680,9 @@ class TestComposerCallback(unittest.TestCase):
             plan(root, generation=7)
             cb = GovernorCallback(g)
             cb.batch_end(object(), None)
-            self.assertEqual(self.calls[0][2].get("latest_filename"), "latest-rank0")
-
-    def test_retention_is_passed_when_it_is_set(self):
-        from ckpt_policy.composer import GovernorCallback
-
-        with tempfile.TemporaryDirectory() as root:
-            g = Governor(root)
-            plan(root, generation=7)
-            cb = GovernorCallback(g, num_checkpoints_to_keep=2)
-            cb.batch_end(object(), None)
-            self.assertEqual(self.calls[0][2].get("num_checkpoints_to_keep"), 2)
-
-    def test_a_version_without_these_arguments_is_told_not_assumed(self):
-        from ckpt_policy import composer as composer_module
-
-        strict_calls = []
-
-        def strict_save_checkpoint(state, filename="ep{epoch}-ba{batch}-rank{rank}"):
-            strict_calls.append(filename)
-
-        sys.modules["composer.utils.checkpoint"].save_checkpoint = strict_save_checkpoint
-        with tempfile.TemporaryDirectory() as root:
-            g = Governor(root)
-            plan(root, generation=7)
-            cb = composer_module.GovernorCallback(g)
-            cb.batch_end(object(), None)
-            self.assertEqual(len(strict_calls), 1, "the write still happened")
+            self.assertEqual(len(self.calls), 1, "the write still happened")
             self.assertEqual(len(cb.notes), 2, "and both lost guarantees were named")
-            self.assertIn("latest pointer are yours", cb.notes[0])
+            self.assertIn("retention and the latest pointer are yours", cb.notes[0])
             self.assertIn("no declaration was written", cb.notes[1])
 
 
@@ -728,8 +814,10 @@ class TestComposerDeclares(unittest.TestCase):
 
         def save_checkpoint(state, **kwargs):
             name = kwargs["filename"].format(epoch=state.epoch, batch=state.batch, rank=state.rank)
-            with open(os.path.join(run_dir, name), "w", encoding="utf-8") as f:
+            path = os.path.join(run_dir, name)
+            with open(path, "w", encoding="utf-8") as f:
                 f.write("shard")
+            return path
 
         mod.save_checkpoint = save_checkpoint
         sys.modules["composer"] = types.ModuleType("composer")
@@ -740,7 +828,8 @@ class TestComposerDeclares(unittest.TestCase):
     def _state(self, run_dir, rank):
         import types
 
-        state = types.SimpleNamespace(epoch=1, batch=7, rank=rank, run_dir=run_dir)
+        state = types.SimpleNamespace(epoch=1, batch=7, rank=rank, run_dir=run_dir,
+                                      timestamp=types.SimpleNamespace(epoch=1, batch=7))
         return state
 
     def test_rank_zero_writes_one_declaration_beside_the_episode(self):

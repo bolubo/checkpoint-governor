@@ -35,7 +35,7 @@ def run(steps=1000, save_every=500, write_ms=100, plan_timeout=3.0) -> list[Row]
 
     # Arm B: the engine, with nothing configured. It is asked at every step, and it asks for nothing
     # while nothing is at risk; the job's own final write is the one write. `overhead` is the client's
-    # own per-step glue (one small file write), measured rather than hidden.
+    # own per-step glue (one cell per rank, plus the leader's team cell), measured rather than hidden.
     root = tempfile.mkdtemp(prefix="ckpt-policy-demo-")
     g = Governor(root, world=World(ranks=1), start_engine=True, engine_every="100ms")
     try:
@@ -89,7 +89,8 @@ def main(argv=None) -> int:
         if r.note:
             print(f"  {r.note}")
     print()
-    print("overhead is the client's own glue (one small file per step), not a checkpoint write")
+    print("overhead is the client's own glue (one cell per rank per step, plus the leader's team cell), "
+          "not a checkpoint write")
     print("the plan asked for nothing during training; the only write is the end of the job")
     return 0
 

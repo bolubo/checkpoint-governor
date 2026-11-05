@@ -22,7 +22,7 @@ The block installs and wires the callback; the rest of this page explains what i
 
 ## The diff
 
-Add the callback and pass back the two arguments `CheckpointSaver` used to own:
+Keep the saver, turn its own schedule off, and let the callback drive it:
 
 ```python
 from ckpt_policy import Governor
@@ -32,21 +32,25 @@ g = Governor("/ckpt/job-1", start_engine=True)
 trainer = Trainer(
     model=model, train_dataloader=loader, max_duration="4h",
     save_folder="/ckpt/job-1",
-    callbacks=[GovernorCallback(g, num_checkpoints_to_keep=2, latest_filename="latest-rank{rank}")],
+    save_interval=lambda state, event: False,   # no schedule of its own
+    save_num_checkpoints_to_keep=2,             # retention stays the framework's
+    save_latest_filename="latest-rank{rank}.pt",
+    callbacks=[GovernorCallback(g)],
 )
 trainer.fit()
 ```
 
-`composer.utils.checkpoint.save_checkpoint` is public, and both arguments are passed to it, so the
-retention and the `latest-rank{rank}` pointer are not lost.
+`Trainer(save_folder=...)` creates Composer's own `CheckpointSaver`; the callback finds it and calls
+its own `_save_checkpoint` and `_rotate_checkpoints`. That is where the folder, the retention and the
+`latest-rank{rank}` symlink live, so none of them is lost by installing the callback.
 
 ## What stays the framework's
 
 | guarantee | kept by |
 |---|---|
-| file layout, atomic write | Composer's `save_checkpoint` |
-| retention | `num_checkpoints_to_keep` passed through |
-| newest pointer | `latest_filename` passed through |
+| file layout, atomic write | Composer's `CheckpointSaver` |
+| retention | `save_num_checkpoints_to_keep` on the saver the callback drives |
+| newest pointer | `save_latest_filename`, written by the saver |
 
 ## What it declares
 
@@ -61,7 +65,7 @@ records that in `cb.notes` instead of writing a declaration about something else
 | event | who writes | when |
 |---|---|---|
 | nothing at risk | nobody | during training: zero writes |
-| the plan asks (a condition, or your bound) | Composer's own `save_checkpoint(state, filename=…)` | at the next batch end |
+| the plan asks (a condition, or your bound) | the `CheckpointSaver` you kept | at the next batch end |
 | the platform announces a stop | the same path, when the plan fires `risk.preempt` | at the next batch end |
 | end of training | your own save | once |
 
@@ -72,9 +76,11 @@ machine without Composer — the package keeps zero runtime dependencies.
 
 1. **The file is Composer's layout, not our `gen-N`.** The declaration beside the episode is what makes
    `ckptctl resumable` able to answer for it; our own writer is not involved.
-2. **`CheckpointSaver`'s two guarantees are passed back explicitly.** If the installed Composer version's
-   `save_checkpoint` does not accept `num_checkpoints_to_keep`/`latest_filename`, the callback still
-   makes the write and records why in `cb.notes` — it never pretends the pointer was written.
+2. **The public `save_checkpoint` is not enough.** In Composer 0.32.1 it writes a file but takes neither
+   `num_checkpoints_to_keep` nor `latest_filename`; only the `CheckpointSaver` updates those. The
+   callback therefore drives the saver's own `_save_checkpoint`/`_rotate_checkpoints` when one exists,
+   and when it does not it still writes, records the lost guarantees in `cb.notes`, and never pretends
+   the pointer was written.
 
 ## What the receipt should say
 

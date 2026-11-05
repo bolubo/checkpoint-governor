@@ -72,8 +72,8 @@ framework default (save every 500 steps)         2    0.04s      0.00s
 ckpt-policy, unconfigured                        1    0.02s      0.04s
 ```
 
-The second column is the point; the third is what the client itself costs (one small file per step), and
-it is printed rather than hidden.
+The second column is the point; the third is what the client itself costs (one small file per rank per
+step — the leader also writes the team-level cell), and it is printed rather than hidden.
 
 ## What you should see
 

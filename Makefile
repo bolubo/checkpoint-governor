@@ -161,6 +161,17 @@ hf:
 	$(GO) build -trimpath -o contrib/ckpt-policy/ckpt_policy/_bin/ckptctl ./cmd/ckptctl
 	$(PYTHON) hack/hf-smoke.py
 
+# The real Lightning run: needs torch and lightning. Without them it prints `skipped: lightning not
+# installed` and exits 0, so the target is safe on a machine that has neither.
+lightning:
+	$(GO) build -trimpath -o contrib/ckpt-policy/ckpt_policy/_bin/ckptctl ./cmd/ckptctl
+	$(PYTHON) hack/lightning-smoke.py
+
+# The real Composer run: needs torch and mosaicml. Same skip rule as `lightning`.
+composer:
+	$(GO) build -trimpath -o contrib/ckpt-policy/ckpt_policy/_bin/ckptctl ./cmd/ckptctl
+	$(PYTHON) hack/composer-smoke.py
+
 # The only check that earns `restorable`: load it, take one step, and refuse a drill that changed the
 # checkpoint. A synthetic loader keeps it seconds and torch-free.
 drill:

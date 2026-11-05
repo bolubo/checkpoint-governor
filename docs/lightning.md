@@ -43,8 +43,11 @@ trainer.save_checkpoint("/ckpt/job-1/final.ckpt")   # the job's own end write
 ```
 
 The saver is not removed. When the plan asks, the callback calls the saver's own
-`save_checkpoint(trainer)`, so `save_top_k`, `last_model_path` and `best_model_path` keep doing exactly
-what they did before we were installed.
+`_save_topk_checkpoint` and `_save_last_checkpoint`, so `save_top_k`, `last_model_path` and
+`best_model_path` keep doing exactly what they did before we were installed. The public
+`save_checkpoint` writes a file but skips that bookkeeping — a real run left `best_model_path` empty —
+so the private routines are used when present, and the callback falls back to the public call (recording
+the lost guarantees in `cb.notes`) when they are not.
 
 ## What stays the framework's
 
@@ -79,8 +82,8 @@ resumable (step 40, requires model, optimizer, scheduler, rng, caveat: the data 
 | the platform announces a stop | the same path, when the plan fires `risk.preempt` | at the next batch end |
 | end of training | your `save_checkpoint` | once |
 
-The latency is **one batch**, because Lightning's `save_checkpoint` is public. That is the difference
-from the Trainer integration, whose latency is `logging_steps`.
+The latency is **one batch**, because the hook is the batch end and nothing in the framework schedules
+the save. That is the difference from the Trainer integration, whose latency is `logging_steps`.
 
 ## Two things to know
 
