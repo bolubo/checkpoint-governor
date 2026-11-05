@@ -9,6 +9,7 @@ One page per question. Start where your question is. Every local link here resol
 |---|---|
 | [install.md](install.md) | how do I get the binaries, the image, or the Python package? |
 | [install-python.md](install-python.md) | `pip install`, three lines in a loop, and what to do when it fails |
+| [first-ten-minutes.md](first-ten-minutes.md) | one real run: the commands, the lines they print, and where the files are |
 | [compatibility.md](compatibility.md) | what does a version promise to keep? |
 
 ## If you are wiring it into a training loop
@@ -19,6 +20,7 @@ One page per question. Start where your question is. Every local link here resol
 | [huggingface.md](huggingface.md) | Trainer: the saver stays, only its alarm moves; one callback, the `logging_steps` latency |
 | [lightning.md](lightning.md) | Lightning: one callback, one batch of latency |
 | [composer.md](composer.md) | Composer: the callback, and what `CheckpointSaver` used to do |
+| [multi-rank.md](multi-rank.md) | several ranks: who starts the engine, where the shards go, who seals |
 | [writer-contract.md](writer-contract.md) | what must a checkpoint writer do so that a restore works? |
 
 ## If you want to know what it decides, and why
@@ -52,14 +54,21 @@ One page per question. Start where your question is. Every local link here resol
 | [contrast.md](contrast.md) | what does the four-policy comparison actually say, and how do I reproduce it? |
 | [gate.md](gate.md) | how do I give a higher-priority arrival lead time on a cluster? |
 
-## If you are following the work
-
-The current number is **`v0.25.0`** (decision 0029). `v0.24.0`, `v0.23.0`, `v0.22.0`, `v0.21.0`,
-`v0.15.0` and `v0.2.0` are earlier numbers; their pages are history, not install instructions.
+## If something went wrong
 
 | page | question |
 |---|---|
-| [release-0.25.md](release-0.25.md) | **the current release**: installed, run for real, said exactly |
+| [troubleshooting.md](troubleshooting.md) | what does this message mean, and what do I do? |
+
+## If you are following the work
+
+The current number is **`v0.26.0`** (decision 0029). `v0.25.0`, `v0.24.0`, `v0.23.0`, `v0.22.0`,
+`v0.21.0`, `v0.15.0` and `v0.2.0` are earlier numbers; their pages are history, not install instructions.
+
+| page | question |
+|---|---|
+| [release-0.26.md](release-0.26.md) | **the current release**: the command, the check, and the glue |
+| [release-0.25.md](release-0.25.md) | history: installed, run for real, said exactly |
 | [release-0.24.md](release-0.24.md) | history: the copy can be judged, whoever wrote it |
 | [release-0.23.md](release-0.23.md) | history: the hold covers the nodes the arrival needs |
 | [release-0.22.md](release-0.22.md) | history: the arrival waits for the write |

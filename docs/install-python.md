@@ -1,6 +1,6 @@
 # Install for Python
 
-Status: published as `ckpt-policy 0.25.0`, `manylinux_2_17_x86_64` — the same number as the release tag
+Status: published as `ckpt-policy 0.26.0`, `manylinux_2_17_x86_64` — the same number as the release tag
 (decision 0029), uploaded by `.github/workflows/publish-pypi.yml` through trusted publishing. `make
 wheel` builds the same wheel from a checkout.
 
@@ -15,18 +15,17 @@ pip install ckpt-policy
 The first two lines are not optional on a machine whose system Python is managed by PEP 668: pip there
 refuses to install (`error: externally-managed-environment`), and a venv is the supported way in.
 
-The wheel carries the client and the engine. A wheel built from this repository also installs the
-`ckptctl` command into the venv, so `ckptctl status <dir>` and `ckptctl resumable --dir` work while the
-venv is active. `ckpt-policy 0.25.0` on PyPI predates that command, so until the next release
-`install.sh` is still the way to get `ckptctl` on PATH.
+The wheel carries the client and the engine, and installs the `ckptctl` command into the venv, so
+`ckptctl status <dir>` and `ckptctl resumable --dir` work while the venv is active. No other install
+step: no `go install`, no manual PATH entry, no second download.
 
 From a checkout, the same wheel:
 
 ```bash
 make wheel
-# engine: linux/amd64 (v0.25.0)
-# ckptctl v0.25.0
-# wheel: ckpt_policy-0.25.0-py3-none-manylinux_2_17_x86_64.whl, engine inside
+# engine: linux/amd64 (v0.26.0)
+# ckptctl v0.26.0
+# wheel: ckpt_policy-0.26.0-py3-none-manylinux_2_17_x86_64.whl, engine inside
 python3 -m pip install dist/wheels/ckpt_policy-*.whl
 ```
 

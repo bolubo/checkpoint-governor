@@ -25,8 +25,15 @@ def base36(n: int) -> str:
     return "".join(reversed(out))
 
 
-def write_atomic(path: str, data: bytes) -> None:
-    """Write through a temporary name in the same directory, then rename."""
+def write_atomic(path: str, data: bytes, *, durable: bool = True) -> None:
+    """Write through a temporary name in the same directory, then rename.
+
+    `durable=False` keeps the rename (a reader never sees half a value) but skips the fsync. That is
+    the right trade for the per-step progress cells: they say "this rank is alive", a crash loses at
+    most the current value and the next step writes it again, and a fsync per step is a tax on every
+    training step (10ms on a local disk, multiplied by the ranks). Manifests, declarations and the
+    plan keep the default.
+    """
     directory = os.path.dirname(path)
     os.makedirs(directory, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=directory, prefix=".write-")
@@ -34,15 +41,16 @@ def write_atomic(path: str, data: bytes) -> None:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
             f.flush()
-            os.fsync(f.fileno())
+            if durable:
+                os.fsync(f.fileno())
         os.replace(tmp, path)
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
 
 
-def write_text(root: str, name: str, text: str) -> None:
-    write_atomic(os.path.join(root, BASE_DIR, name), text.encode("utf-8"))
+def write_text(root: str, name: str, text: str, *, durable: bool = True) -> None:
+    write_atomic(os.path.join(root, BASE_DIR, name), text.encode("utf-8"), durable=durable)
 
 
 def read_text(root: str, name: str) -> str | None:

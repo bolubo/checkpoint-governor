@@ -128,7 +128,7 @@ def main():
     policy_dir, policy, final, trainer = arm_policy(steps)
 
     print(f"framework default (save every 500 steps)   {len(cadence)} checkpoint(s)   {cadence_dir}")
-    print(f"ckpt-policy, unconfigured                  {len(policy)} checkpoint(s)   {policy_dir}")
+    print(f"ckpt-policy, 2s window                     {len(policy)} checkpoint(s)   {policy_dir}")
     print(f"end write                                   {os.path.isdir(final)}             {final}")
     print()
 

@@ -5,7 +5,7 @@
 [![pypi](https://img.shields.io/pypi/v/ckpt-policy)](https://pypi.org/project/ckpt-policy/)
 [![license](https://img.shields.io/github/license/bolubo/checkpoint-governor)](LICENSE)
 
-Current release: [`v0.25.0`](docs/release-0.25.md) · [changelog](CHANGELOG.md). The Python package
+Current release: [`v0.26.0`](docs/release-0.26.md) · [changelog](CHANGELOG.md). The Python package
 carries the same number.
 
 A safety net for training jobs. It watches the conditions that come before a lost job, asks the job to
@@ -71,6 +71,7 @@ docker run --rm -v /ckpt:/ckpt ckpt-governor:local run --dir /ckpt
 
 In Python, `pip install ckpt-policy` puts the client and the engine in one place (manylinux x86_64;
 `make wheel` builds the same wheel). Three lines, and what to do when it fails: `docs/install-python.md`.
+The first ten minutes, with the commands and the lines they print: `docs/first-ten-minutes.md`.
 
 ## In a training loop
 
@@ -86,7 +87,8 @@ for step, batch in loader:
 
 One callback each for Hugging Face Trainer, Lightning and Composer: `docs/huggingface.md`,
 `docs/lightning.md`, `docs/composer.md`. Each writes a declaration beside every save, so
-`ckptctl resumable` can answer for the framework's own checkpoint.
+`ckptctl resumable` can answer for the framework's own checkpoint. Several ranks: `docs/multi-rank.md`,
+and a runnable example in `contrib/ckpt-policy/examples/two_ranks.py`.
 
 If your framework decides to exit on its own instead of waiting for `may-exit`, run the job under the
 wrapper. It takes the signal, writes `stopping`, waits for a sealed copy (or the deadline), and only
@@ -144,7 +146,8 @@ announcement-only path.
 ## Documentation
 
 Start with `docs/install-python.md` (or `docs/install.md` for the binaries), the integration page for
-your framework, and `docs/operator-notes.md` for the platform. Every page is in `docs/index.md`
+your framework, and `docs/operator-notes.md` for the platform. A message that needs explaining:
+`docs/troubleshooting.md`. Every page is in `docs/index.md`
 (rendered at <https://bolubo.github.io/checkpoint-governor/>); decisions in `docs/decisions/`; a tag
 releases as `RELEASE.md` says.
 

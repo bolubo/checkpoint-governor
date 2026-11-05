@@ -1,6 +1,6 @@
 # ckpt-policy
 
-Version `0.25.0` — the same number as the release tag (decision 0029).
+Version `0.26.0` — the same number as the release tag (decision 0029).
 
 The training loop's half of the contract: one install, three lines, no runtime dependencies, and the
 shards stay with whatever library you already use.
@@ -17,9 +17,9 @@ python3 -m pip install dist/wheels/ckpt_policy-*.whl
 ```
 
 ```python
-from ckpt_policy import Governor, World, Saves
+from ckpt_policy import Governor
 
-g = Governor("/ckpt/job-1", world=World(ranks=8), saves=Saves(), start_engine=True)
+g = Governor("/ckpt/job-1", start_engine=True)   # torchrun's RANK/WORLD_SIZE are read
 
 # ... load the latest checkpoint, then say what you adopted (one call)
 g.resumed(gen=7, step=512, seconds=load_seconds)
@@ -28,10 +28,11 @@ for step, batch in loader:
     g.step(step)
     if g.should_save():               # the plan asked; the whole write side, one line
         gen = g.generation()          # write into gen-<gen>/, with your library
-        g.sealed(gen, step, ["rank-00.bin", "..."])
+        g.sealed(gen, step, [f"rank{r}.pt" for r in range(g.world.ranks)])
 ```
 
-`start_engine=True` starts the engine for that directory; `close()` (or `with Governor(...)`) stops it.
+`start_engine=True` starts the engine for that directory on rank 0; `close()` (or `with Governor(...)`)
+stops it. Several ranks: `docs/multi-rank.md`, and the runnable `examples/two_ranks.py`.
 If the engine dies, the plan ages out and `should_save()` answers false — the caller's fallback is the
 end-of-training write and the announced stop. The decision stays in Go; this package does not
 re-implement it.

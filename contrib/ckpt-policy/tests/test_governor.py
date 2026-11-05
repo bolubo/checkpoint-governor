@@ -183,8 +183,10 @@ class TestResumedAndGlue(unittest.TestCase):
             with patch("ckpt_policy.glue.os.fsync", wraps=real_fsync) as fsync:
                 for step in range(1, steps + 1):
                     g.step(step)
-            self.assertEqual(fsync.call_count, 2 * steps,
-                             "rank 0 owns its own cell and the team-level step")
+            self.assertEqual(fsync.call_count, 0,
+                             "progress cells rename without a fsync; they are liveness, not data")
+            self.assertEqual(glue(root, "step"), str(steps))
+            self.assertEqual(glue(root, os.path.join("ranks", "0", "step")), str(steps))
 
     def test_a_non_leader_writes_only_its_own_cell(self):
         steps = 5
@@ -194,10 +196,20 @@ class TestResumedAndGlue(unittest.TestCase):
             with patch("ckpt_policy.glue.os.fsync", wraps=real_fsync) as fsync:
                 for step in range(1, steps + 1):
                     g.step(step)
-            self.assertEqual(fsync.call_count, steps, "a non-leader owns only its own cell")
+            self.assertEqual(fsync.call_count, 0, "a progress cell is never fsynced")
+            self.assertEqual(glue(root, os.path.join("ranks", "1", "step")), str(steps))
+
+    def test_the_end_marker_is_still_durable(self):
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            real_fsync = os.fsync
+            with patch("ckpt_policy.glue.os.fsync", wraps=real_fsync) as fsync:
+                g.ending()
+            self.assertEqual(fsync.call_count, 1, "metadata keeps the fsync; only step cells skip it")
+            self.assertEqual(glue(root, "ending"), "1")
 
     def test_step_glue_cost_at_100k_steps(self):
-        """Measure the real atomic file write, including flush, fsync and rename."""
+        """Measure the real atomic file write: flush, rename, no fsync for progress cells."""
         steps = 100_000
         # Use tmpfs where available to measure the client/syscall glue without making the result
         # depend on the host's backing disk. Fall back to the platform's normal temp directory.

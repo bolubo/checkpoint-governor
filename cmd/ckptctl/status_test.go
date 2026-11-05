@@ -83,6 +83,44 @@ func TestStatusClosesAWriteTheDirectorySealed(t *testing.T) {
 	}
 }
 
+// A framework checkpoint is sealed too, and it is not a `gen-*` directory. Status must not say
+// `newest sealed none` directly above `resume: resumable (step 1000)` (the S1 user run).
+func TestStatusShowsAFrameworkCopy(t *testing.T) {
+	dir := t.TempDir()
+	l, err := advise.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.Status = advise.Status{UnitID: "job-1", Phase: advise.PhaseIdle}
+	if err := l.Save(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	cp := filepath.Join(dir, "checkpoint-1000")
+	if err := os.MkdirAll(cp, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cp, "trainer_state.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := resume.Write(cp, resume.File{
+		Schema: resume.Schema, Generation: 1000, Step: 1000, Format: resume.FormatHFTrainer,
+		World: resume.World{Ranks: 1},
+		State: resume.State{Model: true, Optimizer: true, Scheduler: true, RNG: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	if code := runStatus([]string{dir}, &out); code != 0 {
+		t.Fatalf("status exited %d", code)
+	}
+	got := out.String()
+	if !strings.Contains(got, "newest sealed   step 1000") {
+		t.Fatalf("the framework copy is not shown as sealed:\n%s", got)
+	}
+}
+
 // A declaration may carry an extension, and a reader that ignores it must say that it did — otherwise
 // the operator cannot tell "nothing there" from "this build did not look". The values stay in the file:
 // a status line is not a place to echo untrusted content.

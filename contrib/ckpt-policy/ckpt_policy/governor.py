@@ -227,14 +227,18 @@ class Governor:
         leader that only wrote the team-level file would look like the only member. The team-level
         `step` stays for the single-writer path and every existing reader.
         """
-        write_text(self.root, os.path.join(RANKS_DIR, str(self.rank), "step"), str(int(n)))
+        # These cells are liveness, not data: the rename keeps a reader from seeing half a number, and
+        # the fsync is skipped. A crash loses the current value and the next step writes it again; the
+        # plan, declarations and manifests still fsync (see glue.write_atomic).
+        write_text(self.root, os.path.join(RANKS_DIR, str(self.rank), "step"), str(int(n)),
+                   durable=False)
         if self.rank0:
-            write_text(self.root, "step", str(int(n)))
+            write_text(self.root, "step", str(int(n)), durable=False)
         now = time.monotonic()
         if self._stopping_at is not None:
             left = max(0, int(self._grace_seconds - (now - self._stopping_at)))
             if self.rank0:
-                write_text(self.root, "seconds-left", str(left))
+                write_text(self.root, "seconds-left", str(left), durable=False)
         self._last_step = now
 
     def requested(self) -> int:

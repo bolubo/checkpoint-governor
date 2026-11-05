@@ -3,6 +3,44 @@
 One entry per released tag. The prototype's history before this file is `git log`; this file starts at
 the first release that makes a compatibility promise.
 
+## v0.26.0 — 2026-11-05
+
+The release where a `pip install` is the whole install, a multi-rank answer checks the disk, and the
+per-step tax is gone.
+
+**The command comes with the wheel.** `pip install ckpt-policy` installs `ckptctl` into the venv, so
+`ckptctl status <dir>` and `ckptctl resumable --dir` work without `install.sh`. `ckpt_policy.__version__`
+is read from the installed distribution instead of a hard-coded string. 0.25.0 predated the command;
+0.26.0 is the first release that carries it.
+
+**A deleted shard is not `world 2/2`.** `resumable` stats every rank shard the manifest marks. A
+two-rank copy with `rank1.pt` removed answers `not resumable: rank 1 shard missing`; restoring the file
+answers `resumable (gen 1, step 300, world 2/2, full state)`.
+
+**Status reads the directory, not just the last ledger round.** A framework checkpoint is shown as
+`newest sealed step 1000`, not `none`; a job that ended after the last round no longer prints
+`phase writing` forever. `status` still takes the directory as an argument.
+
+**`torchrun` supplies the topology.** `Governor` reads `RANK` and `WORLD_SIZE`, and only rank 0 starts
+the engine. The multi-rank glue loses four lines, and a non-leader cannot start a second controller on
+the same plan.
+
+**The progress cell stops paying for fsync.** `step()` keeps the atomic rename but skips the fsync:
+the cell is liveness, not data. On the S1 job (1000 steps, local ext4) the governed run fell from
+**16.8s to 6.1s**, against a 5.9s control; the two-rank 300-step run fell from **15.2s / 13.8s to
+5.0s / 4.9s**. Manifests, declarations and the plan still fsync.
+
+**Ready-made glue.** `contrib/ckpt-policy/examples/hf_trainer.py` and `two_ranks.py` are complete,
+runnable versions of the single-card and multi-rank paths; `docs/multi-rank.md` explains who starts the
+engine, where shards go, and who seals. `docs/first-ten-minutes.md` and `docs/troubleshooting.md` start
+from the commands and the messages a user actually sees.
+
+**Tests.** Thirty-seven outbound promises name the test that would fail if they stopped being true
+(`make test-claims` prints `claims: 37 · tests found: 37 · missing: 0`); `make py` runs 54 tests.
+
+**Not in this release.** DDP/FSDP model sync on a real multi-GPU host, a real multi-pod Kueue victim
+(the S3 harness uses `ckpttrainer` on one pod), Lightning/Composer examples, and macOS/Windows wheels.
+
 ## v0.25.0 — 2026-11-05
 
 The release where the install is copyable, the framework runs are real, and the declaration says what

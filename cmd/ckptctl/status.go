@@ -6,12 +6,28 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/bolubo/checkpoint-governor/internal/advise"
+	"github.com/bolubo/checkpoint-governor/internal/layout"
 	"github.com/bolubo/checkpoint-governor/internal/resume"
 )
+
+// copySealedAt is when a copy's completion mark was last written: the manifest for our generations,
+// the declaration for a framework checkpoint, else the directory itself.
+func copySealedAt(dir string) int64 {
+	for _, name := range []string{"manifest.json", "resume.json"} {
+		if fi, err := os.Stat(filepath.Join(dir, name)); err == nil {
+			return fi.ModTime().Unix()
+		}
+	}
+	if fi, err := os.Stat(dir); err == nil {
+		return fi.ModTime().Unix()
+	}
+	return 0
+}
 
 // runStatus prints what the controller knows about one directory.
 //
@@ -60,6 +76,16 @@ func runStatus(args []string, out io.Writer) int {
 				s.Phase = advise.PhaseSealed
 			}
 			s.WriteStartedAt = 0
+		}
+	}
+	// A framework checkpoint is a sealed copy too, and it is not `gen-*`. Without this line an HF
+	// user saw `newest sealed none` directly above `resume: resumable (step 1000)` (the S1 run).
+	if cfg, _, err := layout.LoadConfig(dir); err == nil {
+		if res, err := layout.Scan(dir, cfg); err == nil && res.Found && res.Newest.Sealed {
+			if res.Newest.Step > l.Status.SealStep {
+				l.Status.SealStep = res.Newest.Step
+				l.Status.SealAt = copySealedAt(res.Newest.Dir)
+			}
 		}
 	}
 	if *asJSON {
