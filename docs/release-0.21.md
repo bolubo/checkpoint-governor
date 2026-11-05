@@ -55,9 +55,8 @@ The repository carried `v0.15.0` (04:13) and `v0.2.0` (05:56, which took over "L
 release: two numbering schemes crossed in one day. **`v0.21.0` is the newest by date and supersedes
 both, and it is the line from here on** (decision 0029).
 
-The two earlier numbers stay published and are never renumbered. Their pages — `docs/product-v0.15.md`
-and `docs/product-v0.2.md` — are history rather than install instructions, and `docs/index.md` says so
-in the place a reader looks first.
+The two earlier numbers stay published and are never renumbered. Their entries are in `CHANGELOG.md`,
+which is history rather than install instructions; `docs/index.md` says so where a reader looks first.
 
 The Python package carries the same number without the `v`: `ckpt-policy 0.21.0` is the wheel of this
 release. The first upload came from `main` through `workflow_dispatch`, because this tag predates the

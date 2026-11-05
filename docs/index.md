@@ -63,7 +63,8 @@ One page per question. Start where your question is. Every local link here resol
 ## If you are following the work
 
 The current number is **`v0.26.0`** (decision 0029). `v0.25.0`, `v0.24.0`, `v0.23.0`, `v0.22.0`,
-`v0.21.0`, `v0.15.0` and `v0.2.0` are earlier numbers; their pages are history, not install instructions.
+`v0.21.0`, `v0.15.0` and `v0.2.0` are earlier numbers; the release pages are history, and the two
+oldest are entries in `CHANGELOG.md`, not install instructions.
 
 | page | question |
 |---|---|
@@ -73,10 +74,8 @@ The current number is **`v0.26.0`** (decision 0029). `v0.25.0`, `v0.24.0`, `v0.2
 | [release-0.23.md](release-0.23.md) | history: the hold covers the nodes the arrival needs |
 | [release-0.22.md](release-0.22.md) | history: the arrival waits for the write |
 | [release-0.21.md](release-0.21.md) | history: where the loop closed, under a real eviction |
-| [plan-library.md](plan-library.md) | the roadmap: what is done, what is next, and the command that proves each line |
+| [plan-library.md](plan-library.md) | the roadmap: what is shipped, what is next, and what would make it done |
 | [product-v1.md](product-v1.md) | design: the surface a user meets |
-| [product-v0.15.md](product-v0.15.md) | history: the release that could be installed, and proved |
-| [product-v0.2.md](product-v0.2.md) | history: the release that says whether the work can continue |
 | [plan-platform.md](plan-platform.md) | superseded by the library direction; kept as history |
 
 ## Outside this folder

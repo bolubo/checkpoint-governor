@@ -224,7 +224,7 @@ budget; it reports rather than deletes.
 ## v0.15.0 — 2026-11-02
 
 The release a stranger can install, and whose promises are tested. The decision core does not change;
-what is new is the surface around it. Scope and acceptance lines: `docs/product-v0.15.md`.
+what is new is the surface around it. Scope and acceptance lines are in this entry.
 
 **Install.** `curl -fsSL …/install.sh | sh` downloads the tarball for your architecture, checks it
 against `SHA256SUMS`, and only then puts `ckptctl` on your PATH. `make install-smoke` proves that path

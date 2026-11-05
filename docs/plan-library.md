@@ -1,334 +1,52 @@
-# Execution plan — the library direction
+# Roadmap
 
-Companion to `docs/decisions/0028-the-direction-is-a-library.md`. Every line is a task with a **done
-when** — a command and the string it must print. Placeholders are placeholders until a step prints real
-numbers; a placeholder that survives into a release note is a lie.
+Status: 2026-11-05, current release `v0.26.0`. The direction is decision
+[0028](decisions/0028-the-direction-is-a-library.md): a policy library in the training loop, one Go
+engine, grown through integrations. The default is zero periodic writes.
 
-**Language:** Go stays the engine. Python is the front door and the client; it ships the engine, it does
-not re-implement it. Decision 0028, "two delivery shapes, one core".
+This page is the order of work, not a list of every test. Each item names what would make it done.
 
-## Preconditions (decided before P1.4)
+## Shipped
 
-- [x] **PyPI**: the package name, and whether publishing uses trusted publishing. Without a name, the
-      wheel is built and tested locally; `pip install` from a URL stays documented but unverified.
-  **observed** the name `ckpt-policy` is free (`https://pypi.org/pypi/ckpt-policy/json` answers 404),
-      and publishing is **trusted publishing** from `.github/workflows/publish-pypi.yml`: PyPI verifies
-      the workflow through `id-token`, so no token sits on a machine. The first upload is the
-      pending-publisher form on PyPI and one `gh workflow run`; `RELEASE.md` carries both.
-- [ ] **Wheels**: which platforms ship first. Linux x86_64 is the one CI can build and test; macOS and
-      Windows are optional until a user asks.
+- **The contrast and the model.** `make contrast` prints the four policies; `make waste` prices the
+  framework defaults at four scales. Both are in the README as evidence.
+- **The Python front door.** The wheel carries the Go engine, `pip install` installs `ckptctl`, and
+  three lines wire a loop. `python -m ckpt_policy.demo` shows the two arms.
+- **Three framework integrations.** Hugging Face Trainer, Lightning and Composer; the framework's
+  own saver stays, the callback asks the policy. Real runs found and fixed the callback and save-path
+  defects (CHANGELOG v0.25).
+- **The multi-rank path.** `RANK`/`WORLD_SIZE` are read from the launcher; rank 0 owns the engine;
+  shards and the seal are explained in [multi-rank.md](multi-rank.md), with a runnable
+  `examples/two_ranks.py`.
+- **The gate.** `contrib/gate` holds a higher-priority arrival until the victim seals; measured at
+  4.8s, lost 0 steps (decision 0031, [gate.md](gate.md)).
+- **The user path.** [first-ten-minutes.md](first-ten-minutes.md), [troubleshooting.md](troubleshooting.md),
+  and the two examples above.
 
-## P0 — the contrast (the growth engine)
+## Next, in order
 
-The value is silence, so the first artifact is the counterfactual: one command, one table, no GPU, no
-cluster, under two minutes from a clone.
+1. **A real DDP/FSDP run.** Two ranks with gradient sync, the Governor on each, one engine, `resumable`
+   for the job. Done when `torchrun --nproc_per_node=2` completes and `ckptctl resumable` answers on a
+   host where its rendezvous works. Not measured here: this WSL's loopback transport is unavailable.
+2. **A real multi-pod Kueue victim.** A `Job`/`PyTorchJob` with more than one pod, the gate holding the
+   arrival until every victim seals. Done when the harness prints `lost 0` for a multi-pod job, not the
+   single `ckpttrainer` pod the S3 run uses.
+3. **Shared-volume semantics.** Measure `rename`/`fsync` on NFS/Lustre, or state that the local-disk
+   promise does not carry there. Done when [operator-notes.md](operator-notes.md) says which of the two
+   it is, with a measurement or a clear refusal.
+4. **Lightning and Composer examples.** The copyable loops are open issues #202 and #203. Done when
+   `python3 examples/lightning_loop.py` and `composer_loop.py` print their one line.
+5. **The remaining CLI conveniences.** `explain --json` (#105), `run --json` (#106), `world --evicted`
+   (#107), and the executable README blocks (#108). Each is additive; none changes the promise.
 
-- [x] **0.1 The three arms, on a virtual clock.** The policy lives in `internal/contrast`; the command
-      in `experiments/contrast/main.go` drives the real `internal/loop` with an injected `Now`, so the
-      run is deterministic and fast. Arm A simulates the framework default (`save every N steps`); arm
-      B saves nothing; arm C is the real policy with nothing configured; arm C2 is the real policy with
-      a bound. The writer costs `write-ms` of virtual time per save.
-  **done when** `make contrast` prints four rows — `writes`, `io seconds`, and the worst case when no
-      condition can fire — and a test asserts four rows, the exact write counts, and that every row
-      names its worst case.
-  **observed** on a four-hour job (14,400 steps of 1s, a write costing 40s):
-  ```
-  policy                          writes      io   worst case, no signal
-  500 steps (framework default)       28    1120s   ≤500 steps
-  nothing installed                    0       0s   everything
-  governor, unconfigured               1      40s   everything
-  2h bound                             2      80s   ≤2h
-  ```
-  **corrected** the first version printed an "announced stop" column with `0` for the unconfigured
-      arm, which contradicted `docs/conditions.md`: an announced stop is `risk.shutdown`, an urgent
-      condition, so the governor asks for a write. The model has no conditions and therefore no
-      announcement; the column is now "no signal", and the announced path is measured in the
-      real-machine work, not claimed here.
-- [x] **0.2 The table is the README's first screen.** The contrast directly below the one-line claim, the
-      install line next, Docker and Kubernetes below. Until the wheel exists (P1.1), the install line is
-      the one that actually runs today — `install.sh` — and the page says so instead of promising
-      `pip install`.
-  **done when** `make docs` passes and the README opens with the claim, the contrast, and the install
-      line.
-  **observed** the order is the one-line claim, `The default is the problem` (the four-row table),
-      `Install`, `In a training loop`, then `On a cluster`; the `docker build` line is the second shape
-      inside `Install`. The table leads because the value is silence, which is P0's own premise, and
-      the title already says what the product is.
-- [x] **0.3 A one-liner for people without Go or Python.** The same command inside a container.
-  **done when** `docker run …` prints the same four rows.
-  **observed** `make contrast-image` on docker 29.1.3 prints the same four rows — 28/0/1/2 writes,
-      1120s/0s/40s/80s io, the same coverage — in 2.6s. Two things were needed. The image now carries
-      `/tmp` (`WORKDIR /tmp`), because the contrast makes its scratch directory there and a scratch
-      image has none. And the scratch runs on `--tmpfs /tmp`: on overlay2 one round costs about 12 ms
-      of fsync (`internal/advise/publish.go`), which turns a two-second table into minutes (1000 steps:
-      0.6s on tmpfs, 12.3s on overlay2). At the controller's own cadence that 12 ms is 0.2% of a 5s
-      round, which is why it is a note here and not a change to the loop.
-- [x] **0.4 What the framework defaults cost, per scale.** `internal/waste` + `experiments/waste`:
-      the waste fraction is `T_write / (interval × t_step)`, and the interval is **the framework's
-      actual default, not a round number**: Hugging Face `save_steps=500` with `save_total_limit=None`
-      (keeps every copy, `training_args.py`); Lightning one epoch (`every_n_train_steps=None` and
-      `every_n_epochs=None` means "at the end of every epoch") with `save_top_k=1`; Composer
-      `save_interval='1ep'` with `num_checkpoints_to_keep=-1` (`checkpoint_saver.py`). Megatron has no
-      default (`--save` requires an explicit `--save-interval`) and is printed as "no default".
-      Report time and storage separately, and refuse to print a table without its assumptions line
-      (bytes per parameter, throughput, step time, `steps-per-epoch`).
-  **done when** `make waste` prints one row per scale, each naming the framework default it used and
-      the source of that number, plus a test that the waste fraction equals `T_write/(interval·t)`
-      and that a write longer than the interval is refused as infeasible.
-  **observed** on the four scales (4h job, 16 B/param, 2 GB/s): Hugging Face 0.3% · 1.6% · 5.6% · **28%**,
-      with 91 GB · 448 GB · 1.6 TB · **7.8 TB** kept; Lightning 0.2% · 0.8% · 2.8% · 14% and one copy;
-      Composer 0.2% · 0.8% · 2.8% · 14% and every copy; Megatron "no default". The page is
-      `docs/waste.md`, and its "what this does not claim" section is part of the artifact.
-
-## P1 — the Python front door (engine bundled, not rewritten)
-
-- [x] **1.1 A wheel that contains the engine.** `hack/build-wheel.sh` compiles `ckptctl` into
-      `ckpt_policy/_bin/`, then builds the wheel; the binary is package data, not a download.
-  **done when** the script prints `wheel: …, engine inside` and the wheel lists the binary.
-  **observed** `wheel: ckpt_policy-0.2.0-py3-none-linux_x86_64.whl, engine inside`; the tag names
-      the platform, because a `py3-none-any` wheel would install on a machine whose engine cannot run.
-- [x] **1.2 The client starts the engine and reads the plan.** `Governor(start_engine=True)` launches
-      `ckptctl run` for the directory, then `should_save()` reads `.ckpt-governor/state.json`.
-  **done when** a clean virtualenv sees the plan appear and `should_save()` answers exactly when the
-      plan says so.
-  **observed** in a fresh venv with the wheel installed: `plan: True · engine running: True ·
-      should_save: False · closed: True`; `make py` runs 17 tests, four of them new.
-- [x] **1.3 Degradation when the engine dies.** The client does not print: a library that starts writing
-      to stdout because a subprocess exited is a library nobody keeps. The plan simply ages out,
-      `should_save()` answers false, and the reason is in `.ckpt-governor/engine.log`.
-  **done when** a test kills the engine mid-run and the client neither raises nor claims a save.
-- [x] **1.4 The demo without Go.** `python -m ckpt_policy.demo`: a synthetic loop, no torch, no Go on
-      PATH, using the bundled engine. It is a two-arm smoke test, not the four-row model: the framework
-      cadence against the policy, with the client's own per-step glue measured separately.
-  **done when** the demo runs in a clean virtualenv and reports both arms.
-  **observed** one run of the 100k-step benchmark measured **43.2µs per `step()` call**
-      (4.32s total) on a tmpfs-backed host, including the atomic temporary file, flush, `fsync`, and
-      rename. A second run on a different host measured 15.9µs per step. These are host-specific
-      observations, not product-wide performance figures: tmpfs makes `fsync` unusually cheap, while
-      shared filesystems can make it millisecond-scale. The benchmark prints the result for the
-      environment where it runs; it is not a latency guarantee. Against a 1s training step, the first
-      measurement is **0.0043%** of step time. **Decision: keep as is.** The per-step file is the live
-      progress signal; throttling would make it stale without improving checkpoint decisions.
-      `should_save()` reads the plan directly and is not throttled or delayed.
-- [x] **1.5 The install page.** `docs/install-python.md`: install, three lines, what should appear, what
-      to do when it does not.
-  **done when** `make docs` passes and the page is linked from the README.
-
-## P2 — the audience: Hugging Face Trainer
-
-The integration keeps the Trainer's own saver and turns its alarm off: `save_strategy="steps"` with a
-`save_steps` the run never reaches, plus a callback that sets `control.should_save` when `should_save()`
-says so. Two lines, not a patch to `Trainer`; the latency is `logging_steps`, and the announced stop is
-HF's own `enable_jit_checkpoint`.
-
-- [x] **2.1 The callback, against a fake trainer.** CI has no torch, so the contract test drives a minimal
-      object that models the Trainer's two relevant behaviours: its cadence, and `should_save` consumed
-      at the logging boundary.
-  **done when** a test asserts the default cadence writes twice over 1000 steps, the callback writes
-      nothing while the plan is silent, and a request is honoured at the next logging step and only once.
-  **observed** `make py` runs 23 tests; the four HF cases pass (`[500, 1000]` for the default, `[]` for
-      silence, `[10]` for a request), and `on_train_end` records `ending`.
-- [x] **2.2 The real run (torch only).** `make hf` runs a 1000-step CPU loop with `save_steps=500` and then
-      with the callback. `PYTHON` selects the interpreter when torch lives in a virtualenv.
-  **done when** it prints the checkpoint count for both arms and `trainer.state` is unchanged.
-  **observed** with torch 2.13.0+cu130 / transformers 5.6.0:
-  ```
-  framework default (save every 500 steps)   2 checkpoint(s)
-  ckpt-policy, unconfigured                  0 checkpoint(s) while training
-  end write                                   True (final/)
-  ```
-  Transformers 5 calls **every** event on every callback, so the class subclasses `TrainerCallback`
-      when transformers is installed and stays a plain class when it is not (the import stays optional).
-- [x] **2.3 The supported-integration page.** The exact diff, the receipt to expect, and the exclusions.
-  **done when** `make docs` passes and the page is linked from the README.
-  **observed** `docs/huggingface.md` carries the diff, the four events table, and the two caveats
-      (`logging_steps` latency; no public full-checkpoint API).
-
-## P3 — the second and third integrations
-
-Same shape, same contract test; the real runs need torch, so they stay manual targets.
-
-- [x] **3.1 Lightning.** A callback that replaces `ModelCheckpoint`'s interval while the rest of
-      Lightning stays untouched.
-  **done when** a request is honoured at the next batch end, once, and the end is recorded.
-  **observed** `make py` covers the four Lightning cases (silent `[]`, one request →
-      `ckpt-step-1.ckpt`, a custom filename, `ending`), and `make lightning` runs it against a real
-      trainer: the callback drives `ModelCheckpoint`'s own `_save_topk_checkpoint` and
-      `_save_last_checkpoint`, so the file on disk is the framework's complete checkpoint. The latency
-      is one batch; the Trainer integration's is `logging_steps`.
-- [x] **3.2 Composer.** A callback that asks the policy and drives the trainer's `CheckpointSaver`.
-  **done when** a request is honoured at the next batch end, once, and the end is recorded.
-  **observed** `make py` covers the three Composer cases (silent, one request with its filename
-      format, `ending`), and `make composer` runs it against composer 0.32.1: the callback finds the
-      trainer's `CheckpointSaver` and drives its `_save_checkpoint` and `_rotate_checkpoints`, so the
-      folder, the retention and the latest-symlink stay the framework's. The saver is kept, not removed.
-
-## P4 — the contributor ladder
-
-- [x] **4.1 The integration template.** One page: how to write a callback for framework X, what the
-      receipt must contain, what the test must assert, which files to add.
-  **done when** the page names every file and a second person can follow it without asking.
-  **observed** `docs/integration-template.md`: the six rules, the skeleton, the fake-trainer test, and
-      the five files an integration adds.
-- [x] **4.2 Five good-first issues.** Fixtures, a fault script, one example, one docs gap, one test.
-  **done when** the repository has ≥5 issues labelled `good first issue`, each with a done-when.
-  **observed** #202–#206 created: a Lightning example, a Composer example, `demo --json` with a test,
-      a Megatron row with an explicit interval, and the 100k-step glue measurement.
-- [x] **4.3 The roadmap is public.** This page, linked from the README, with the same states.
-  **done when** the README links it and the states match the issues.
-  **observed** `docs/plan-library.md` is in the README's documentation list, and its checkboxes are the
-      roadmap.
-
-## P5 — the article (not code)
-
-- [x] **5.1 One reproducible post.** The four rows, the command, the exclusions, and the one number that
-      matters: writes per job. No money, only GPU-seconds and counts.
-  **done when** a reader pastes the command and gets the same rows.
-  **observed** `docs/contrast.md`: `make contrast` prints the four rows, the exclusions are stated, and
-      `TestEveryRowNamesItsCoverageAndItsWrites` holds each row to its write count.
-
-## P6 — the community files (no code)
-
-A repository is read before the product is used. Each file here answers a question a newcomer asks
-anyway, and each one is checked by a link test rather than by memory.
-
-- [x] **6.1 The package a first-time reader needs.** `docs/index.md` (one line per page, grouped by the
-      question), a README of one screen, "Start here" at the top of `CONTRIBUTING.md`, and
-      `GOVERNANCE.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CITATION.cff` at the root.
-  **done when** every local link in the README and `docs/index.md` resolves, and `make docs` passes.
-  **observed** `docs: 45 pages, 50 local links, 0 dead`; the README is one screen and names the pages a
-      reader needs instead of listing every page.
-- [x] **6.2 Package metadata.** `pyproject.toml` carries the licence, the author, five `[project.urls]`
-      entries, eight classifiers and five keywords, so a PyPI page says what the repository says.
-  **done when** the wheel builds with that metadata and `make wheel` prints `engine inside`.
-  **observed** the wheel's `METADATA` lists `License: Apache-2.0`, the Documentation URL
-      (`docs/index.md`), and `Operating System :: POSIX :: Linux` — the platform the engine inside it
-      can actually run on.
-- [x] **6.3 The issues have a milestone.** #202–#206 are the contributor ladder; they now sit in one
-      milestone instead of floating.
-  **done when** `gh api repos/bolubo/checkpoint-governor/milestones` prints the milestone with five
-      open issues.
-  **observed** `1 v0.3 — the integrations open=5 closed=0`.
-- [x] **6.4 One version number.** Four tags with two crossed schemes: the pages said v0.2 and v0.15
-      while "Latest" was v0.21.0, the wheel said `0.2.0`, and its engine printed `dev`.
-  **done when** `make wheel` prints `ckptctl v0.21.0` and a wheel named `ckpt_policy-0.21.0-…`, and the
-      README, `docs/index.md` and `docs/release-0.21.md` name the current number once each.
-  **observed** `engine: linux/amd64 (v0.21.0)` · `ckptctl v0.21.0` · `ckpt_policy-0.21.0-py3-none-manylinux_2_17_x86_64.whl`
-      · `METADATA` says `Version: 0.21.0` · `ckpt_policy.__version__` is `"0.21.0"`. Decision 0029 is
-      the record, and `docs/index.md` calls v0.2 and v0.15 history in the place a reader looks first.
-- [x] **6.5 The wheel tag PyPI accepts.** The first upload was refused with
-      `400 Binary wheel '…py3-none-linux_x86_64.whl' has an unsupported platform tag 'linux_x86_64'` —
-      the publisher was configured, the artifact was the problem.
-  **done when** `make wheel` prints a tag PyPI accepts and a clean venv installs that wheel.
-  **observed** `Tag: py3-none-manylinux_2_17_x86_64`; `pip install` in a clean venv gives
-      `pkg 0.21.0 · engine ckptctl v0.21.0`. The engine is static (`CGO_ENABLED=0`), so `manylinux_2_17`
-      is a claim about the host pip installs on, not about linkage that does not exist.
-- [x] **6.6 The first upload.** `ckpt-policy 0.21.0` is on PyPI: the publisher trusted the workflow,
-      the wheel was accepted, and `pip install` works on a machine that never saw the repository.
-  **done when** `https://pypi.org/pypi/ckpt-policy/json` answers 200 with version `0.21.0`, and a clean
-      venv installs the package by name.
-  **observed** HTTP 200 · `version: 0.21.0` · one file,
-      `ckpt_policy-0.21.0-py3-none-manylinux_2_17_x86_64.whl` · `pip show` says `Name: ckpt-policy`,
-      `Version: 0.21.0` · `ckpt_policy.__version__` is `0.21.0`, the engine says `ckptctl v0.21.0`, and
-      `python -m ckpt_policy.demo` prints 2 writes against 1. Run `41559712153`: wheel and publish both
-      succeeded.
-- [x] **6.7 The operator note.** Seconds were leaking into product pages. A platform's grace is not a
-      user setting, and a user's inputs are periods: the measured chain (detect ≤10s, write 11–13s,
-      seal 4–4.6s for 5.5 GiB) belongs in an operator note, not in the README.
-  **done when** the README names no seconds, `docs/operator-notes.md` carries the formula, and
-      `make docs` passes.
-  **observed** README says "how much time a platform must allow … is measured in
-      `docs/operator-notes.md`"; `docs/index.md` lists the page under "If you are operating it";
-      `make docs` = 47 pages, 52 local links, 0 dead.
-
-## P8 — The reclaim is gated (decision 0030)
-
-The S3-A measurement changed the shape of the preemption feature, not its purpose: Kueue preempts in
-0.2 s, so an inference cannot beat the scheduler. The arrival can be delayed. P8 is that change.
-
-- [x] **8.0 The record.** `docs/decisions/0030-the-reclaim-is-gated.md`, one row in
-      `docs/decisions/README.md`, no dead links.
-  **done when** `make docs` passes with 0030 listed.
-  **observed** the decision is listed and `make docs` passes.
-- [x] **8.1 `risk.preempt` gets a second source.** A held reclaim is an announcement with lead time;
-      the algorithm still sees one boolean.
-  **done when** `go test ./internal/produce/adapters -run Reclaim` passes and `ckptctl explain` prints
-      the hold.
-  **observed** `TestHeldReclaimIsAnAnnouncement`, `TestReclaimStatesThatAreNotHeldDoNotAnnounce`,
-      `TestAHoldIsReadEvenWhenTheUnitIsNotPlaced`, `TestACorruptReclaimFailsTheProjection`; a
-      one-shot `run` on a hand-written record decides `save/risk` and prints
-      `basis announcement: the reclaim gate is holding intruder for this unit until … (reclaim r-1)`.
-- [x] **8.2 `risk.eviction-likely` reads the fleet's permit.** With a reclaim permit
-      (`verdict: granted`, `cause: reclaim`) the verdict replaces the guess; deployments without one
-      keep the measured conjunction.
-  **done when** the permit matrix test passes and the kueue sweep stays green.
-  **observed** `TestAReclaimPermitBeatsTheInference` covers selected, another unit, no permit and an
-      unknown cause.
-- [x] **8.3 `contrib/gate`.** One command that holds the arrival, writes the record and permit, waits
-      for the seal, then creates the job; `gc` marks an abandoned hold `uncovered`.
-  **done when** `make gate` builds and tests the module, and the selector tests pass.
-  **observed** `make gate` green; `TestNeedOfSumsContainersAndTakesTheLargestInit`,
-      `TestShortfallForRefusesCasesThatAreNotReclaims`, `TestShortfallForUsesTheCohortAndTheNode`,
-      `TestCandidatesArePlacedLowerPriorityAndSized`, `TestNewestManifestOnlyCountsASealAfterTheHold`,
-      `TestFindUnitDirUsesThePublishedUnitID`.
-- [x] **8.4 G1, on kind + Kueue.** `held → victim sealed → released → created`, and the victim exits
-      with `lost 0`.
-  **done when** the harness prints `intruder waited X s · victim lost 0 steps` and the job appears
-      only after the victim's manifest changed.
-  **observed** `gate sealed at step 7 after 5s: releasing the arrival` · `submitted default/arrival`
-      · newest manifest `gen-0007` and step file 7 → `intruder waited 5s · victim lost 0 steps`.
-      Five consecutive runs: waits 4.0/4.5/4.0/4.5/4.3 s (median 4.5), lost 0 in all five.
-      Harness: `experiments/gate/`. The first run waited 55 s: the probes hashed the directory
-      basename instead of `--unit`, and the 60 s cooldown applied to a new reclaim. Both fixed here.
-- [x] **8.5 G2, fail-open.** `kill -9` the gate during a hold; nothing is blocked, and `gc` marks the
-      record `uncovered`.
-  **done when** a direct submission after the kill preempts as before, and `ckptgate gc` prints
-      `held for … past its deadline, never released`.
-  **observed** `gc: 1 marked uncovered`; the job was never created, so the queue was not blocked;
-      a direct submission after the kill preempted the victim, whose last checkpoint was step 7 and
-      whose step at death was 13 — **lost 6 steps**.
-- [x] **8.6 The page.** `docs/gate.md`, one screen for a small team, and one README line.
-  **done when** `make docs` passes and the page states what the gate does not promise.
-  **observed** the page and index row exist; the README names the path in one paragraph.
-- [x] **8.7 Packaging.** `ckptgate` in `install.sh` and `dist`, with the 0029 version.
-  **done when** `make dist` contains the binary and `install-smoke` prints its version.
-  **observed** `dist: 4 archives, 4 checksums` · `install-smoke` prints `ckptctl v0.21.0` and
-      `ckptgate v0.21.0` · `make install` installs the third binary too. `install.sh` treats it as
-      optional, so a tarball from before it existed still installs the two core binaries.
-
-## P9 — The real-machine matrix
-
-Every row prints N, the margin or the lost steps, and the command that reproduces it. No probabilities.
-
-| condition | evidence | still missing |
-|---|---|---|
-| `risk.shutdown` | S2 2026-11-03, grace 60 / 5s, N=5: 5/5, margin +36.5..+41.5s, lost 0, `may-exit` 5/5; grace 30: 5/5, +7.1..+15.1s; grace 10: 0/5, -9.9..-5.6s; **with a declared `T_write` (`--estimate=20s`): `skip no-time`, 0 writes, may-exit, no broken copy**; cadence-only 0/5 | **none for the wrapper**: grace 60/30/10/1, N=3 each, `hack/wrap-grace.sh`; 60 and 30 seal with lost 0, 10 and 1 print the honest failure. Other cadences are unmeasured |
-| `risk.preempt` | G1 5/5, wait 4.0-4.8s, lost 0; G2 fail-open, lost 6. **Fanout (0031)**: world-level G3 in `contrib/gate/submit_fanout_test.go` — a two-node world, two governed units, two stand-in controllers: one victim per node, both seals observed before the job is created; a node with no governed unit makes the hold all-or-nothing | a real cluster with shared storage. A 2-node kind cluster with a shared `hostPath` now runs the controller on the control plane and the job on a worker (`hack/kind-two-node.sh`: `sealed 1 · verified 1`); the test cluster's per-node `/g1` is why a real cluster still needs shared storage. That is a deployment limit, not a gate arithmetic gap |
-| `store.low-space` | rig X `disk-full` on tmpfs (8 MiB), N=5: naive ends at **0 KiB free**, governed stops at **6.076-6.080 MiB**, both leave one intact copy. On a **loopback ext4 image** (12 MiB, real fsync and ENOSPC), N=5: naive **0 KiB**, governed **4.264-4.268 MiB**, both intact — `VOLUME=loop sh experiments/rig/run.sh l1 disk-full` | a partition on a physical drive (the loop variant is a real file system, but its blocks are a sparse file, so it measures the protocol and not the drive's timing) |
-| `host.memory-pressure` | container cgroup 2 GiB + 1.94 GiB hog, N=3: condition **1**, first write at step 496-498, the next attempt a few steps later refused by the 60s cooldown, step 540-541 at 40s (lost 42-45), `oom_kill` 0. **A real OOM** (2 GiB limit, 2000 MiB hog then +2 MiB every 0.5 s), N=3: `oom_kill` **1/1/1**, first write at step 494/494/495, the job and the controller were both still alive, and the loss between the write and the OOM was 148-203 steps (3.0-4.1 s) — `OOM=1 HOG=2000 CREEP=2 sh experiments/real/s3_memory.sh` | **decided:** a persistent pressure keeps the 60 s retry. It is a cost bound, not a detection failure — the first write is what the condition buys, and re-deciding every round while the pressure persists would turn one alarm into a write storm |
-| `job.ending` | N=3 normal end: `may-exit` 3/3, copy at step 49, lost 0 | — |
-| `watch.broken` | the sampler's own failure budget: `internal/loop/blind_test.go` (three unreadable reads, then a readable one) and the D layer | **none, by design**: the sampler *is* the controller. Killing it removes the observer rather than a probe, so no external check can report that the observer is gone — it is exercised where it exists, in the read path |
-
-The `risk.shutdown` row is in `experiments/real/README.md`; the harness is `s2_shutdown.sh` and its
-`WAIT_AFTER_SEAL=20` is part of the measurement, not a tuning knob.
-
-## What is demoted or removed (do these as part of P0/P1, not later)
-
-| Thing | Action | Done when | State |
-|---|---|---|---|
-| README first screen | the contrast table first, install second, Docker and Kubernetes below | `make docs` passes and the sections are in that order | done — one screen |
-| `docs/plan-4.2.md`, `docs/checklist-*.md` | moved to `/root/cg-internal-notes` (process, not product) | `docs/*.md` count drops by three and `make docs` passes | done — 31 → 28, plus `index.md` |
-| `deploy/` | frozen; no new work, still documented | README's deploy section is one screen | done |
-| Certificate product, platform injection, adapter zoo, conformance | refused | no page or target appears for them | holding |
-| CLI's 21 verbs | the help is three groups; the first is `init`, `price`, `run`, and every verb gets one line | `ckptctl` with no arguments prints three groups, and a test holds the list | done — three groups; `cmd/ckptctl/main_test.go` |
-
-## Order and why
-
-P0 before P1: the contrast is reused as the README's evidence, the demo's fixture and the article's
-table. P1 before P2: the callback asks the client, and the client must exist and degrade honestly. P2
-before P3: the largest audience, and its 500-step default is the number the contrast is measured against.
-
-## Not in this version
+## Not planned
 
 macOS and Windows wheels, a Python re-implementation of the policy, platform deployments, certificates,
-dashboards.
+dashboards, a fleet-wide merged view, and a scheduler. The reasons are in
+[0020-what-this-is-not.md](decisions/0020-what-this-is-not.md).
+
+## How to read the rest
+
+- What the release proved: the release pages and [CHANGELOG](../CHANGELOG.md).
+- Why each decision: [decisions/README.md](decisions/README.md).
+- What an experiment answers: [experiments-matrix.md](experiments-matrix.md).
