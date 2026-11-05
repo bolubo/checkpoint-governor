@@ -49,8 +49,9 @@ func runStatus(args []string, out io.Writer) int {
 		// status rather than inside it: the ledger does not own the declaration (0026).
 		payload := struct {
 			advise.Status
-			Resume string `json:"resume,omitempty"`
-		}{l.Status, strings.TrimPrefix(ResumeLine(dir), "resume: ")}
+			Resume string   `json:"resume,omitempty"`
+			Ext    []string `json:"ext,omitempty"`
+		}{l.Status, strings.TrimPrefix(ResumeLine(dir), "resume: "), ExtKeys(dir)}
 		raw, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {
 			fmt.Fprintf(out, "error: %v\n", err)
@@ -68,6 +69,11 @@ func runStatus(args []string, out io.Writer) int {
 	}
 	if note := ResumeNote(dir); note != "" {
 		fmt.Fprintln(out, note)
+	}
+	// A declaration may carry an extension; a reader that ignores it has to say that it did, so the
+	// names get a row of their own. Only names: the values are untrusted content (0026).
+	if line := ExtLine(dir); line != "" {
+		fmt.Fprintln(out, line)
 	}
 
 	// What the policy could not measure is part of the answer: a person reading a plan has to know

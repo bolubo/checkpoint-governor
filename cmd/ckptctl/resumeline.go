@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/bolubo/checkpoint-governor/internal/layout"
 	"github.com/bolubo/checkpoint-governor/internal/resume"
 )
@@ -21,6 +23,33 @@ func ResumeLine(dir string) string {
 	}
 	v := res.Verdict(cfg, resume.World{})
 	return "resume: " + v.Line()
+}
+
+// ExtKeys is the declaration's extension names, if the newest copy has any. Only names are returned:
+// `ext` values are untrusted content, and a status line is not a place to echo them.
+func ExtKeys(dir string) []string {
+	cfg, _, err := layout.LoadConfig(dir)
+	if err != nil {
+		return nil
+	}
+	res, err := layout.Scan(dir, cfg)
+	if err != nil || !res.Found {
+		return nil
+	}
+	f, declared, err := res.Newest.Load()
+	if err != nil || !declared {
+		return nil
+	}
+	return f.ExtKeys()
+}
+
+// ExtLine is the status row for a declaration that carries extensions: `ext: requires-v2`.
+func ExtLine(dir string) string {
+	keys := ExtKeys(dir)
+	if len(keys) == 0 {
+		return ""
+	}
+	return "ext: " + strings.Join(keys, ", ")
 }
 
 // ResumeNote is the second sentence a status prints when two layouts claim the same step. It is never

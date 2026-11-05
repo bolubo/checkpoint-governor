@@ -356,6 +356,41 @@ func parseVersion(s string) (version, bool) {
 	return version{major, minor}, true
 }
 
+// ExtKeys is the extension point made visible without being trusted: sorted key names, at most eight,
+// each cut to 64 bytes and stripped of anything that would move a cursor. Values never leave the file.
+func (f File) ExtKeys() []string {
+	if len(f.Ext) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(f.Ext))
+	for name := range f.Ext {
+		names = append(names, saneKey(name))
+	}
+	sort.Strings(names)
+	if len(names) > 8 {
+		names = names[:8]
+	}
+	return names
+}
+
+// saneKey keeps a key to printable ASCII of bounded length: a declaration is untrusted, and a key with
+// a newline or an escape would rewrite the status line around it.
+func saneKey(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		if r < 0x20 || r > 0x7e {
+			b.WriteByte('?')
+			continue
+		}
+		b.WriteRune(r)
+	}
+	out := b.String()
+	if len(out) > 64 {
+		out = out[:63] + "…"
+	}
+	return out
+}
+
 // holds reports whether the declaration says this state was saved.
 func (s State) holds(name string) bool {
 	for _, e := range stateOrder {
