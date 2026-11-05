@@ -36,3 +36,5 @@ Composer's leader declares beside the episode | docs/composer.md §What it decla
 Every integration page starts from a paste block | docs/huggingface.md §Paste this | TestIntegrationPagesHaveAPasteBlock
 The install page starts with a venv, not a system pip | docs/install-python.md §1. Install | TestInstallDocsUseAVenv
 A receipt says the copy shares the volume | docs/product-v1.md §6.3 | TestReceiptStatesDurability
+A framework resume is named by its step | docs/resume-contract.md §3 | TestResumedReadsAFrameworkCopy
+The four-row contrast is reproducible | docs/contrast.md §Reproduce it | TestEveryRowNamesItsCoverageAndItsWrites

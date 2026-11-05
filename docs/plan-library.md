@@ -179,9 +179,11 @@ Same shape, same contract test; the real runs need torch, so they stay manual ta
 
 ## P5 — the article (not code)
 
-- [ ] **5.1 One reproducible post.** The four rows, the command, the exclusions, and the one number that
+- [x] **5.1 One reproducible post.** The four rows, the command, the exclusions, and the one number that
       matters: writes per job. No money, only GPU-seconds and counts.
   **done when** a reader pastes the command and gets the same rows.
+  **observed** `docs/contrast.md`: `make contrast` prints the four rows, the exclusions are stated, and
+      `TestEveryRowNamesItsCoverageAndItsWrites` holds each row to its write count.
 
 ## P6 — the community files (no code)
 

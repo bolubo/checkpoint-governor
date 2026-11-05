@@ -49,6 +49,7 @@ One page per question. Start where your question is. Every local link here resol
 | [design.md](design.md) | how is the backstop built? |
 | [ci.md](ci.md) | what runs on a push, and why that and nothing more? |
 | [operator-notes.md](operator-notes.md) | what must the platform allow: the grace a checkpoint needs |
+| [contrast.md](contrast.md) | what does the four-policy comparison actually say, and how do I reproduce it? |
 | [gate.md](gate.md) | how do I give a higher-priority arrival lead time on a cluster? |
 | [first-edition-parity.md](first-edition-parity.md) | what did the first edition have that this one does? |
 

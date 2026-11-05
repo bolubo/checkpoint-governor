@@ -1,11 +1,11 @@
 #!/bin/sh
 # The end-to-end proof for `ckptctl wrap`: a real controller, a real job, a real SIGTERM.
 #
-# A job write that takes longer than the grace cannot land inside it, so grace 10 must print the honest
-# failure and grace 30/60 must print the seal. Three runs per grace, because a wrapper that worked once
-# is not a protocol.
+# A job write that takes longer than the grace cannot land inside it, so grace 1 and 10 must print the
+# honest failure and grace 30/60 must print the seal. Three runs per grace, because a wrapper that
+# worked once is not a protocol.
 #
-# Usage: sh hack/wrap-grace.sh   (needs go on PATH; about three minutes)
+# Usage: sh hack/wrap-grace.sh   (needs go on PATH; about four minutes)
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -18,7 +18,7 @@ $GO build -o "$work/ckpttrainer" ./cmd/ckpttrainer
 
 write_ms=12000
 bad=0
-for grace in 60 30 10; do
+for grace in 60 30 10 1; do
 	for run in 1 2 3; do
 		dir="$work/g${grace}-${run}"
 		mkdir -p "$dir"
@@ -41,8 +41,8 @@ for grace in 60 30 10; do
 		grep -q "final write NOT made" "$dir/wrap.log" && lost=1 || true
 		echo "grace=${grace}s run=${run} sealed=${sealed} lost=${lost}"
 
-		if [ "$grace" = 10 ]; then
-			[ "$lost" = 1 ] || { echo "FAIL: grace 10 lost nothing"; bad=1; }
+		if [ "$grace" = 10 ] || [ "$grace" = 1 ]; then
+			[ "$lost" = 1 ] || { echo "FAIL: grace ${grace} lost nothing"; bad=1; }
 		else
 			{ [ "$sealed" = 1 ] && [ "$lost" = 0 ]; } || { echo "FAIL: grace ${grace} did not seal"; bad=1; }
 		fi

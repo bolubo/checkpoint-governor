@@ -172,6 +172,20 @@ composer:
 	$(GO) build -trimpath -o contrib/ckpt-policy/ckpt_policy/_bin/ckptctl ./cmd/ckptctl
 	$(PYTHON) hack/composer-smoke.py
 
+# The real-model resume drill: a hub model, a Trainer checkpoint, and a second Trainer that loads it.
+# Not in CI: it downloads weights. Pass the proxy through the environment when the hub needs one.
+hf-resume:
+	$(GO) build -trimpath -o contrib/ckpt-policy/ckpt_policy/_bin/ckptctl ./cmd/ckptctl
+	$(PYTHON) hack/hf-resume.py
+
+# Calibrate the 18 B/parameter disk estimate against a real checkpoint. Not in CI: it trains briefly.
+calibrate:
+	$(PYTHON) hack/params-calibration.py
+
+# One small GPU benchmark: does this torch build run kernels on this card, and how fast. Not in CI.
+gpu-bench:
+	$(PYTHON) hack/gpu-bench.py
+
 # The only check that earns `restorable`: load it, take one step, and refuse a drill that changed the
 # checkpoint. A synthetic loader keeps it seconds and torch-free.
 drill:

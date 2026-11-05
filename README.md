@@ -22,7 +22,7 @@ governor, unconfigured               1      40s   everything
 2h bound                             2      80s   ≤2h
 ```
 
-Four policies on one four-hour job (`make contrast`): same steps, same disk, same write cost. The job
+Four policies on one four-hour job (`make contrast`, explained in [docs/contrast.md](docs/contrast.md)): same steps, same disk, same write cost. The job
 has **no signals**, which is the last column: a job that configures nothing writes once, at the end, and
 a silent death costs everything since the last write.
 

@@ -5,6 +5,13 @@ configures are **periods** — minutes, or steps — and they are described in `
 below are the machine's constants; they exist so that a platform does not grant a deadline that a
 checkpoint cannot meet.
 
+## Where the directory lives
+
+Put the checkpoint directory on shared or remote storage. A copy on the node's local disk outlives the
+process, not the node: when the machine is reclaimed, that copy goes with it. The receipt says so in
+one line — `durability      local disk: a copy outlives the process, not the volume` — and the product
+does not move, copy, or delete anything to work around it.
+
 ## The chain, and the one deadline that matters
 
 ```
