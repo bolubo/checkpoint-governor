@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,9 +33,13 @@ func runInit(args []string, out io.Writer) int {
 	dir := fs.String("dir", "", "the checkpoint directory")
 	duration := fs.Duration("duration", 0, "how long the run will take (0 = ask, or unknown)")
 	answer := fs.String("answer", "", "none | middle | periodic; skips the question")
+	params := fs.String("params", "", "model size (1.5B, 7B, 70B); estimates 18 bytes per parameter for disk only, not a GPU check")
+	copies := fs.Int("copies", 1, "the smallest number of copies kept on disk")
 	fs.Usage = func() {
-		fmt.Fprintln(out, "usage: ckptctl init --dir=<checkpointDir> [--duration=4h] [--answer=none|middle|periodic]")
+		fmt.Fprintln(out, "usage: ckptctl init --dir=<checkpointDir> [--duration=4h] [--answer=none|middle|periodic] [--params=7B] [--copies=1]")
 		fmt.Fprintln(out, "       writes numbers.json, or nothing at all when the answer is none")
+		fmt.Fprintln(out, "       --params estimates disk only (18 bytes per parameter: fp16 weights, two Adam moments,")
+		fmt.Fprintln(out, "       gradient and master weights). It says nothing about whether this GPU can train the model.")
 	}
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -42,6 +47,20 @@ func runInit(args []string, out io.Writer) int {
 	if *dir == "" {
 		fs.Usage()
 		return 2
+	}
+	if *copies < 1 {
+		fmt.Fprintln(out, "error: --copies must be at least 1")
+		return 2
+	}
+
+	var modelParams float64
+	if *params != "" {
+		v, ok := parseParams(*params)
+		if !ok {
+			fmt.Fprintf(out, "error: --params %q is not a model size; write 7B or 700M\n", *params)
+			return 2
+		}
+		modelParams = v
 	}
 
 	price := loop.PriceOf(*dir)
@@ -75,9 +94,12 @@ func runInit(args []string, out io.Writer) int {
 		})
 	}
 
-	fmt.Fprintf(out, "one write: %s\n\n", price.Describe())
+	fmt.Fprintf(out, "one write: %s\n", price.Describe())
+	fmt.Fprintln(out, diskClause(price, *params, modelParams, *copies))
+	fmt.Fprintln(out)
 	for _, o := range opts {
-		fmt.Fprintf(out, "  %-10s %-18s %-26s %s\n", o.key, o.label, writesText(o, price), boundText(o))
+		fmt.Fprintf(out, "  %-10s %-18s %-26s %-28s %s\n",
+			o.key, o.label, writesText(o, price), diskShort(price, modelParams, *copies), boundText(o))
 	}
 	fmt.Fprintln(out)
 
@@ -144,6 +166,78 @@ func boundText(o initOption) string {
 		return "a silent death costs everything"
 	}
 	return "a silent death costs at most " + shortDuration(o.window)
+}
+
+// bytesPerParam is the design's flat estimate: fp16 weights (2), two Adam moments in fp32 (8), and
+// gradient plus master weights (8). A job that offloads or keeps 8-bit optimizer state will differ,
+// which is why every line that uses this says estimated and not measured.
+const bytesPerParam = 18
+
+// parseParams accepts a model size written with a unit: 1.5B, 7B, 700M. A bare number is refused on
+// purpose — 7 could be seven parameters or seven billion, and a disk figure built on that is a guess
+// wearing a measurement's clothes.
+func parseParams(s string) (float64, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, false
+	}
+	var mult float64
+	switch s[len(s)-1] {
+	case 'B', 'b':
+		mult = 1e9
+	case 'M', 'm':
+		mult = 1e6
+	default:
+		return 0, false
+	}
+	v, err := strconv.ParseFloat(s[:len(s)-1], 64)
+	if err != nil || !(v > 0) || v > 1e6 {
+		return 0, false
+	}
+	return v * mult, true
+}
+
+// diskClause answers "how much disk", with its provenance attached: an estimated number and a
+// measured one must not look alike.
+func diskClause(price loop.WritePrice, params string, parsed float64, copies int) string {
+	switch {
+	case parsed > 0:
+		return fmt.Sprintf("disk: %s × %s (estimated from %s, not measured; disk only, not a GPU check)",
+			sizeText(int64(parsed*bytesPerParam)), copiesText(copies), params)
+	case price.Bytes > 0:
+		return fmt.Sprintf("disk: %s × %s (from the size the job declared)", sizeText(price.Bytes), copiesText(copies))
+	}
+	return "disk: unknown until the first write"
+}
+
+func diskShort(price loop.WritePrice, parsed float64, copies int) string {
+	switch {
+	case parsed > 0:
+		return "disk: " + sizeText(int64(parsed*bytesPerParam)) + " × " + copiesText(copies)
+	case price.Bytes > 0:
+		return "disk: " + sizeText(price.Bytes) + " × " + copiesText(copies)
+	}
+	return "disk: unknown"
+}
+
+func copiesText(n int) string {
+	if n == 1 {
+		return "1 copy"
+	}
+	return fmt.Sprintf("%d copies", n)
+}
+
+// sizeText renders binary units. Above a thousand GiB it switches to TiB, divided by 1000 the way a
+// person compares a model size to a disk they bought — the number is an estimate either way.
+func sizeText(n int64) string {
+	gib := float64(n) / (1 << 30)
+	switch {
+	case gib >= 1000:
+		return fmt.Sprintf("%.2f TiB", gib/1000)
+	case gib < 1:
+		return fmt.Sprintf("%.0f MiB", float64(n)/(1<<20))
+	}
+	return fmt.Sprintf("%.0f GiB", gib)
 }
 
 // shortDuration trims the noise from Go's duration formatting: "4h0m0s" is a computer talking, and
