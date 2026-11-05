@@ -23,12 +23,22 @@ func runDeclare(args []string, out io.Writer) int {
 	requires := fs.String("requires", "model,optimizer,scheduler,rng", "comma list of states a resume needs")
 	state := fs.String("state", "model,optimizer,scheduler,rng", "comma list of states the copy holds")
 	format := fs.String("format", resume.FormatOther, "the writer's format (dcp, torch_dist, safetensors, hf-trainer, other)")
+	world := fs.Int("world", 1, "ranks this copy was written for (default 1, the single-writer answer)")
+	tp := fs.Int("tp", 0, "tensor-parallel size, when the writer used it")
+	pp := fs.Int("pp", 0, "pipeline-parallel size, when the writer used it")
+	dp := fs.Int("dp", 0, "data-parallel size, when the writer used it")
+	reshardable := fs.Bool("reshardable", false, "the format can re-shard this copy for another world size")
 	fs.SetOutput(out)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if *path == "" || *step <= 0 {
-		fmt.Fprint(out, "usage: ckptctl declare --dir=<checkpointDir|artifact> --step=N [--requires=...] [--state=...]\n")
+		fmt.Fprint(out, "usage: ckptctl declare --dir=<checkpointDir|artifact> --step=N [--world=R] [--requires=...] [--state=...]\n")
+		return 2
+	}
+	if *world < 1 || *tp < 0 || *pp < 0 || *dp < 0 {
+		fmt.Fprintf(out, "error: a world needs at least one rank and no negative parallel size (world=%d tp=%d pp=%d dp=%d)\n",
+			*world, *tp, *pp, *dp)
 		return 2
 	}
 
@@ -53,7 +63,7 @@ func runDeclare(args []string, out io.Writer) int {
 		Generation: *step,
 		Step:       *step,
 		Format:     *format,
-		World:      resume.World{Ranks: 1},
+		World:      resume.World{Ranks: *world, TP: *tp, PP: *pp, DP: *dp, Reshardable: *reshardable},
 		State:      held,
 		Requires:   requiresOf(want),
 	}
