@@ -15,9 +15,10 @@ pip install ckpt-policy
 The first two lines are not optional on a machine whose system Python is managed by PEP 668: pip there
 refuses to install (`error: externally-managed-environment`), and a venv is the supported way in.
 
-No other install step: no `go install`, no manual PATH entry, no second download. The same wheel installs
-the `ckptctl` command into the venv, so `ckptctl status <dir>` and `ckptctl resumable --dir` work while
-the venv is active.
+The wheel carries the client and the engine. A wheel built from this repository also installs the
+`ckptctl` command into the venv, so `ckptctl status <dir>` and `ckptctl resumable --dir` work while the
+venv is active. `ckpt-policy 0.25.0` on PyPI predates that command, so until the next release
+`install.sh` is still the way to get `ckptctl` on PATH.
 
 From a checkout, the same wheel:
 
