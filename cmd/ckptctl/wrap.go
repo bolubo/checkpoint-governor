@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bolubo/checkpoint-governor/internal/layout"
+	"github.com/bolubo/checkpoint-governor/internal/produce/adapters"
 )
 
 // runWrap runs the job under a supervisor that makes the stop protocol effective from our side.
@@ -56,7 +57,48 @@ func runWrap(args []string, out io.Writer) int {
 	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT)
 	defer signal.Stop(sigs)
 
-	return supervise(*dir, *grace, *teardown, groupChild{cmd: cmd, pgid: cmd.Process.Pid}, sigs, out)
+	strict := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "grace" {
+			strict = true
+		}
+	})
+	window, source, err := graceWindow(*dir, *grace, strict)
+	if err != nil {
+		fmt.Fprintf(out, "wrap: cannot read deployment.json: %v\n", err)
+		return 2
+	}
+	fmt.Fprintf(out, "wrap: grace %s from %s\n", secondsString(window), source)
+
+	return supervise(*dir, window, *teardown, groupChild{cmd: cmd, pgid: cmd.Process.Pid}, sigs, out)
+}
+
+// graceWindow is the one place the shutdown window is decided. The platform's own declaration is the
+// second source: repeating `--grace` on every command line when `deployment.json` already says it invites
+// two different numbers. An explicit flag wins, a declared zero stays zero, an absent declaration is 0.
+func graceWindow(dir string, flagValue time.Duration, flagSet bool) (time.Duration, string, error) {
+	if flagSet {
+		if flagValue < 0 {
+			return 0, "", fmt.Errorf("a grace cannot be negative (%s)", flagValue)
+		}
+		return flagValue, "--grace", nil
+	}
+	d, err := adapters.LoadDeployment(dir)
+	if err != nil {
+		return 0, "", err
+	}
+	if d.HasGrace {
+		return time.Duration(d.GraceSeconds) * time.Second, "deployment.json", nil
+	}
+	return 0, "default (no --grace, no deployment.json)", nil
+}
+
+// secondsString is how the wrapper says a window: whole seconds when it can, the duration otherwise.
+func secondsString(d time.Duration) string {
+	if d%time.Second == 0 {
+		return fmt.Sprintf("%ds", int(d/time.Second))
+	}
+	return d.String()
 }
 
 // wrapChild is the half of a child process the supervisor uses, so the decision logic can be tested

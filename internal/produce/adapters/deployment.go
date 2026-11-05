@@ -44,6 +44,11 @@ const (
 type Deployment struct {
 	WorldDir     string
 	Capabilities map[string]Capability
+	// GraceSeconds is the shutdown window the platform gives this job, when the operator declared it.
+	// `wrap` reads it because the platform already told the job; asking the operator to repeat it on
+	// every command line is a second source of truth. HasGrace separates "declared 0" from "absent".
+	GraceSeconds int
+	HasGrace     bool
 }
 
 type deploymentFileShape struct {
@@ -51,6 +56,7 @@ type deploymentFileShape struct {
 	World  struct {
 		Dir string `json:"dir"`
 	} `json:"world"`
+	GraceSeconds *int `json:"grace_seconds"`
 	Capabilities map[string]struct {
 		Exists *bool  `json:"exists"`
 		Why    string `json:"why"`
@@ -88,6 +94,12 @@ func LoadDeployment(dir string) (Deployment, error) {
 	}
 
 	d.WorldDir = f.World.Dir
+	if f.GraceSeconds != nil {
+		if *f.GraceSeconds < 0 {
+			return d, fmt.Errorf("%s: grace_seconds %d is negative", deploymentFile, *f.GraceSeconds)
+		}
+		d.GraceSeconds, d.HasGrace = *f.GraceSeconds, true
+	}
 	d.Capabilities = make(map[string]Capability, len(f.Capabilities))
 	for name, c := range f.Capabilities {
 		switch name {

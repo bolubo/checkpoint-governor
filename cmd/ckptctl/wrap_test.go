@@ -197,6 +197,56 @@ func TestWrapReportsAChildThatExitedOnItsOwn(t *testing.T) {
 	}
 }
 
+// The window is decided once: an explicit flag wins, the platform's declared grace is read, and
+// absence means zero — never a made-up default.
+func TestWrapGraceFromDeployment(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeStopFile(dir, "deployment.json", `{"schema":1,"grace_seconds":60}`); err != nil {
+		t.Fatal(err)
+	}
+	got, source, err := graceWindow(dir, 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 60*time.Second || source != "deployment.json" {
+		t.Fatalf("grace = %s from %q, want 60s from deployment.json", got, source)
+	}
+
+	// An explicit flag wins, so a job whose platform changed the window is not held by the file.
+	got, source, err = graceWindow(dir, 5*time.Second, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 5*time.Second || source != "--grace" {
+		t.Fatalf("grace = %s from %q, want 5s from --grace", got, source)
+	}
+
+	// Declared zero stays zero: it is an answer, not a missing value.
+	if err := writeStopFile(dir, "deployment.json", `{"schema":1,"grace_seconds":0}`); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, err = graceWindow(dir, 0, false); err != nil || got != 0 {
+		t.Fatalf("declared zero = %s, %v; want 0", got, err)
+	}
+
+	// No file: zero, and the source says why.
+	empty := t.TempDir()
+	if got, source, err = graceWindow(empty, 0, false); err != nil || got != 0 {
+		t.Fatalf("absent file = %s, %v; want 0", got, err)
+	}
+	if source == "deployment.json" {
+		t.Fatalf("source = %q, want the default explanation", source)
+	}
+
+	// A negative window is a malformed declaration, refused where it is read.
+	if err := writeStopFile(dir, "deployment.json", `{"schema":1,"grace_seconds":-5}`); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := graceWindow(dir, 0, false); err == nil {
+		t.Fatal("a negative grace_seconds was accepted")
+	}
+}
+
 // A wrapper inside a wrapper would announce one stop twice.
 func TestWrapRefusesToNest(t *testing.T) {
 	t.Setenv("CKPTCTL_WRAPPED", "1")
