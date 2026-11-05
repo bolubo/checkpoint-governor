@@ -30,7 +30,8 @@ next        ckptctl demo --repair --dir=/tmp/ckpt-demo
 production copy gets ([docs/demo.md](docs/demo.md)).
 
 Works with Hugging Face Trainer, Lightning, Composer and Kueue. On Kubernetes: no custom resource and
-no extra permission.
+no extra permission. Ask it from Claude Code or Codex: `ckptctl setup --agent=claude --apply`
+([docs/agents.md](docs/agents.md)).
 
 ## The default is the problem
 

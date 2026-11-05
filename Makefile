@@ -11,7 +11,7 @@ IMAGE ?= ghcr.io/bolubo/checkpoint-governor
 # How long the real-clock smoke runs (make smoke MINUTES=2 for a quick check).
 MINUTES ?= 10
 
-.PHONY: all check fmt fmt-check vet build test docs fast flake verify parity ci e2e exp clean dist release install install-smoke release-notes spot prepush resume py drill contrast contrast-image waste wheel hf observer gate
+.PHONY: all check fmt fmt-check vet build test docs fast flake verify parity ci e2e exp clean dist release install install-smoke release-notes spot prepush resume py drill contrast contrast-image waste wheel hf observer gate mcp-test
 
 all: check
 
@@ -40,6 +40,11 @@ observer-against:
 # still passes `make fast`.
 gate:
 	cd contrib/gate && $(GO) build ./... && $(GO) test ./...
+
+# The agent surface: the MCP handshake, the read-only tools, and the config writers. On its own so a
+# laptop without a cluster can check it.
+mcp-test:
+	$(GO) test ./internal/mcp ./cmd/ckptctl -run 'TestMCP|TestSetupAgent'
 
 # The demo: three acts, fifteen seconds, ending with the receipt. See docs/product-v1.md §5.
 demo:

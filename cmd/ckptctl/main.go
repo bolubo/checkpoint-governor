@@ -47,6 +47,7 @@ var commands = []command{
 	{"doctor", groupRead, "what each probe sees on this machine", runDoctor},
 	{"drill", groupRead, "prove a checkpoint resumes: one loader step, compared", runDrill},
 	{"events", groupRead, "the controller's own record: decisions, requests, changes", runEvents},
+	{"evidence", groupRead, "one versioned bundle: status, resume, verify, attempts, storage", runEvidence},
 	{"explain", groupRead, "why the last decision was what it was, from the state file", runExplain},
 	{"glue", groupRead, "what the job told us about its size and its stop", runGlue},
 	{"resumable", groupRead, "can this be resumed: 0 yes, 1 no, 2 cannot decide", runResumable},
@@ -58,6 +59,7 @@ var commands = []command{
 	// Beyond one directory: several directories, a cluster, or a trace that stands in for both.
 	{"declare", groupOther, "write what a checkpoint holds, beside it, so a restore can be judged", runDeclare},
 	{"demo", groupOther, "show the whole contract on a synthetic checkpoint, in thirty seconds", runDemo},
+	{"mcp", groupOther, "read-only MCP server: the evidence bundle, for agents", runMCP},
 	{"serve", groupOther, "the same facts as Prometheus text, read-only", runServe},
 	{"setup", groupOther, "prepare a deployment: check this machine, then print the next commands", runSetup},
 	{"simulate", groupOther, "the policy against fixed timers, on one trace", runSimulate},
