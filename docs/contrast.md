@@ -1,7 +1,7 @@
 # Four policies, one job: the number that matters
 
 This page is the article form of `make contrast`: one command, four rows, and the only number that
-decides whether a backstop is worth installing — **writes per job**.
+decides whether the safety net is worth installing — **writes per job**.
 
 ```
 $ make contrast

@@ -1,6 +1,7 @@
 # Install
 
-Three shapes, one binary. Pick the one that matches where you are; nothing below needs us in the loop.
+Three shapes, two binaries. Pick the shape that matches where you are; nothing below needs the
+maintainer in the loop.
 
 ## 1. The binary (no Go, no container)
 
@@ -13,7 +14,7 @@ ckptctl version
 `SHA256SUMS` before installing anything**, and puts `ckptctl` and `ckpttrainer` in
 `${PREFIX:-$HOME/.local/bin}`. A checksum mismatch stops the install; there is no `--force`.
 
-With Go, the same two binaries come from a checkout: `make install`, or
+With Go, the same binaries come from a checkout: `make install` (which also builds `ckptgate`), or
 `go install ./cmd/ckptctl ./cmd/ckpttrainer`.
 
 ## 1b. The training script

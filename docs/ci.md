@@ -37,7 +37,7 @@ Two honesty notes, because the claim should be falsifiable:
   itself was a merge of an intermediate `main`, so "random" remains an inference — what is certain is
   that a frozen clock plus a nanosecond interval cannot be deterministic, and that is gone.
 - **The other half of "always red" is not red at all.** With branch protection requiring **up to date**,
-  every push to `main` by another session made our PR `BEHIND`, which GitHub shows next to a green check.
+  every push to `main` from elsewhere made the pull request `BEHIND`, which GitHub shows next to a green check.
   That was fixed on the repository (strict off), not in the workflow.
 
 The second "always red" (2026-11-03) was a copy, not a clock. `TestResumabilityNeverChangesADecision`

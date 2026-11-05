@@ -76,9 +76,9 @@ does not hold at all — it submits directly and says why. Holding one node and 
 victim die with 0.2 s notice would be a promise nobody keeps. A single-pod, single-node arrival
 produces exactly the same arithmetic and the same first line as before.
 
-The real cross-node run needs a checkpoint volume both the gate and the pods can see (the lab's
-`hostPath /g1` is per node); the end-to-end test that covers the gate's own path uses a two-node
-world and a fake client (`contrib/gate/submit_fanout_test.go`).
+The real cross-node run needs a checkpoint volume both the gate and the pods can see (the test
+cluster's `hostPath /g1` is per node); the end-to-end test that covers the gate's own path uses a
+two-node world and a fake client (`contrib/gate/submit_fanout_test.go`).
 
 ## Where it runs
 

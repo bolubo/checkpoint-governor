@@ -7,7 +7,7 @@ named at the end of this page so it does not leak into this one.
 
 Why this shape, in one paragraph. The reference controllers' second editions did three things and no
 fourth: more inputs, an operator-facing surface, and hardened contract names — and none of them rewrote
-the core (`docs/first-edition-parity.md`). This repository already shipped the first two edges (metrics,
+the core. This repository already shipped the first two edges (metrics,
 an outward event, conditions from disk). What is missing is the third: a written promise about what a
 user's directory, plan file, metrics and CLI will keep meaning across an upgrade — plus an install that
 does not need us in the loop.

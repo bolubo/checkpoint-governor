@@ -5,6 +5,6 @@
 # jekyll-default-layout and jekyll-relative-links by default, so a page needs no front matter and a
 # link like `release-0.23.md` becomes `release-0.23.html` on the site.
 title: checkpoint-governor
-description: "A backstop for training runs: when a checkpoint is worth writing, and whether the newest copy can continue — whoever wrote it."
+description: "A safety net for training jobs: when a checkpoint is worth writing, and whether the newest copy can continue — whichever library wrote it."
 theme: jekyll-theme-minimal
 show_downloads: false

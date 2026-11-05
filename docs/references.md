@@ -1,7 +1,7 @@
 # References — what the neighbours actually do
 
-Status: research record, 2026-11-02. Companion: `docs/decisions/0027-the-platform-is-the-customer.md`,
-`docs/plan-platform.md`.
+Status: research record, 2026-11-02. Companion: `docs/decisions/0027-the-platform-is-the-customer.md`
+and the superseded `docs/plan-platform.md`, kept as history.
 
 The question this page answers is narrow: **in the world we are entering, who decides when a checkpoint
 is written, and what does that decision rest on?** Every claim below was read from a repository through

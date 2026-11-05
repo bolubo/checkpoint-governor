@@ -46,12 +46,11 @@ One page per question. Start where your question is. Every local link here resol
 
 | page | question |
 |---|---|
-| [design.md](design.md) | how is the backstop built? |
+| [design.md](design.md) | how is it built? |
 | [ci.md](ci.md) | what runs on a push, and why that and nothing more? |
 | [operator-notes.md](operator-notes.md) | what must the platform allow: the grace a checkpoint needs |
 | [contrast.md](contrast.md) | what does the four-policy comparison actually say, and how do I reproduce it? |
 | [gate.md](gate.md) | how do I give a higher-priority arrival lead time on a cluster? |
-| [first-edition-parity.md](first-edition-parity.md) | what did the first edition have that this one does? |
 
 ## If you are following the work
 
@@ -66,7 +65,7 @@ The current number is **`v0.25.0`** (decision 0029). `v0.24.0`, `v0.23.0`, `v0.2
 | [release-0.22.md](release-0.22.md) | history: the arrival waits for the write |
 | [release-0.21.md](release-0.21.md) | history: where the loop closed, under a real eviction |
 | [plan-library.md](plan-library.md) | the roadmap: what is done, what is next, and the command that proves each line |
-| [product-v1.md](product-v1.md) | v1: the surface |
+| [product-v1.md](product-v1.md) | design: the surface a user meets |
 | [product-v0.15.md](product-v0.15.md) | history: the release that could be installed, and proved |
 | [product-v0.2.md](product-v0.2.md) | history: the release that says whether the work can continue |
 | [plan-platform.md](plan-platform.md) | superseded by the library direction; kept as history |

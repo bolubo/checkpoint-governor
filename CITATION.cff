@@ -9,8 +9,8 @@ authors:
 repository-code: "https://github.com/bolubo/checkpoint-governor"
 url: "https://github.com/bolubo/checkpoint-governor"
 license: Apache-2.0
-version: 0.23.0
-date-released: 2026-11-04
+version: 0.25.0
+date-released: 2026-11-05
 type: software
 keywords:
   - checkpoint

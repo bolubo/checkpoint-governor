@@ -115,7 +115,7 @@ granted; and a refusal when the second node has nobody to ask.
 **Limits written down** (decision 0031, `docs/gate.md`): one pod per node is a model of how multi-pod
 Jobs are placed, not a scheduler promise; only CPU enters the arithmetic; only a `batch/v1 Job` is
 read (PyTorchJob/MPIJob are not); a real cross-node hold needs a checkpoint volume that both the gate
-and the pods can see — the lab's `hostPath /g1` is per node, so that run stays a deployment
+and the pods can see — the test cluster's `hostPath /g1` is per node, so that run stays a deployment
 prerequisite.
 
 The Python package carries the same number without the `v`: `ckpt-policy 0.23.0`.

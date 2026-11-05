@@ -7,7 +7,7 @@ numbers; a placeholder that survives into a release note is a lie.
 **Language:** Go stays the engine. Python is the front door and the client; it ships the engine, it does
 not re-implement it. Decision 0028, "two delivery shapes, one core".
 
-## Preconditions (owner decisions, before P1.4)
+## Preconditions (decided before P1.4)
 
 - [x] **PyPI**: the package name, and whether publishing uses trusted publishing. Without a name, the
       wheel is built and tested locally; `pip install` from a URL stays documented but unverified.
@@ -151,15 +151,17 @@ Same shape, same contract test; the real runs need torch, so they stay manual ta
 - [x] **3.1 Lightning.** A callback that replaces `ModelCheckpoint`'s interval while the rest of
       Lightning stays untouched.
   **done when** a request is honoured at the next batch end, once, and the end is recorded.
-  **observed** `make py` runs 28 tests; Lightning's four cases pass (silent `[]`, one request →
-      `ckpt-step-1.ckpt`, a custom filename, `ending`). The latency is one batch because
-      `trainer.save_checkpoint` is public — the contrast with the Trainer integration, whose latency is
-      `logging_steps`.
-- [x] **3.2 Composer.** A callback that asks the policy; `CheckpointSaver` is removed.
+  **observed** `make py` covers the four Lightning cases (silent `[]`, one request →
+      `ckpt-step-1.ckpt`, a custom filename, `ending`), and `make lightning` runs it against a real
+      trainer: the callback drives `ModelCheckpoint`'s own `_save_topk_checkpoint` and
+      `_save_last_checkpoint`, so the file on disk is the framework's complete checkpoint. The latency
+      is one batch; the Trainer integration's is `logging_steps`.
+- [x] **3.2 Composer.** A callback that asks the policy and drives the trainer's `CheckpointSaver`.
   **done when** a request is honoured at the next batch end, once, and the end is recorded.
-  **observed** `make py` runs 31 tests; the three Composer cases pass (silent, one request with its
-      filename format, `ending`). The real run is not exercised here (no composer in this environment);
-      the page states what `CheckpointSaver` used to provide and no longer does.
+  **observed** `make py` covers the three Composer cases (silent, one request with its filename
+      format, `ending`), and `make composer` runs it against composer 0.32.1: the callback finds the
+      trainer's `CheckpointSaver` and drives its `_save_checkpoint` and `_rotate_checkpoints`, so the
+      folder, the retention and the latest-symlink stay the framework's. The saver is kept, not removed.
 
 ## P4 — the contributor ladder
 
@@ -191,11 +193,11 @@ A repository is read before the product is used. Each file here answers a questi
 anyway, and each one is checked by a link test rather than by memory.
 
 - [x] **6.1 The package a first-time reader needs.** `docs/index.md` (one line per page, grouped by the
-      question), a README of 586 words, "Start here" at the top of `CONTRIBUTING.md`, and
+      question), a README of one screen, "Start here" at the top of `CONTRIBUTING.md`, and
       `GOVERNANCE.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CITATION.cff` at the root.
   **done when** every local link in the README and `docs/index.md` resolves, and `make docs` passes.
-  **observed** `docs: 45 pages, 50 local links, 0 dead`; the README is 586 words and names the four
-      pages a reader needs instead of listing thirty-one.
+  **observed** `docs: 45 pages, 50 local links, 0 dead`; the README is one screen and names the pages a
+      reader needs instead of listing every page.
 - [x] **6.2 Package metadata.** `pyproject.toml` carries the licence, the author, five `[project.urls]`
       entries, eight classifiers and five keywords, so a PyPI page says what the repository says.
   **done when** the wheel builds with that metadata and `make wheel` prints `engine inside`.
@@ -294,18 +296,18 @@ The S3-A measurement changed the shape of the preemption feature, not its purpos
       `ckptgate v0.21.0` · `make install` installs the third binary too. `install.sh` treats it as
       optional, so a tarball from before it existed still installs the two core binaries.
 
-## P9 — The real-machine matrix (in progress)
+## P9 — The real-machine matrix
 
 Every row prints N, the margin or the lost steps, and the command that reproduces it. No probabilities.
 
 | condition | evidence | still missing |
 |---|---|---|
-| `risk.shutdown` | S2 2026-11-03, grace 60 / 5s, N=5: 5/5, margin +36.5..+41.5s, lost 0, `may-exit` 5/5; grace 30: 5/5, +7.1..+15.1s; grace 10: 0/5, -9.9..-5.6s; **with a declared `T_write` (`--estimate=20s`): `skip no-time`, 0 writes, may-exit, no broken copy**; cadence-only 0/5 | grace 1s / other cadences, if anyone asks |
-| `risk.preempt` | G1 5/5, wait 4.0-4.8s, lost 0; G2 fail-open, lost 6. **Fanout (0031)**: world-level G3 in `contrib/gate/submit_fanout_test.go` — a two-node world, two governed units, two stand-in controllers: one victim per node, both seals observed before the job is created; a node with no governed unit makes the hold all-or-nothing | a **real** 2-node cluster run. The lab's `hostPath /g1` is per node, so a worker's checkpoint is invisible to the gate on the control plane; shared storage (NFS or a real cluster) is the prerequisite. That is a deployment limit, not a gate arithmetic gap |
+| `risk.shutdown` | S2 2026-11-03, grace 60 / 5s, N=5: 5/5, margin +36.5..+41.5s, lost 0, `may-exit` 5/5; grace 30: 5/5, +7.1..+15.1s; grace 10: 0/5, -9.9..-5.6s; **with a declared `T_write` (`--estimate=20s`): `skip no-time`, 0 writes, may-exit, no broken copy**; cadence-only 0/5 | **none for the wrapper**: grace 60/30/10/1, N=3 each, `hack/wrap-grace.sh`; 60 and 30 seal with lost 0, 10 and 1 print the honest failure. Other cadences are unmeasured |
+| `risk.preempt` | G1 5/5, wait 4.0-4.8s, lost 0; G2 fail-open, lost 6. **Fanout (0031)**: world-level G3 in `contrib/gate/submit_fanout_test.go` — a two-node world, two governed units, two stand-in controllers: one victim per node, both seals observed before the job is created; a node with no governed unit makes the hold all-or-nothing | a real cluster with shared storage. A 2-node kind cluster with a shared `hostPath` now runs the controller on the control plane and the job on a worker (`hack/kind-two-node.sh`: `sealed 1 · verified 1`); the test cluster's per-node `/g1` is why a real cluster still needs shared storage. That is a deployment limit, not a gate arithmetic gap |
 | `store.low-space` | rig X `disk-full` on tmpfs (8 MiB), N=5: naive ends at **0 KiB free**, governed stops at **6.076-6.080 MiB**, both leave one intact copy. On a **loopback ext4 image** (12 MiB, real fsync and ENOSPC), N=5: naive **0 KiB**, governed **4.264-4.268 MiB**, both intact — `VOLUME=loop sh experiments/rig/run.sh l1 disk-full` | a partition on a physical drive (the loop variant is a real file system, but its blocks are a sparse file, so it measures the protocol and not the drive's timing) |
 | `host.memory-pressure` | container cgroup 2 GiB + 1.94 GiB hog, N=3: condition **1**, first write at step 496-498, the next attempt a few steps later refused by the 60s cooldown, step 540-541 at 40s (lost 42-45), `oom_kill` 0. **A real OOM** (2 GiB limit, 2000 MiB hog then +2 MiB every 0.5 s), N=3: `oom_kill` **1/1/1**, first write at step 494/494/495, the job and the controller were both still alive, and the loss between the write and the OOM was 148-203 steps (3.0-4.1 s) — `OOM=1 HOG=2000 CREEP=2 sh experiments/real/s3_memory.sh` | **decided:** a persistent pressure keeps the 60 s retry. It is a cost bound, not a detection failure — the first write is what the condition buys, and re-deciding every round while the pressure persists would turn one alarm into a write storm |
 | `job.ending` | N=3 normal end: `may-exit` 3/3, copy at step 49, lost 0 | — |
-| `watch.broken` | the sampler's own failure budget: `internal/loop/blind_test.go` (three unreadable reads, then a readable one) and the D layer | **none, by design**: the sampler *is* the controller. Killing it removes the observer rather than a probe, so there is no external trigger for "we have no eyes" — it is exercised where it exists, in the read path |
+| `watch.broken` | the sampler's own failure budget: `internal/loop/blind_test.go` (three unreadable reads, then a readable one) and the D layer | **none, by design**: the sampler *is* the controller. Killing it removes the observer rather than a probe, so no external check can report that the observer is gone — it is exercised where it exists, in the read path |
 
 The `risk.shutdown` row is in `experiments/real/README.md`; the harness is `s2_shutdown.sh` and its
 `WAIT_AFTER_SEAL=20` is part of the measurement, not a tuning knob.
@@ -314,7 +316,7 @@ The `risk.shutdown` row is in `experiments/real/README.md`; the harness is `s2_s
 
 | Thing | Action | Done when | State |
 |---|---|---|---|
-| README first screen | install first, the contrast table second, Docker and Kubernetes below | `make docs` passes and the sections are in that order | done — 586 words |
+| README first screen | the contrast table first, install second, Docker and Kubernetes below | `make docs` passes and the sections are in that order | done — one screen |
 | `docs/plan-4.2.md`, `docs/checklist-*.md` | moved to `/root/cg-internal-notes` (process, not product) | `docs/*.md` count drops by three and `make docs` passes | done — 31 → 28, plus `index.md` |
 | `deploy/` | frozen; no new work, still documented | README's deploy section is one screen | done |
 | Certificate product, platform injection, adapter zoo, conformance | refused | no page or target appears for them | holding |
@@ -328,5 +330,5 @@ before P3: the largest audience, and its 500-step default is the number the cont
 
 ## Not in this version
 
-PyPI publication (until the precondition is decided), macOS/Windows wheels, a Python re-implementation
-of the policy, the platform deployments, certificates, dashboards.
+macOS and Windows wheels, a Python re-implementation of the policy, platform deployments, certificates,
+dashboards.

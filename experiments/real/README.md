@@ -36,7 +36,7 @@ python3 experiments/real/fetch.py
 
 ```bash
 sh experiments/real/s0_machine.sh
-/root/llamafactory-venv/bin/python experiments/real/s1_price.py
+python3 experiments/real/s1_price.py     # needs torch in this interpreter
 TRIALS=3 sh experiments/real/s2_shutdown.sh
 ```
 

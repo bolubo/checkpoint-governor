@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ckpt-policy"
 version = "0.25.0"
-description = "Tell checkpoint-governor where the loop is, and let it tell you when a write is worth doing"
+description = "A safety net for training jobs: ask for a checkpoint when risk rises, and prove the newest copy can continue"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "Apache-2.0" }

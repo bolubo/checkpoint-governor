@@ -8,9 +8,10 @@
 Current release: [`v0.25.0`](docs/release-0.25.md) · [changelog](CHANGELOG.md). The Python package
 carries the same number.
 
-A backstop for training runs: it watches the named conditions that come before a lost job, asks for a
-write when one fires, and proves that the copy which landed can resume — whoever wrote it. One Go
-engine, one plan file, no CRD, no API, no new permission.
+A safety net for training jobs. It watches the conditions that come before a lost job, asks the job to
+write a checkpoint when one fires, and tells you whether the newest copy can continue after a restart —
+whichever library wrote it. One static Go binary, one plan file; on Kubernetes, no custom resource and
+no extra permission.
 
 ## The default is the problem
 
@@ -22,22 +23,23 @@ governor, unconfigured               1      40s   everything
 2h bound                             2      80s   ≤2h
 ```
 
-Four policies on one four-hour job (`make contrast`, explained in [docs/contrast.md](docs/contrast.md)): same steps, same disk, same write cost. The job
-has **no signals**, which is the last column: a job that configures nothing writes once, at the end, and
-a silent death costs everything since the last write.
+Four policies on one four-hour job (`make contrast`, explained in
+[docs/contrast.md](docs/contrast.md)): same steps, same disk, same write cost. The job has **no
+signals**, which is the last column: a job that configures nothing writes once, at the end, and a
+silent death costs everything since the last write.
 
 A stop is not silent: `SIGTERM`, an eviction, a drain, a full volume and a memory limit are named
-conditions (`docs/conditions.md`); an urgent one asks for a write. What the platform must allow for that
-write is `docs/operator-notes.md`.
+conditions (`docs/conditions.md`); an urgent one asks for a write. The time a platform must allow for
+that write is measured in `docs/operator-notes.md`.
 
-Framework defaults at four scales: `make waste` (`docs/waste.md`).
+What the framework defaults cost at four scales: `make waste` (`docs/waste.md`).
 
-## Any writer's layout
+## Any checkpoint layout
 
 Your job probably already writes checkpoints its own way: Hugging Face's `checkpoint-<step>/`,
-Lightning's `last.ckpt`, a Composer episode. The governor reads the newest copy through one finder and
-judges it by the declaration beside it — a small file the adapters write on every save, or one command
-for copies that existed before the integration:
+Lightning's `last.ckpt`, Composer's epoch checkpoints. The governor reads the newest copy through one
+finder and judges it by the declaration beside it — a small file the adapters write on every save, or
+one command for copies that existed before the integration:
 
 ```bash
 $ ckptctl resumable --dir=/ckpt/job-1
@@ -49,8 +51,8 @@ declared resume.json (step 1000, requires model, optimizer, scheduler, rng)
 
 A copy nobody described is `unknown`, never "not resumable". The declaration, a `probe_cmd` in
 `.ckpt-governor/layout.json`, or your own `glob` turns it into a known one. Recognised layouts:
-`gen-N/`, `step-N/`, `checkpoint-N/`, `*.ckpt`, Composer episodes, and whatever your `layout.json`
-names.
+`gen-N/`, `step-N/`, `checkpoint-N/`, `*.ckpt`, Composer's epoch checkpoints, and whatever your
+`layout.json` names.
 
 ## Install
 
@@ -60,12 +62,11 @@ ckptctl run --dir=/ckpt/job-1 --once
 ```
 
 `install.sh` verifies the release's checksum before it installs anything. With Go, `make install` puts
-the two binaries on your PATH. In a container:
+the binaries on your PATH. In a container:
 
 ```bash
 docker build -t ckpt-governor:local .
 docker run --rm -v /ckpt:/ckpt ckpt-governor:local run --dir /ckpt
-docker run --rm --tmpfs /tmp --entrypoint /contrast ckpt-governor:local    # the four rows above
 ```
 
 In Python, `pip install ckpt-policy` puts the client and the engine in one place (manylinux x86_64;
@@ -79,7 +80,7 @@ from ckpt_policy import Governor
 g = Governor("/ckpt/job-1", start_engine=True)
 for step, batch in loader:
     g.step(step)
-    if g.should_save():            # the plan asked; the whole write side, one line
+    if g.should_save():            # the policy asked for a write
         save(g.generation())       # your library writes the shards
 ```
 
@@ -99,29 +100,31 @@ wrap: sealed at step 1000 (18.4s) → forwarding SIGTERM
 
 A grace that is too short is said out loud (`final write NOT made`), never silent.
 
-## The two inputs
+## Two numbers, both optional
 
-| input | meaning | required |
+| flag | meaning | required |
 |---|---|---|
-| `no-us` | what the job would do without us: `none`, or a period | no — unset means `none`, and the first line of the run says so |
-| `with-us` | how stale the newest checkpoint may become while we are alive | no — unset means exceptions only |
+| `--no-us` | what the job would do without the governor: `none`, or a period | no — unset means `none`, and the first line of the run says so |
+| `--with-us` | how stale the newest checkpoint may become while the governor is running | no — unset means exceptions only |
 
-Unset `with-us` means **no periodic writes**: the governor is silent until a condition says the work is
-at risk. That is the posture the product exists for.
+Unset `--with-us` means **no periodic writes**: the governor is silent until a condition says the work
+is at risk. That is the posture the product exists for.
 
-A write has two causes while we live: a condition is `1`, or the window closes. Training end is always
-written once (decision 0017). Nothing is promised when no condition fires: a death that announces
-nothing loses what was never written, and the status prints that hole.
+A write has two causes while the governor is running: a condition is `1`, or the staleness window
+closes. Training end is always written once. Nothing is promised when no condition fires: an
+unannounced death loses what was never written, and the status report names the gap.
 
 ## On a cluster
 
 ```bash
 kubectl apply -f deploy/governor.yaml
-kubectl logs -l app=checkpoint-governor     # watching 2 units · 0 blind
+kubectl logs -l app=checkpoint-governor     # units watched, and how many it cannot read
 ```
 
-One process over a checkpoint volume; a child directory is a unit when it holds `.ckpt-governor/`.
-Volume, tag and limits are in `deploy/README.md`.
+One process over a checkpoint volume. Each directory under it that contains `.ckpt-governor/` is
+watched as one job.
+
+Volume, image tag and resource limits are in `deploy/README.md`.
 
 A small team that submits higher-priority work through `contrib/gate` gets lead time instead of
 notice: the arrival waits until the victim has sealed (`docs/gate.md`). Direct submissions keep the
@@ -140,10 +143,10 @@ announcement-only path.
 
 ## Documentation
 
-Start with the plan (`docs/plan-library.md`), the cost model (`docs/waste.md`), the resume contract
-(`docs/resume-contract.md`) and the integration template (`docs/integration-template.md`). Every page is
-in `docs/index.md` (rendered at <https://bolubo.github.io/checkpoint-governor/>); decisions in
-`docs/decisions/`; a tag releases as `RELEASE.md` says.
+Start with `docs/install-python.md` (or `docs/install.md` for the binaries), the integration page for
+your framework, and `docs/operator-notes.md` for the platform. Every page is in `docs/index.md`
+(rendered at <https://bolubo.github.io/checkpoint-governor/>); decisions in `docs/decisions/`; a tag
+releases as `RELEASE.md` says.
 
 ## Community
 

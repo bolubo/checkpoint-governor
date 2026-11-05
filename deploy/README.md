@@ -21,7 +21,7 @@ the full list of files a job and the controller write.
 |---|---|---|
 | a laptop or a single job | `docker run --rm -v /ckpt:/ckpt ckpt-governor:local run --dir /ckpt` | the product, no discovery |
 | a node with many jobs | `kubectl apply -f deploy/governor.yaml` | one process over a shared volume |
-| development | `make install` | the two binaries on `PATH` |
+| development | `make install` | the binaries on `PATH` |
 
 ## Two clusters
 

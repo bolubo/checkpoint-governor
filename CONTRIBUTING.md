@@ -29,6 +29,7 @@ The rest of this page is the style the review will hold you to. It is short on p
 - **Short sentences, one idea each.** If a sentence needs a comma to carry two ideas, it is two
   sentences.
 - **Comments explain why.** The code already says what. A comment that repeats the code is deleted.
+- Which programming language owns which part, and why: `docs/language-boundary.md`.
 
 ## Naming
 
@@ -120,6 +121,6 @@ Watching CI is not a job. The check is the gate, and the merge happens without a
 
 ## Commits
 
-- English, one milestone per commit.
+- English, one coherent change per commit.
 - The message states what changed and the number that proves it.
 - Never commit generated output that a command can reproduce.

@@ -237,7 +237,7 @@ verify: check e2e parity spot resume py drill
 
 # parity is the three edges the first edition had and this repository did not: numbers a scraper can
 # read, an outward event per changed plan, and a condition an operator adds without a fork. Each
-# line is the real test, and the last line is the claim (docs/first-edition-parity.md).
+# line is the real test, and the last line is the claim.
 parity:
 	$(GO) test ./internal/metrics -run TestTheExpositionIsValidAndHonest
 	$(GO) test ./internal/notify -run TestOnePostCarriesTheEvent

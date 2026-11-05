@@ -1,7 +1,7 @@
-# Design: the backstop, and how it is built
+# Design: the safety net, and how it is built
 
 This page is one document in two parts: the argument (Appendix A) and the build (§1–§14).
-It absorbs `design-backstop.md` and `design-v1.md`; both stay in git history.
+It absorbed two earlier design pages; both stay in git history.
 
 Status: engineering design. Date: 2026-11-01. Companion to Appendix A (why and what); this page is
 *how*, and it is the page an implementer works from. Where an older page conflicts (`docs/policy.md`
@@ -9,11 +9,11 @@ Status: engineering design. Date: 2026-11-01. Companion to Appendix A (why and w
 
 The definitions this design is cut against, in three lines:
 
-1. **Without us** the user writes every `no-us`. He states that number once; it is the baseline of
-   the saving and the job's timer if we die.
-2. **With us** he may go `with-us` between checkpoints (optional). It is a **deadman window**, not a
-   schedule, refreshed by **any** write. While we run, a write has exactly two causes: an urgent
-   condition is `1`, or the window is due.
+1. **Without the governor** the user writes every `no-us`. The number is stated once; it is the
+   baseline of the saving and the job's own timer if the governor dies.
+2. **With the governor** the user may set `with-us` between checkpoints (optional). It is a
+   **staleness bound**, not a schedule, refreshed by **any** write. While the governor runs, a write
+   has exactly two causes: an urgent condition is `1`, or the window is due.
 3. **The algorithm is the frozen rule** in `docs/policy.md` §1: a named boolean, no clock, no
    arithmetic. Everything numeric below is the implementation's.
 
@@ -262,7 +262,7 @@ layer's files) and the line its test prints.
 The fallback is the item that decides whether the product's central sentence is true; it was built
 as one coordinated change with the delivery layer.
 
-## 13. What this design deleted (the reasoning is in `design-backstop.md` §4)
+## 13. What this design deleted (the reasoning is in the earlier design page, §4)
 
 the old three-state `Fallback` timer, armed at the request, and its `none`/`unset` error states ·
 `Bounds.MaxLostWork`/`MaxLostSteps`/`MaxTax`/`ExpectedEnd`/`Guarantee`/`OnConflict`/`MemoryBudgetBytes` ·
@@ -282,13 +282,13 @@ fifteen `Snapshot` fields the risk core never reads · `ReasonEntry.Values` numb
 
 ## Appendix A — the saving, and the hole
 
-This appendix is what was `docs/design-backstop.md`. It restates the frozen rule and says why the
-product exists; §1–§14 above say how it is built.
+This appendix was the earlier design page. It restates the frozen rule and says why the product
+exists; §1–§14 above say how it is built.
 
 ### A.1 The saving, in one paragraph
 
-Without the governor a user writes every 10 minutes because he is afraid of what he cannot see. With
-it he configures 30 minutes, because the exceptions are covered. The saving is the difference between
+Without the governor a user writes every 10 minutes because the risk is invisible. With it the same
+user configures 30 minutes, because the exceptions are covered. The saving is the difference between
 those two periods: 3× fewer scheduled writes for the same protection. Everything else follows:
 
 - The window's refresh rule saves nothing. It only refuses to charge the user twice for a window that
@@ -303,12 +303,12 @@ those two periods: 3× fewer scheduled writes for the same protection. Everythin
 |---|---|---|
 | the question | "without the governor, how often would you have written?" | "with the governor, how long may a checkpoint be stale?" |
 | while we run | nobody uses it | **the executor** keeps the window |
-| when we die | **the job's own timer** | nobody |
+| if the governor dies | **the job's own timer** | nobody |
 | in the report | **the baseline: `run / no-us`** | the comparison: `run / with-us` |
 | valid answers | a duration, or `none` (you would not have written at all) | a duration, or unset (no time-based write) |
 
-The window is a deadman, and its refresh is bookkeeping. It is measured seal to seal, and any write
-restarts it:
+The window is a staleness bound, and its refresh is bookkeeping. It is measured seal to seal, and any
+write restarts it:
 
 ```
 written at 09:00 (exception, sealed 09:05) → the window is served; next due 10:05

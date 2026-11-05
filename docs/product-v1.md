@@ -1,6 +1,6 @@
-# Product v1 — the surface
+# The surface — what a user meets
 
-Status: design. Date: 2026-11-01. Companions: `README.md`, `docs/decisions/0017-two-numbers.md`,
+Status: design record. Date: 2026-11-01. Companions: `README.md`, `docs/decisions/0017-two-numbers.md`,
 `docs/experiments-matrix.md`.
 
 The decision engine is frozen. This page specifies the surface a user meets: what is asked, what is
