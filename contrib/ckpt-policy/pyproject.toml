@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ckpt-policy"
-version = "0.27.0"
+version = "0.28.0"
 description = "A safety net for training jobs: ask for a checkpoint when risk rises, and prove the newest copy can continue"
 readme = "README.md"
 requires-python = ">=3.9"

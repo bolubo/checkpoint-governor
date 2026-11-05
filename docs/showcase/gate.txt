@@ -1,0 +1,6 @@
+gate       default/arrival needs 2000m; lab is 1000m short on kueue-lab-control-plane
+victims    default/victim (kueue-lab-control-plane, priority 50, size 2000m)
+deadline   1m30s
+gate       sealed at step 9 after 300ms: releasing the arrival
+submitted  default/arrival
+sealed both ranks · arrival created · victim lost 0

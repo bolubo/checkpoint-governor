@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bolubo/checkpoint-governor/internal/setup"
 	"github.com/bolubo/checkpoint-governor/internal/storage"
 )
 
@@ -25,8 +26,19 @@ func runSetup(args []string, out io.Writer) int {
 	apply := fs.Bool("apply", false, "with --agent, write the configuration and the skill (backup, idempotent)")
 	project := fs.String("project", ".", "the project directory an agent configuration is written into")
 	root := fs.String("root", "", "the checkpoint root the MCP server may read (default: --dir)")
+	check := fs.Bool("check", false, "read the cluster and the volume, change nothing")
+	write := fs.String("write", "", "write governed-job.yaml, submit.sh, agent-mcp.json and README.md here")
+	queue := fs.String("queue", "", "the ClusterQueue the held arrival goes to")
+	context := fs.String("context", "", "the kubectl context to read")
+	image := fs.String("image", "", "the image a generated governed Job runs")
+	claim := fs.String("claim", "", "the PVC a generated governed Job mounts")
+	world := fs.String("world", "", "the observer's world directory, for submit.sh")
+	cluster := fs.String("cluster", "", "the cluster name the observer writes, for submit.sh")
+	asJSON := fs.Bool("json", false, "with --check, print the report as one JSON object")
 	fs.Usage = func() {
 		fmt.Fprintln(out, "usage: ckptctl setup --local --dir=<checkpointDir>")
+		fmt.Fprintln(out, "       ckptctl setup --check --dir=<dir> --queue=<name> [--context=<ctx>] [--json]")
+		fmt.Fprintln(out, "       ckptctl setup --write=<outDir> --dir=<dir> --queue=<name>")
 		fmt.Fprintln(out, "       ckptctl setup --agent=claude|codex [--apply] [--project=<dir>] [--root=<dir>]")
 	}
 	if err := fs.Parse(args); err != nil {
@@ -34,6 +46,61 @@ func runSetup(args []string, out io.Writer) int {
 	}
 	if *agent != "" {
 		return setupAgent(*agent, *apply, *project, *root, *dir, out)
+	}
+	if *check {
+		if *dir == "" {
+			fs.Usage()
+			return 2
+		}
+		rep := setup.Check(*dir, *context, *queue, setup.Exec{Context: *context})
+		if *asJSON {
+			raw, err := rep.Marshal()
+			if err != nil {
+				fmt.Fprintf(out, "setup: %v\n", err)
+				return 1
+			}
+			fmt.Fprintf(out, "%s\n", raw)
+		} else {
+			fmt.Fprintf(out, "setup check %s", *dir)
+			if *queue != "" {
+				fmt.Fprintf(out, ": queue %s", *queue)
+			}
+			fmt.Fprintln(out)
+			for _, row := range rep.Rows {
+				fmt.Fprintf(out, "%-11s %-8s %s", row.Name, row.Status, row.Detail)
+				if row.Remedy != "" {
+					fmt.Fprintf(out, " · %s", row.Remedy)
+				}
+				fmt.Fprintln(out)
+			}
+			if rep.Ready {
+				fmt.Fprintln(out, "\nsetup: ready")
+			} else {
+				fmt.Fprintln(out, "\nsetup: blocked")
+			}
+		}
+		if rep.Ready {
+			return 0
+		}
+		return 1
+	}
+	if *write != "" {
+		if *dir == "" || *queue == "" {
+			fs.Usage()
+			return 2
+		}
+		files, err := setup.Write(*write, setup.WriteOptions{
+			Dir: *dir, Root: *root, Image: *image, Claim: *claim,
+			Queue: *queue, WorldDir: *world, Cluster: *cluster,
+		})
+		if err != nil {
+			fmt.Fprintf(out, "setup: %v\n", err)
+			return 1
+		}
+		for _, f := range files {
+			fmt.Fprintf(out, "written     %s\n", f)
+		}
+		return 0
 	}
 	if !*local || *dir == "" {
 		fs.Usage()

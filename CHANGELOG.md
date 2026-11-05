@@ -3,6 +3,34 @@
 One entry per released tag. The prototype's history before this file is `git log`; this file starts at
 the first release that makes a compatibility promise.
 
+## v0.28.0 — 2026-11-05
+
+The release that makes the contract easy to see, machine readable, and available to an agent.
+
+**`ckptctl demo`.** A real two-rank generation, one real fault (`kill`, `torn`, `short` or `clean`),
+and the same `resumable`/`verify` answers a production copy gets, in thirty seconds without a cluster
+or a GPU. `--repair` seals it again; `--json` is the same report. The demo refuses a directory it did
+not create, and `--clean` refuses without its marker.
+
+**`ckptctl setup`.** `--local` measures the volume and prints the four lines of glue; `--check` reads
+the cluster (kubectl only, read-only) and prints kubectl, Kueue, capacity, volume, storage, gate and
+controller as `ok`/`blocked`/`unknown` with a remedy; `--write` emits a governed Job, a gate wrapper,
+an MCP registration and a README. It applies nothing.
+
+**A read-only MCP server.** `ckptctl mcp --root=<dir>` answers `status`, `resumable`, `verify`,
+`explain`, `storage` and `evidence` over stdio. Every path is bounded by the root; an escape, including
+through a symlink, is refused. `setup --agent=claude|codex --apply` writes the registration and the
+skill with a backup, idempotently.
+
+**One evidence bundle.** `ckptctl evidence` and `--json` on `explain`, `audit`, `verify` and `doctor`
+share schema 1: status, resume, newest copy and its shards, attempts, storage, and a closed set of
+problem codes. The bundle assembles, it does not re-judge.
+
+**Tests.** `make py` runs 60 tests; `make test-claims` prints
+`claims: 51 · tests found: 51 · missing: 0`; `make mcp-test` covers the handshake, the six tools, the
+path guard and the config writers. The two-pod gate harness still prints
+`sealed both ranks · arrival created · victim lost 0`.
+
 ## v0.27.0 — 2026-11-05
 
 The release where the volume is measured instead of assumed, and a multi-pod victim is held as one

@@ -66,13 +66,14 @@ One page per question. Start where your question is. Every local link here resol
 
 ## If you are following the work
 
-The current number is **`v0.27.0`** (decision 0029). `v0.26.0`, `v0.25.0`, `v0.24.0`, `v0.23.0`, `v0.22.0`,
-`v0.21.0`, `v0.15.0` and `v0.2.0` are earlier numbers; the release pages are history, and the two
+The current number is **`v0.28.0`** (decision 0029). `v0.27.0`, `v0.26.0`, `v0.25.0`, `v0.24.0`, `v0.23.0`,
+`v0.22.0`, `v0.21.0`, `v0.15.0` and `v0.2.0` are earlier numbers; the release pages are history, and the two
 oldest are entries in `CHANGELOG.md`, not install instructions.
 
 | page | question |
 |---|---|
-| [release-0.27.md](release-0.27.md) | **the current release**: what the volume promises, and what a workload-level hold waits for |
+| [release-0.28.md](release-0.28.md) | **the current release**: a thirty-second demo, one evidence bundle, and an agent entry |
+| [release-0.27.md](release-0.27.md) | history: what the volume promises, and what a workload-level hold waits for |
 | [release-0.26.md](release-0.26.md) | history: the command, the check, and the glue |
 | [release-0.25.md](release-0.25.md) | history: installed, run for real, said exactly |
 | [release-0.24.md](release-0.24.md) | history: the copy can be judged, whoever wrote it |

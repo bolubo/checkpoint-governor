@@ -5,7 +5,7 @@
 [![pypi](https://img.shields.io/pypi/v/ckpt-policy)](https://pypi.org/project/ckpt-policy/)
 [![license](https://img.shields.io/github/license/bolubo/checkpoint-governor)](LICENSE)
 
-Current release: [`v0.27.0`](docs/release-0.27.md) · [changelog](CHANGELOG.md). The Python package
+Current release: [`v0.28.0`](docs/release-0.28.md) · [changelog](CHANGELOG.md). The Python package
 carries the same number.
 
 **Know whether your training run can continue — whichever library wrote the checkpoint.**

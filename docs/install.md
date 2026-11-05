@@ -43,7 +43,27 @@ docker run --rm -v /ckpt:/ckpt ckpt-governor:local run --dir /ckpt/job-1 --no-us
 A released tag is `ghcr.io/bolubo/checkpoint-governor:<tag>`; the workflow publishes a multi-arch image
 for every `v*` tag.
 
-## 3. A node with many jobs
+## 3. A governed job, checked before it is applied
+
+`ckptctl setup` is the one entry point: it reads the cluster and the volume, then prints either a
+ready line or the row that blocks it.
+
+```bash
+ckptctl setup --local --dir=/ckpt                     # no cluster: measure the volume, print the glue
+ckptctl setup --check --dir=/ckpt --queue=lab         # kubectl, read-only: kubectl, kueue, capacity,
+                                                      # volume, storage, gate, controller
+ckptctl setup --write=/tmp/governed --dir=/ckpt --queue=lab
+                                                      # governed-job.yaml, submit.sh, agent-mcp.json, README.md
+```
+
+Each check row prints `ok`, `blocked` or `unknown` with a reason and the command that changes it;
+`setup: ready` exits 0 and `setup: blocked` exits 1. `--check` only reads: it never applies a
+manifest, creates a workload, or edits the checkpoint directory.
+
+`--write` generates the four files a platform engineer copies into their own repository. It does not
+create a CRD, an operator, or a webhook, and it does not apply anything.
+
+## 4. A node with many jobs
 
 ```bash
 kubectl apply -f deploy/governor.yaml

@@ -1,6 +1,6 @@
 # Roadmap
 
-Status: 2026-11-05, current release `v0.27.0`. The direction is decision
+Status: 2026-11-05, current release `v0.28.0`. The direction is decision
 [0028](decisions/0028-the-direction-is-a-library.md): a policy library in the training loop, one Go
 engine, grown through integrations. The default is zero periodic writes.
 
@@ -22,22 +22,30 @@ This page is the order of work, not a list of every test. Each item names what w
   4.8s, lost 0 steps (decision 0031, [gate.md](gate.md)).
 - **The user path.** [first-ten-minutes.md](first-ten-minutes.md), [troubleshooting.md](troubleshooting.md),
   and the two examples above.
+- **A thirty-second first success.** `ckptctl demo` writes a real two-rank generation, breaks it, and
+  prints the same resumable/verify answers a production copy gets; `docs/demo.md` carries the four
+  faults.
+- **One entry point.** `ckptctl setup` measures a volume (no cluster), checks a cluster read-only, and
+  writes the four files a platform applies; `docs/install.md` §3.
+- **An agent surface.** `ckptctl mcp` serves the read-only evidence bundle over stdio;
+  `setup --agent=claude|codex` registers it and installs the skill; `docs/agents.md`.
+- **One machine view.** `ckptctl evidence` and `--json` on explain/audit/verify/doctor share schema 1;
+  `docs/evidence-schema.md`.
 
 ## Next, in order
 
 1. **A real DDP/FSDP run.** Two ranks with gradient sync, the Governor on each, one engine, `resumable`
    for the job. Done when `torchrun --nproc_per_node=2` completes and `ckptctl resumable` answers on a
-   host where its rendezvous works. Not measured here: this WSL's loopback transport is unavailable.
-2. **A real multi-pod Kueue victim.** A `Job`/`PyTorchJob` with more than one pod, the gate holding the
-   arrival until every victim seals. Done when the harness prints `lost 0` for a multi-pod job, not the
-   single `ckpttrainer` pod the S3 run uses.
-3. **Shared-volume semantics.** Measure `rename`/`fsync` on NFS/Lustre, or state that the local-disk
-   promise does not carry there. Done when [operator-notes.md](operator-notes.md) says which of the two
-   it is, with a measurement or a clear refusal.
-4. **Lightning and Composer examples.** The copyable loops are open issues #202 and #203. Done when
-   `python3 examples/lightning_loop.py` and `composer_loop.py` print their one line.
-5. **The remaining CLI conveniences.** `explain --json` (#105), `run --json` (#106), `world --evicted`
-   (#107), and the executable README blocks (#108). Each is additive; none changes the promise.
+   host where its rendezvous works. **Gated on a two-GPU host and on usage**: 0.28 deliberately did not
+   claim it.
+2. **PyTorchJob/MPIJob victims.** The gate reads only `batch/v1 Job` today; a Kubeflow job is the next
+   shape. Done when `setup --write` and the gate accept a PyTorchJob manifest.
+3. **An object-storage provider.** The storage contract measures POSIX mounts; S3 has different rename
+   semantics and needs its own adapter, not a promise borrowed from `local`.
+4. **Lightning and Composer example loops.** The callbacks are supported and tested; the copyable loops
+   are still open (#202, #203). Done when both print their one line under `make recipe-<name>`.
+5. **Ray Train and Slurm launchers.** The four calls are the same; what changes is who starts the engine
+   and where the rank comes from.
 
 ## Not planned
 
