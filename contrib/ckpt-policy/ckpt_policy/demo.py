@@ -8,6 +8,7 @@ end and asks for nothing during training. The numbers are a smoke test, not the 
 """
 
 import argparse
+import json
 import os
 import sys
 import tempfile
@@ -74,6 +75,7 @@ def main(argv=None) -> int:
     parser.add_argument("--steps", type=int, default=1000)
     parser.add_argument("--save-every", type=int, default=500)
     parser.add_argument("--write-ms", type=int, default=100)
+    parser.add_argument("--json", action="store_true", help="print the two result rows as JSON")
     args = parser.parse_args(argv)
 
     if engine_path() is None:
@@ -81,6 +83,13 @@ def main(argv=None) -> int:
         return 2
 
     rows = run(steps=args.steps, save_every=args.save_every, write_ms=args.write_ms)
+    if args.json:
+        json.dump([{"policy": r.policy, "writes": r.writes, "io": r.io, "overhead": r.overhead,
+                    "note": r.note}
+                   for r in rows], sys.stdout, indent=2)
+        print()
+        return 0
+
     print(f"a {args.steps}-step job, one write costs {args.write_ms}ms (real time, a smoke test)")
     print()
     print(f"{'policy':<42} {'writes':>7} {'io':>8} {'overhead':>10}")
