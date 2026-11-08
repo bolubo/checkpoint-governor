@@ -48,7 +48,7 @@ func Judge(c Copy, cfg Config, asked resume.World) resume.Verdict {
 // guess. A copy whose shard is missing from the volume is not resumable, whatever its declaration
 // claims (0026).
 func checkShards(c Copy, decl resume.File, v resume.Verdict) resume.Verdict {
-	if !v.Resumable() || c.Target != "." || decl.World.Ranks <= 1 {
+	if !v.Resumable() || c.Target != "." {
 		return v
 	}
 	raw, err := os.ReadFile(filepath.Join(c.Dir, "manifest.json"))
@@ -57,6 +57,26 @@ func checkShards(c Copy, decl resume.File, v resume.Verdict) resume.Verdict {
 	}
 	m, err := verify.Parse(raw)
 	if err != nil {
+		return v
+	}
+
+	// The manifest is a claim about what was written; the volume is what exists. Every entry is
+	// checked, marked or not: a framework checkpoint carries no rank markers at all, so a deleted
+	// model.safetensors used to read as resumable because only ranked shards were looked at.
+	//
+	// Presence only. A file that is there at the wrong size is a content problem, and content is what
+	// `verify` answers; mixing the two here would make the two commands disagree about the same copy.
+	for _, sh := range m.Shards {
+		if _, statErr := os.Stat(filepath.Join(c.Dir, sh.Name)); statErr != nil {
+			v.Reason = resume.ReasonShardMissing
+			v.MissingRank = max(sh.Member, 0)
+			v.Missing = nil
+			v.Detail = fmt.Sprintf("shard %s is not in the copy", sh.Name)
+			return v
+		}
+	}
+
+	if decl.World.Ranks <= 1 {
 		return v
 	}
 	seen := map[int]bool{}
@@ -74,20 +94,6 @@ func checkShards(c Copy, decl resume.File, v resume.Verdict) resume.Verdict {
 		if !seen[rank] {
 			v.Reason = resume.ReasonShardMissing
 			v.MissingRank = rank
-			v.Missing = nil
-			return v
-		}
-	}
-	// The manifest is a claim about what was written; the volume is what exists. A rank named in the
-	// manifest but absent from the directory is not a complete copy, even though the declaration and
-	// the other shards agree (the S2 run deleted one shard and the old check still said 2/2).
-	for _, sh := range m.Shards {
-		if sh.Member <= 0 {
-			continue // rank 0 and unmarked shards share the zero value; only marked ranks are checkable
-		}
-		if _, err := os.Stat(filepath.Join(c.Dir, sh.Name)); err != nil {
-			v.Reason = resume.ReasonShardMissing
-			v.MissingRank = sh.Member
 			v.Missing = nil
 			return v
 		}

@@ -88,6 +88,9 @@ the save. That is the difference from the Trainer integration, whose latency is 
 ## Two things to know
 
 1. **The file is Lightning's, not ours.** The callback writes a `.ckpt` through Lightning's own API; our
+   A `.ckpt` is a single artifact, not a directory, so it gets `<file>.resume.json` and no manifest:
+   `resumable` answers from the declaration alone, and that is the one layout where nothing checks
+   the bytes. The directory layouts (Hugging Face, Composer) are indexed.
    `gen-N` layout is not involved. The declaration beside it is what makes `ckptctl resumable` able to
    answer for that file.
 2. **The saver's own schedule must be off.** `ModelCheckpoint` plus this callback is two schedules for

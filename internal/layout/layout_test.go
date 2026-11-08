@@ -248,6 +248,10 @@ func TestAProbeThatNeverAnswersNamesTheTimeout(t *testing.T) {
 func TestAMissingRankShardIsNotResumable(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "gen-0007")
+	// The files the manifest names must exist: presence is checked for every entry, so a fixture that
+	// only wrote the manifest would now be refused for the wrong reason.
+	write(t, dir, "rank0-model.bin", "x")
+	write(t, dir, "rank2-model.bin", "x")
 	write(t, dir, "manifest.json", `{"generation":7,"step":7,"sealedAt":"2026-11-02T04:55:44Z","writer":"x","shards":[`+
 		`{"name":"rank0-model.bin","size":1,"sha256":"`+strings.Repeat("a", 64)+`","member":0},`+
 		`{"name":"rank2-model.bin","size":1,"sha256":"`+strings.Repeat("b", 64)+`","member":2}]}`)
@@ -306,10 +310,42 @@ func TestAShardDeletedFromTheVolumeIsNotResumable(t *testing.T) {
 func TestASingleRankCopySkipsTheShardCheck(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "gen-0007")
+	write(t, dir, "rank0-model.bin", "x")
 	write(t, dir, "manifest.json", `{"generation":7,"step":7,"sealedAt":"2026-11-02T04:55:44Z","writer":"x","shards":[`+
 		`{"name":"rank0-model.bin","size":1,"sha256":"`+strings.Repeat("a", 64)+`","member":0}]}`)
 	declaration(t, dir, 7, ".", map[string]bool{"model": true}, []string{"model"})
 	if v := Judge(Copy{Dir: dir, Target: ".", Step: 7, Kind: KindGen, Sealed: true}, Config{}, resume.World{}); !v.Resumable() {
 		t.Fatalf("single-rank copy refused: %s", v.Line())
+	}
+}
+
+// A framework checkpoint carries no rank markers, and its declaration says model, optimizer,
+// scheduler and rng because that is what the framework was asked to write. Without an index of the
+// files, deleting the weights changed nothing: the receipt repeated the claim. This is the case the
+// adapter now seals, and the one that used to answer "resumable" over an empty directory.
+func TestAFrameworkCopysMissingFileIsNotResumable(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "checkpoint-10")
+	write(t, dir, "model.safetensors", "m")
+	write(t, dir, "optimizer.pt", "o")
+	write(t, dir, "manifest.json", `{"generation":10,"step":10,"sealedAt":"2026-11-08T00:00:00Z","writer":"ckpt-policy","shards":[`+
+		`{"name":"model.safetensors","size":1,"sha256":"`+strings.Repeat("a", 64)+`"},`+
+		`{"name":"optimizer.pt","size":1,"sha256":"`+strings.Repeat("b", 64)+`"}]}`)
+	declaration(t, dir, 10, ".", map[string]bool{"model": true, "optimizer": true}, []string{"model", "optimizer"})
+
+	c := Copy{Dir: dir, Target: ".", Step: 10, Kind: KindHF, Sealed: true, Declared: true}
+	if v := Judge(c, Config{}, resume.World{}); !v.Resumable() {
+		t.Fatalf("an intact framework copy was refused: %s", v.Line())
+	}
+
+	if err := os.Remove(filepath.Join(dir, "model.safetensors")); err != nil {
+		t.Fatal(err)
+	}
+	v := Judge(c, Config{}, resume.World{})
+	if v.Resumable() {
+		t.Fatalf("a deleted weight file still reads as resumable: %s", v.Line())
+	}
+	if v.Reason != resume.ReasonShardMissing || !strings.Contains(v.Detail, "model.safetensors") {
+		t.Fatalf("the refusal does not name the file: %s / %q", v.Line(), v.Detail)
 	}
 }

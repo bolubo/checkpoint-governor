@@ -1,0 +1,40 @@
+name: metadata
+
+# The repository description is public metadata that no diff can show. It was once truncated to a
+# single word by a shell that split the sentence on its spaces, and nothing noticed for a day: no
+# test, no review, no build. This job compares it with the line the documentation site publishes
+# with, so a drift becomes a red build instead of something a person has to spot.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Reading the description of the repository itself.
+  metadata: read
+
+jobs:
+  description:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: the repository description matches docs/_config.yml
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          want=$(sed -n 's/^description: *"\(.*\)"$/\1/p' docs/_config.yml | head -1)
+          if [ -z "$want" ]; then
+            echo "docs/_config.yml has no description line" >&2
+            exit 1
+          fi
+          got=$(gh api "repos/$GITHUB_REPOSITORY" --jq '.description // ""')
+          printf 'repository: %s\n' "$got"
+          printf 'page      : %s\n' "$want"
+          if [ "$got" != "$want" ]; then
+            echo "the repository description and docs/_config.yml disagree" >&2
+            exit 1
+          fi

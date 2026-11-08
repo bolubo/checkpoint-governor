@@ -361,9 +361,70 @@ class Governor:
         self._last_write = time.monotonic()
         return manifest
 
+    #: Beside a framework checkpoint, these files are ours: the manifest that indexes it and the
+    #: declaration that describes it. Everything else in that directory belongs to the framework.
+    _OURS_IN_A_CHECKPOINT = ("manifest.json", "resume.json")
+
+    def _framework_files(self, directory: str) -> list[str]:
+        """Every file the framework wrote, relative to the checkpoint directory.
+
+        Nested directories are walked because a sharded format may keep its state dicts in one.
+        `.ckpt-governor` is skipped because it is this client's rather than the framework's, and
+        `.write-*` is a `write_atomic` temporary that is about to be renamed.
+        """
+        names: list[str] = []
+        for root, dirs, files in os.walk(directory):
+            dirs[:] = sorted(d for d in dirs if d != BASE_DIR)
+            for name in sorted(files):
+                if name in self._OURS_IN_A_CHECKPOINT or name.startswith(".write-"):
+                    continue
+                names.append(os.path.relpath(os.path.join(root, name), directory))
+        return names
+
+    def seal_framework(self, directory: str, *, step: int) -> dict:
+        """Hash the files a framework wrote, then write the manifest a restore is judged against.
+
+        `declare()` says what a copy holds; this says what it *is*. Without it a reader can only repeat
+        the job's own claim, and a checkpoint whose `model.safetensors` was deleted still reads as
+        resumable — the one answer this product exists not to give.
+
+        Bounded on purpose: sizes and tail hashes (`manifest.TAIL_BYTES`), the same promise the
+        contract's own writer makes, so sealing a large checkpoint does not re-read every byte.
+        """
+        self._lead_only("manifest.json")
+        shards = self._framework_files(directory)
+        if not shards:
+            return {}
+        sealed_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        manifest: dict | None = None
+        problems: list[str] = []
+        attempts: list[dict] = []
+        for attempt in (1, 2):
+            try:
+                manifest = build_manifest(int(step), int(step), sealed_at, self.writer, shards,
+                                          directory)
+                problems = readback_problems(directory, manifest)
+            except OSError as e:
+                manifest, problems = None, [str(e)]
+            if not problems:
+                write_manifest(directory, manifest)
+                return manifest
+            attempts.append({
+                "attempt": attempt,
+                "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "problems": problems,
+            })
+        write_text(self.root, "seal-failed", json.dumps({
+            "generation": int(step),
+            "step": int(step),
+            "attempts": attempts,
+        }, indent=2))
+        return {}
+
     def declare(self, path: str, *, step: int, state: dict | None = None,
                 format: str = "other", requires: list[str] | None = None,
-                target: str | None = None, caveats: list[str] | None = None) -> None:
+                target: str | None = None, caveats: list[str] | None = None,
+                seal: bool = True) -> None:
         """Say what a framework-written checkpoint holds, beside that checkpoint.
 
         The framework owns the layout and the bytes; we own the statement a restore is judged
@@ -374,6 +435,11 @@ class Governor:
         (Lightning's `*.ckpt`). A directory gets `<dir>/resume.json` with `target: "."`; an artifact
         gets `<artifact>.resume.json` with `target: <file name>`. Those are the only two places a
         declaration may live.
+
+        With `seal` (the default) a directory also gets `<dir>/manifest.json`: the sizes and tail
+        hashes of the files the framework wrote. That is what turns "resumable" from a repeat of the
+        declaration into a verdict about the disk. An artifact target has no directory to index and
+        stays declaration-only.
 
         `requires` defaults to the four states a framework checkpoint can actually carry: model,
         optimizer, scheduler and rng. Frameworks re-iterate the loader instead of saving a data
@@ -391,6 +457,10 @@ class Governor:
             if is_dir:
                 out_dir = path
         os.makedirs(out_dir, exist_ok=True)
+        if seal and target == ".":
+            # Manifest first, declaration last: a copy that is indexed but not yet described is a
+            # write in progress, while one described and not indexed would be an unchecked claim.
+            self.seal_framework(out_dir, step=step)
         write_resume(out_dir, generation=int(step), step=int(step), format=format,
                      world=self.world.as_dict(),
                      state=state or self.saves.as_dict(),
