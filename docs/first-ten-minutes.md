@@ -13,7 +13,7 @@ ckptctl version
 ```
 
 ```
-ckptctl v0.28.0
+ckptctl v0.29.0
 ```
 
 The wheel carries the engine, so there is no second download. `ckptctl` is the same engine the Python

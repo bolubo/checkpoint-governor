@@ -3,6 +3,29 @@
 One entry per released tag. The prototype's history before this file is `git log`; this file starts at
 the first release that makes a compatibility promise.
 
+## v0.29.0 — 2026-11-08
+
+The release that makes the receipt true on the path most jobs actually use, and then stops.
+
+**A framework checkpoint is judged by its files.** `declare()` seals `manifest.json` beside the
+declaration it already wrote: sizes and tail hashes of everything the framework wrote, read back before
+they are promised. `ckptctl verify --dir <checkpoint-N>` judges a Hugging Face checkpoint instead of
+reporting a write in flight, and deleting `model.safetensors` turns `resumable` into
+`not resumable: shard model.safetensors is not in the copy`. `checkShards` checks every manifest entry,
+not only the rank-marked ones — which is all of them, for a framework layout.
+
+**A `.ckpt` is still a declaration only**, and its page says so: an artifact has no directory to index.
+
+**Public metadata has a check.** `.github/workflows/metadata.yml` compares the repository description
+with `docs/_config.yml`, because the description was once truncated to a single word and nothing else
+could have noticed.
+
+**One known limit is written down instead of fixed**: `seconds-left` advances on `step()`, so a step
+longer than the grace period leaves it stale (`compatibility.md`, "what this page does not promise").
+
+**This is the last release.** The thesis is complete for the layouts in `docs/compatibility.md`; the
+repository is archived. No further features, and the open issues are closed with a reason.
+
 ## v0.28.0 — 2026-11-05
 
 The release that makes the contract easy to see, machine readable, and available to an agent.

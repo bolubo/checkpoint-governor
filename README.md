@@ -5,8 +5,25 @@
 [![pypi](https://img.shields.io/pypi/v/ckpt-policy)](https://pypi.org/project/ckpt-policy/)
 [![license](https://img.shields.io/github/license/bolubo/checkpoint-governor)](LICENSE)
 
-Current release: [`v0.28.0`](docs/release-0.28.md) · [changelog](CHANGELOG.md). The Python package
-carries the same number.
+## Status: sealed
+
+`v0.29.0` is the last release, and this repository is archived read-only: no roadmap, no new features,
+issues closed with a reason. The Python package carries the same number as the tag.
+
+It was built to answer one question — *can this training run continue?* — and it answers it for the
+layouts it covers: a copy is judged against the files on disk, not against the job's own declaration.
+Where it covers nothing, the page says so instead of guessing
+([compatibility](docs/compatibility.md), and the `Not covered` notes in each release page).
+
+**Sunset condition**, written down rather than left to neglect. It would have been archived when a
+framework we target ships the check this repository exists to provide; or twelve months pass with no
+external use and no correctness fix; or keeping it correct costs more than it is worth to the person
+keeping it.
+
+The code is meant to be readable and correct, not current. Every claim in this README is either tested
+or marked unverified; that is the whole promise an archive can keep.
+
+Final release: `v0.29.0` · [changelog](CHANGELOG.md).
 
 **Know whether your training run can continue — whichever library wrote the checkpoint.**
 
