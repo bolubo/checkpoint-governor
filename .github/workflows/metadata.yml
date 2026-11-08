@@ -13,8 +13,6 @@ on:
 
 permissions:
   contents: read
-  # Reading the description of the repository itself.
-  metadata: read
 
 jobs:
   description:
