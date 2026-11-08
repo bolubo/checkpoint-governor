@@ -17,7 +17,7 @@ const (
 	ReasonWorldChanged    Reason = "world-not-reshardable" // the world changed and the format cannot re-shard
 	ReasonUnstated        Reason = "unstated"              // sealed, and nobody said what it holds
 	ReasonInvalid         Reason = "invalid"               // the declaration cannot be believed
-	ReasonShardMissing    Reason = "shard-missing"         // a rank's shard never made it into the copy
+	ReasonShardMissing    Reason = "shard-missing"         // a shard the manifest names is not in the copy
 )
 
 // required is what a full restore needs, in the catalogue's order: the model, and the state that makes
@@ -95,6 +95,11 @@ func (v Verdict) Line() string {
 		return fmt.Sprintf("not resumable: world changed %d → %d, and this format is not reshardable",
 			v.World.Ranks, want)
 	case ReasonShardMissing:
+		// A framework checkpoint names files, not ranks: "rank 0 shard missing" would be a number the
+		// writer never claimed. The detail names the file that was actually looked for.
+		if v.MissingRank == 0 && v.Detail != "" {
+			return "not resumable: " + v.Detail
+		}
 		return fmt.Sprintf("not resumable: rank %d shard missing", v.MissingRank)
 	default: // unstated, invalid
 		return "unknown: " + v.Detail

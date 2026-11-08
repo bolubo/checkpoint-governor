@@ -1095,3 +1095,55 @@ class TestRankOwnership(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TestFrameworkSealing(unittest.TestCase):
+    """A framework copy is judged by its files: `declare()` also seals what the framework wrote."""
+
+    def test_declaring_a_checkpoint_indexes_the_files_it_wrote(self):
+        with tempfile.TemporaryDirectory() as root:
+            ck = os.path.join(root, "checkpoint-10")
+            os.makedirs(ck)
+            with open(os.path.join(ck, "model.safetensors"), "wb") as f:
+                f.write(b"m" * 64)
+            with open(os.path.join(ck, "optimizer.pt"), "wb") as f:
+                f.write(b"o" * 32)
+
+            g = Governor(root)
+            g.declare(ck, step=10, format="hf-trainer")
+
+            with open(os.path.join(ck, "manifest.json")) as f:
+                manifest = json.load(f)
+            names = [s["name"] for s in manifest["shards"]]
+            self.assertEqual(names, ["model.safetensors", "optimizer.pt"])
+            self.assertEqual([s["size"] for s in manifest["shards"]], [64, 32])
+            self.assertEqual((manifest["generation"], manifest["step"]), (10, 10))
+            # our own metadata is not the framework's content
+            self.assertNotIn("resume.json", names)
+            self.assertNotIn("manifest.json", names)
+            self.assertTrue(os.path.exists(os.path.join(ck, "resume.json")))
+
+    def test_a_nested_shard_directory_is_indexed_too(self):
+        with tempfile.TemporaryDirectory() as root:
+            ck = os.path.join(root, "checkpoint-10")
+            os.makedirs(os.path.join(ck, "pytorch_model_fsdp_0"))
+            with open(os.path.join(ck, "pytorch_model_fsdp_0", "shard-0.bin"), "wb") as f:
+                f.write(b"s" * 16)
+
+            g = Governor(root)
+            g.declare(ck, step=10, format="hf-trainer")
+
+            with open(os.path.join(ck, "manifest.json")) as f:
+                manifest = json.load(f)
+            self.assertEqual([s["name"] for s in manifest["shards"]],
+                             [os.path.join("pytorch_model_fsdp_0", "shard-0.bin")])
+
+    def test_an_artifact_declaration_stays_unindexed(self):
+        """A `.ckpt` has no directory to index; the declaration is all there is, and that is stated."""
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "last.ckpt")
+            with open(path, "wb") as f:
+                f.write(b"c" * 16)
+            g = Governor(root)
+            g.declare(path, step=3, format="lightning")
+            self.assertTrue(os.path.exists(path + ".resume.json"))
+            self.assertFalse(os.path.exists(path + ".manifest.json"))

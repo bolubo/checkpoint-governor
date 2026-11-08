@@ -78,6 +78,24 @@ resumable (step 1000, requires model, optimizer, scheduler, rng, caveat: the dat
 `save_only_model=True` is a fact, not a defect: the declaration then says `optimizer`, `scheduler` and
 `rng` are absent, and the verdict is `not resumable: optimizer state absent`.
 
+The declaration comes with `manifest.json` in the same directory: the size and tail hash of every file
+the Trainer wrote, sealed at the moment it wrote them. The declaration says what the copy *holds*; the
+manifest is how a reader checks that it still *is*. Delete `model.safetensors` and the answer changes:
+
+```
+$ ckptctl resumable --dir <output_dir>
+not resumable: shard model.safetensors is not in the copy
+
+$ ckptctl verify --dir <output_dir>/checkpoint-1000
+broken short
+  shard model.safetensors is missing
+```
+
+Without the manifest, `resumable` could only repeat the declaration — the same answer over an empty
+directory — and `verify` reported `no manifest yet: the write is in flight` for a write that finished.
+The cost stays bounded: a tail hash per file (`manifest.TAIL_BYTES`), not a re-read of the checkpoint,
+so a large save is not paid for twice.
+
 ## What happens
 
 | event | who writes | when |

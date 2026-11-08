@@ -196,11 +196,14 @@ func checkContent(path string, s Shard, full bool) (bool, string, error) {
 // this package has, so a second writer's debris is otherwise invisible — and a verified generation can sit
 // among files another process is still producing.
 func unlisted(genDir string, m Manifest) []string {
-	named := make(map[string]bool, len(m.Shards)+2)
+	named := make(map[string]bool, len(m.Shards)+3)
 	for _, s := range m.Shards {
 		named[s.Name] = true
 	}
 	named["manifest.json"] = true
+	// The declaration is ours, not debris: every sealed directory has one, and reporting it as an
+	// unlisted file would put a warning on every good copy.
+	named["resume.json"] = true
 
 	entries, err := os.ReadDir(genDir)
 	if err != nil {

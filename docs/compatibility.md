@@ -60,9 +60,15 @@ No stability for `internal/` packages (they are not importable on purpose), no s
 `debug` output of `--verbose`, and no cross-version readers: this build reads schema 2 only. The day it
 reads two schemas, `Reads()` becomes `2..3` and this table grows a row.
 
+**A countdown is refreshed by the job's own steps.** `seconds-left` is written when a deadline is
+announced and on every `step()`; a step that runs longer than the grace period leaves the cell stale,
+and no reader checks its age. The gate therefore decides on the last number the job wrote. This is
+recorded here rather than fixed: at the time of the archive, the two honest repairs were a timer thread
+in a library that promises no background work, or changing the meaning of a frozen cell name.
+
 ## Added in v0.2, and additive by construction
 
-The current number is `v0.28.0`; v0.27, v0.26, v0.25, v0.24, v0.23, v0.22, v0.21, v0.2 and v0.15 are
+The current number is `v0.29.0`; v0.27, v0.26, v0.25, v0.24, v0.23, v0.22, v0.21, v0.2 and v0.15 are
 earlier numbers (decision 0029). Their additions are carried by every later release.
 
 The resume contract adds files; it renames nothing and adds no frozen name (decision 0026).
