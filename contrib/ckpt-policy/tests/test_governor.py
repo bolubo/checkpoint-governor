@@ -362,6 +362,30 @@ class TestResumedAndGlue(unittest.TestCase):
             self.assertEqual(glue(root, "stopping"), "1")
             self.assertEqual(glue(root, "seconds-left"), "20")
 
+    def test_sigterm_second_call_never_extends_deadline(self):
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root)
+            with patch("time.monotonic", side_effect=[100.0, 101.2, 101.3, 101.5]):
+                g.on_sigterm(grace_seconds=20)
+                self.assertEqual(glue(root, "seconds-left"), "20")
+                g.step(1)
+                self.assertEqual(glue(root, "seconds-left"), "18")
+                # A second call must never restart or extend the deadline
+                g.on_sigterm(grace_seconds=20)
+                self.assertEqual(glue(root, "seconds-left"), "18")
+
+    def test_sigterm_countdown_under_shared_storage_not_throttled(self):
+        with tempfile.TemporaryDirectory() as root:
+            g = Governor(root, storage="shared", step_write_seconds=1.0)
+            with patch("time.monotonic", side_effect=[100.0, 100.0, 100.0, 100.9, 100.9]):
+                g.step(0)
+                g.on_sigterm(grace_seconds=20)
+                self.assertEqual(glue(root, "seconds-left"), "20")
+                g.step(1)
+                # Step 1 was throttled (< 1.0s), but seconds-left is updated to 19 (<= grace - elapsed)
+                self.assertEqual(glue(root, "step"), "0")
+                self.assertEqual(glue(root, "seconds-left"), "19")
+
     def test_ending_says_the_work_that_exists_now_is_the_work_that_matters(self):
         with tempfile.TemporaryDirectory() as root:
             g = Governor(root)

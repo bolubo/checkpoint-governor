@@ -241,6 +241,7 @@ class Governor:
         operation on a network volume is paid by every rank on every step (0027).
         """
         now = time.monotonic()
+        self._write_countdown(now)
         throttled = (self.storage == "shared" and self.step_write_seconds > 0
                      and now - self._last_step_write < self.step_write_seconds)
         if throttled:
@@ -251,6 +252,12 @@ class Governor:
             self._write_step(int(n), now)
         self._last_step = now
 
+    def _write_countdown(self, now: float | None = None) -> None:
+        if self.rank0 and self._stopping_at is not None:
+            now_ts = now if now is not None else time.monotonic()
+            left = max(0, int(self._grace_seconds - (now_ts - self._stopping_at)))
+            write_text(self.root, "seconds-left", str(left), durable=False)
+
     def _write_step(self, n: int, now: float | None = None) -> None:
         # These cells are liveness, not data: the rename keeps a reader from seeing half a number, and
         # the fsync is skipped. A crash loses the current value and the next step writes it again; the
@@ -259,9 +266,7 @@ class Governor:
                    durable=False)
         if self.rank0:
             write_text(self.root, "step", str(int(n)), durable=False)
-            if self._stopping_at is not None:
-                left = max(0, int(self._grace_seconds - ((now or time.monotonic()) - self._stopping_at)))
-                write_text(self.root, "seconds-left", str(left), durable=False)
+            self._write_countdown(now)
         self._last_step_write = time.monotonic()
         self._pending_step = None
 
@@ -414,6 +419,9 @@ class Governor:
     def on_sigterm(self, grace_seconds: int = 30) -> None:
         """Record the deadline the platform gave us. The job owns it; we never invent a second one."""
         self._lead_only("stopping")
+        if self._stopping_at is not None:
+            self._write_countdown()
+            return
         self._grace_seconds = int(grace_seconds)
         self._stopping_at = time.monotonic()
         write_text(self.root, "stopping", "1")
